@@ -48,9 +48,8 @@ jobs:
     needs: test
     name: Build and Push Container
     outputs:
-      container-image: ${{ steps.extract-image.outputs.image }}
-      test-output: ${{ steps.extract-image.outputs.test-output }}
-      meta-tags: ${{ steps.meta.outputs.tags }}
+      container-image: ${{ steps.simple-output.outputs.container-image }}
+      test-output: ${{ steps.simple-output.outputs.test-output }}
 
     steps:
       - name: Checkout code
@@ -122,75 +121,117 @@ jobs:
       - name: Extract container image for deployment
         id: extract-image
         run: |
+          set -e  # Exit on any error
           echo "=== EXTRACTING DEPLOYMENT IMAGE ==="
           
           # Get tags from metadata step using heredoc to preserve newlines
+          echo "Attempting to read metadata tags..."
           TAGS=$(cat << 'EOFTAGS'
           ${{ steps.meta.outputs.tags }}
           EOFTAGS
           )
           
-          echo "Available tags from metadata:"
+          echo "Raw TAGS captured:"
+          echo "---START TAGS---"
           echo "${TAGS}"
+          echo "---END TAGS---"
           echo "Number of tags: $(echo "${TAGS}" | wc -l)"
           
-          # Check if TAGS is empty
-          if [ -z "${TAGS}" ]; then
-            echo "ERROR: No tags received from metadata step!"
+          # Check if TAGS is empty or contains only whitespace
+          if [ -z "$(echo "${TAGS}" | tr -d ' \t\n\r')" ]; then
+            echo "ERROR: No tags received from metadata step or only whitespace!"
             echo "Meta step outputs: ${{ toJson(steps.meta.outputs) }}"
             exit 1
           fi
           
           # Find SHA tag (preferred for deployment) - handle multiline properly
-          SHA_TAG=$(echo "${TAGS}" | grep -E "sha-[a-f0-9]+" | head -1 | tr -d '\n\r')
+          echo "Searching for SHA tag..."
+          SHA_TAG=$(echo "${TAGS}" | grep -E "sha-[a-f0-9]+" | head -1 | tr -d '\n\r' | xargs)
           echo "SHA_TAG search result: '${SHA_TAG}'"
+          echo "SHA_TAG length: ${#SHA_TAG}"
           
           if [ -n "${SHA_TAG}" ]; then
             echo "Found SHA tag: ${SHA_TAG}"
             DEPLOY_IMAGE="${SHA_TAG}"
           else
+            echo "No SHA tag found, using first tag..."
             # Fallback to first tag - strip whitespace and newlines
             DEPLOY_IMAGE=$(echo "${TAGS}" | head -1 | tr -d '\n\r' | xargs)
             echo "Using first tag: ${DEPLOY_IMAGE}"
           fi
           
           echo "=== SETTING OUTPUTS ==="
-          echo "Deployment image: '${DEPLOY_IMAGE}'"
+          echo "Final deployment image: '${DEPLOY_IMAGE}'"
           echo "DEPLOY_IMAGE length: ${#DEPLOY_IMAGE}"
           
           # Check if DEPLOY_IMAGE is empty
           if [ -z "${DEPLOY_IMAGE}" ]; then
-            echo "ERROR: DEPLOY_IMAGE is empty!"
+            echo "ERROR: DEPLOY_IMAGE is empty after processing!"
+            echo "This means the tag processing failed"
             exit 1
           fi
           
-          # Set outputs with explicit formatting
+          # Set outputs with explicit formatting and verification
+          echo "Writing to GITHUB_OUTPUT file: $GITHUB_OUTPUT"
           echo "image=${DEPLOY_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "test-output=hello-world" >> "$GITHUB_OUTPUT"
           
+          # Verify the file was written
+          if [ ! -f "$GITHUB_OUTPUT" ]; then
+            echo "ERROR: GITHUB_OUTPUT file does not exist!"
+            exit 1
+          fi
+          
           echo "=== VERIFICATION ==="
+          echo "GITHUB_OUTPUT file exists: $([ -f "$GITHUB_OUTPUT" ] && echo "YES" || echo "NO")"
+          echo "GITHUB_OUTPUT file size: $(wc -c < "$GITHUB_OUTPUT" 2>/dev/null || echo "ERROR")"
           echo "GITHUB_OUTPUT contents:"
-          cat "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT" || echo "ERROR: Could not read GITHUB_OUTPUT"
           echo "=== END GITHUB_OUTPUT ==="
+          
+          # Double-check our outputs are accessible immediately
+          echo "=== IMMEDIATE STEP OUTPUT CHECK ==="
+          echo "Can we read our own outputs?"
+          # This won't work in the same step, but let's see what happens
+          echo "This step's image output should be: ${DEPLOY_IMAGE}"
+          
+      - name: Set simple outputs for job
+        id: simple-output
+        run: |
+          echo "=== SETTING SIMPLE JOB OUTPUTS ==="
+          # Get the image from the extract step
+          CONTAINER_IMAGE="${{ steps.extract-image.outputs.image }}"
+          echo "Container image from extract step: '${CONTAINER_IMAGE}'"
+          
+          # Set outputs using the most basic approach
+          echo "container-image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "test-output=hello-world-simple" >> "$GITHUB_OUTPUT"
+          
+          echo "=== SIMPLE OUTPUT VERIFICATION ==="
+          echo "Simple outputs set:"
+          cat "$GITHUB_OUTPUT"
           
       - name: Test immediate output reading
         run: |
           echo "=== IMMEDIATE OUTPUT TEST ==="
           echo "Can we read the image output immediately?"
-          echo "Image output from previous step: ${{ steps.extract-image.outputs.image }}"
-          echo "Test output from previous step: ${{ steps.extract-image.outputs.test-output }}"
-          echo "Meta tags: ${{ steps.meta.outputs.tags }}"
+          echo "Extract step - Image: ${{ steps.extract-image.outputs.image }}"
+          echo "Extract step - Test: ${{ steps.extract-image.outputs.test-output }}"
+          echo "Simple step - Container: ${{ steps.simple-output.outputs.container-image }}"
+          echo "Simple step - Test: ${{ steps.simple-output.outputs.test-output }}"
           
       - name: Final output verification
         run: |
           echo "=== FINAL VERIFICATION ==="
-          echo "Container image: ${{ steps.extract-image.outputs.image }}"
-          echo "Test output: ${{ steps.extract-image.outputs.test-output }}"
-          echo "Meta tags: ${{ steps.meta.outputs.tags }}"
+          echo "Extract step outputs:"
+          echo "  Image: ${{ steps.extract-image.outputs.image }}"
+          echo "  Test: ${{ steps.extract-image.outputs.test-output }}"
+          echo "Simple step outputs:"
+          echo "  Container: ${{ steps.simple-output.outputs.container-image }}"
+          echo "  Test: ${{ steps.simple-output.outputs.test-output }}"
           echo "=== JOB OUTPUTS WILL BE ==="
-          echo "container-image: ${{ steps.extract-image.outputs.image }}"
-          echo "test-output: ${{ steps.extract-image.outputs.test-output }}"
-          echo "meta-tags: ${{ steps.meta.outputs.tags }}"
+          echo "container-image: ${{ steps.simple-output.outputs.container-image }}"
+          echo "test-output: ${{ steps.simple-output.outputs.test-output }}"
 
   deploy-dev:
     runs-on: ubuntu-latest
@@ -272,7 +313,6 @@ jobs:
           echo "Build job outputs: ${{ toJson(needs.build.outputs) }}"
           echo "Container image from needs: ${{ needs.build.outputs.container-image }}"
           echo "Test output: ${{ needs.build.outputs.test-output }}"
-          echo "Meta tags: ${{ needs.build.outputs.meta-tags }}"
           echo "=== VARIABLES ==="
           echo "Resource Group: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
