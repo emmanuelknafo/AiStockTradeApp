@@ -73,7 +73,9 @@
                         <p class="percent @item.StockData.ChangeClass">Percent: <span>@item.StockData.PercentChange</span></p>
                         @if (Model.Settings.ShowCharts)
                         {
-                            <div class="mini-chart">📈 Chart Coming Soon</div>
+                            <div class="mini-chart">
+                                <canvas id="chart-@item.Symbol" width="250" height="60"></canvas>
+                            </div>
                         }
                         <div class="ai-analysis"><strong>Analysis:</strong> @(item.StockData.AIAnalysis ?? "Loading...")</div>
                         <div class="ai-recommend"><strong>Recommendation:</strong> @(item.StockData.Recommendation ?? "Loading...") - @(item.StockData.RecommendationReason ?? "")</div>

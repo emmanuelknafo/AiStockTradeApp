@@ -43,6 +43,20 @@ namespace ai_stock_trade_app.Controllers
                         stockResponse.Data.Recommendation = recommendation;
                         stockResponse.Data.RecommendationReason = reasoning;
                         
+                        // Add chart data if charts are enabled
+                        var userSettings = GetUserSettings();
+                        if (userSettings.ShowCharts)
+                        {
+                            try
+                            {
+                                stockResponse.Data.ChartData = await _stockDataService.GetHistoricalDataAsync(item.Symbol);
+                            }
+                            catch (Exception chartEx)
+                            {
+                                _logger.LogWarning(chartEx, "Error fetching chart data for {Symbol}", item.Symbol);
+                            }
+                        }
+                        
                         item.StockData = stockResponse.Data;
                     }
                 }
@@ -157,6 +171,21 @@ namespace ai_stock_trade_app.Controllers
             {
                 _logger.LogError(ex, "Error fetching stock data for {Symbol}", symbol);
                 return Json(new { success = false, message = "Error fetching stock data" });
+            }
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetChartData(string symbol, int days = 30)
+        {
+            try
+            {
+                var chartData = await _stockDataService.GetHistoricalDataAsync(symbol, days);
+                return Json(new { success = true, data = chartData });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching chart data for {Symbol}", symbol);
+                return Json(new { success = false, message = "Error fetching chart data" });
             }
         }
 

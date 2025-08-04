@@ -308,6 +308,17 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.mini-chart canvas {
+  width: 100% !important;
+  height: 60px !important;
+  border-radius: 4px;
+}
+
+.mini-chart-placeholder {
   color: var(--text-color);
   opacity: 0.7;
 }

@@ -7,6 +7,7 @@ class StockTracker {
         this.autoRefreshInterval = null;
         this.isAutoRefreshEnabled = this.config.autoRefresh || false;
         this.currentTheme = this.config.theme || 'light';
+        this.charts = new Map(); // Store chart instances
         
         this.init();
     }
@@ -18,6 +19,7 @@ class StockTracker {
         this.initializeSearchSuggestions();
         this.setupKeyboardShortcuts();
         this.loadSettings();
+        this.initializeCharts();
     }
 
     setupEventListeners() {
@@ -146,9 +148,10 @@ class StockTracker {
             
             if (result.success) {
                 this.showNotification(result.message, 'success');
-                // Remove card from DOM
+                // Remove card from DOM and destroy chart
                 const card = document.getElementById(`card-${symbol}`);
                 if (card) {
+                    this.destroyChart(symbol);
                     card.remove();
                 }
                 this.updatePortfolioDisplay();
@@ -178,6 +181,8 @@ class StockTracker {
             
             if (result.success) {
                 this.showNotification(result.message, 'info');
+                // Destroy all charts before reload
+                this.destroyAllCharts();
                 // Reload page to clear watchlist
                 setTimeout(() => window.location.reload(), 1000);
             } else {
@@ -470,6 +475,10 @@ class StockTracker {
         watchlist.forEach(item => {
             if (item.stockData) {
                 this.updateStockCard(item.symbol, item.stockData);
+                // Update chart if charts are enabled
+                if (this.config.showCharts) {
+                    this.updateChart(item.symbol);
+                }
             }
         });
     }
@@ -605,6 +614,165 @@ class StockTracker {
         } catch (error) {
             console.error('Error loading settings:', error);
         }
+    }
+
+    // Chart Management Methods
+    initializeCharts() {
+        if (!this.config.showCharts) return;
+        
+        // Initialize charts for all existing stock cards
+        const stockCards = document.querySelectorAll('.stock-card');
+        stockCards.forEach(card => {
+            const symbol = card.id.replace('card-', '');
+            const canvas = card.querySelector(`canvas[id="chart-${symbol}"]`);
+            if (canvas && !this.charts.has(symbol)) {
+                this.createChart(symbol, canvas);
+            }
+        });
+    }
+
+    async createChart(symbol, canvas) {
+        try {
+            const chartData = await this.fetchChartData(symbol);
+            if (chartData.length === 0) return;
+
+            const ctx = canvas.getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (this.charts.has(symbol)) {
+                this.charts.get(symbol).destroy();
+            }
+
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.map(point => {
+                        const date = new Date(point.date);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    }),
+                    datasets: [{
+                        label: symbol,
+                        data: chartData.map(point => point.price),
+                        borderColor: this.getChartColor(symbol),
+                        backgroundColor: this.getChartColor(symbol, 0.1),
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `$${context.parsed.y.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            display: false,
+                            beginAtZero: false
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    elements: {
+                        point: {
+                            radius: 0
+                        }
+                    }
+                }
+            });
+
+            this.charts.set(symbol, chart);
+        } catch (error) {
+            console.error(`Error creating chart for ${symbol}:`, error);
+        }
+    }
+
+    async fetchChartData(symbol, days = 30) {
+        try {
+            const response = await fetch(`/Stock/GetChartData?symbol=${encodeURIComponent(symbol)}&days=${days}`);
+            const result = await response.json();
+            
+            if (result.success) {
+                return result.data;
+            } else {
+                console.error(`Error fetching chart data for ${symbol}:`, result.message);
+                return [];
+            }
+        } catch (error) {
+            console.error(`Error fetching chart data for ${symbol}:`, error);
+            return [];
+        }
+    }
+
+    getChartColor(symbol, alpha = 1) {
+        // Generate consistent colors based on symbol
+        const colors = [
+            `rgba(54, 162, 235, ${alpha})`,   // Blue
+            `rgba(255, 99, 132, ${alpha})`,   // Red
+            `rgba(75, 192, 192, ${alpha})`,   // Teal
+            `rgba(255, 206, 86, ${alpha})`,   // Yellow
+            `rgba(153, 102, 255, ${alpha})`,  // Purple
+            `rgba(255, 159, 64, ${alpha})`,   // Orange
+            `rgba(199, 199, 199, ${alpha})`,  // Grey
+            `rgba(83, 102, 255, ${alpha})`    // Indigo
+        ];
+        
+        const hash = symbol.split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+        }, 0);
+        
+        return colors[Math.abs(hash) % colors.length];
+    }
+
+    updateChart(symbol) {
+        if (!this.charts.has(symbol)) return;
+        
+        // Refresh chart data
+        this.fetchChartData(symbol).then(chartData => {
+            if (chartData.length === 0) return;
+            
+            const chart = this.charts.get(symbol);
+            chart.data.labels = chartData.map(point => {
+                const date = new Date(point.date);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+            chart.data.datasets[0].data = chartData.map(point => point.price);
+            chart.update('none'); // Update without animation
+        });
+    }
+
+    destroyChart(symbol) {
+        if (this.charts.has(symbol)) {
+            this.charts.get(symbol).destroy();
+            this.charts.delete(symbol);
+        }
+    }
+
+    destroyAllCharts() {
+        this.charts.forEach((chart, symbol) => {
+            chart.destroy();
+        });
+        this.charts.clear();
     }
 }
 

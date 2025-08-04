@@ -17,10 +17,20 @@ namespace ai_stock_trade_app.Models
         public string? Recommendation { get; set; }
         public string? RecommendationReason { get; set; }
         
+        // Chart data
+        public List<ChartDataPoint>? ChartData { get; set; }
+        
         // Calculated properties
         public bool IsPositive => Change >= 0;
         public string ChangeClass => IsPositive ? "positive" : "negative";
         public string ChangePrefix => IsPositive ? "+" : "";
+    }
+
+    public class ChartDataPoint
+    {
+        public DateTime Date { get; set; }
+        public decimal Price { get; set; }
+        public decimal Volume { get; set; }
     }
 
     public class StockQuoteResponse

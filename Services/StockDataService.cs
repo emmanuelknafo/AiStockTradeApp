@@ -7,6 +7,7 @@ namespace ai_stock_trade_app.Services
     {
         Task<StockQuoteResponse> GetStockQuoteAsync(string symbol);
         Task<List<string>> GetStockSuggestionsAsync(string query);
+        Task<List<ChartDataPoint>> GetHistoricalDataAsync(string symbol, int days = 30);
     }
 
     public class StockDataService : IStockDataService
@@ -290,6 +291,111 @@ namespace ai_stock_trade_app.Services
                 .ToList();
 
             return Task.FromResult(result);
+        }
+
+        public async Task<List<ChartDataPoint>> GetHistoricalDataAsync(string symbol, int days = 30)
+        {
+            try
+            {
+                await ApplyRateLimitAsync();
+
+                // Try Alpha Vantage first if API key is available
+                var apiKey = _configuration["AlphaVantage:ApiKey"];
+                if (!string.IsNullOrEmpty(apiKey) && apiKey != "YOUR_ALPHA_VANTAGE_API_KEY")
+                {
+                    try
+                    {
+                        return await FetchHistoricalFromAlphaVantageAsync(symbol, apiKey, days);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Alpha Vantage historical data failed for {Symbol}, using fallback", symbol);
+                    }
+                }
+
+                // Fallback to generated demo data
+                return GenerateDemoChartData(symbol, days);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching historical data for {Symbol}", symbol);
+                return GenerateDemoChartData(symbol, days);
+            }
+        }
+
+        private async Task<List<ChartDataPoint>> FetchHistoricalFromAlphaVantageAsync(string symbol, string apiKey, int days)
+        {
+            var url = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={apiKey}&outputsize=compact";
+            var response = await _httpClient.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+
+            var chartData = new List<ChartDataPoint>();
+
+            if (root.TryGetProperty("Time Series (Daily)", out var timeSeriesElement))
+            {
+                var count = 0;
+                foreach (var dateEntry in timeSeriesElement.EnumerateObject().OrderByDescending(x => x.Name))
+                {
+                    if (count >= days) break;
+
+                    if (DateTime.TryParse(dateEntry.Name, out var date))
+                    {
+                        var dailyData = dateEntry.Value;
+                        if (dailyData.TryGetProperty("4. close", out var closeElement) &&
+                            dailyData.TryGetProperty("5. volume", out var volumeElement))
+                        {
+                            var price = GetDecimalFromJsonElement(closeElement);
+                            var volume = GetDecimalFromJsonElement(volumeElement);
+
+                            if (price.HasValue && volume.HasValue)
+                            {
+                                chartData.Add(new ChartDataPoint
+                                {
+                                    Date = date,
+                                    Price = price.Value,
+                                    Volume = volume.Value
+                                });
+                            }
+                        }
+                    }
+                    count++;
+                }
+            }
+
+            return chartData.OrderBy(x => x.Date).ToList();
+        }
+
+        private List<ChartDataPoint> GenerateDemoChartData(string symbol, int days)
+        {
+            var random = new Random(symbol.GetHashCode()); // Consistent seed for same symbol
+            var chartData = new List<ChartDataPoint>();
+            var basePrice = random.Next(50, 500); // Random base price between $50-$500
+            var currentPrice = (decimal)basePrice;
+
+            for (int i = days - 1; i >= 0; i--)
+            {
+                var date = DateTime.Today.AddDays(-i);
+                
+                // Generate realistic price movement (-3% to +3% daily change)
+                var changePercent = (decimal)((random.NextDouble() - 0.5) * 0.06);
+                currentPrice *= (1 + changePercent);
+                currentPrice = Math.Max(currentPrice, 1); // Ensure price stays positive
+
+                var volume = random.Next(100000, 10000000); // Random volume
+
+                chartData.Add(new ChartDataPoint
+                {
+                    Date = date,
+                    Price = Math.Round(currentPrice, 2),
+                    Volume = volume
+                });
+            }
+
+            return chartData;
         }
     }
 }
