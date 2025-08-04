@@ -112,20 +112,38 @@ jobs:
       - name: Set image output
         id: image
         run: |
+          echo "=== METADATA DEBUG ==="
+          echo "Meta step outputs:"
+          echo "Tags: ${{ steps.meta.outputs.tags }}"
+          echo "Labels: ${{ steps.meta.outputs.labels }}"
+          echo "Version: ${{ steps.meta.outputs.version }}"
+          echo "JSON: ${{ steps.meta.outputs.json }}"
+          
+          echo "=== PROCESSING TAGS ==="
           echo "Available tags:"
           echo "${{ steps.meta.outputs.tags }}"
+          
+          # Store tags in variable for processing
+          TAGS="${{ steps.meta.outputs.tags }}"
+          echo "TAGS variable: ${TAGS}"
+          
           # Prefer SHA tag for deployment, fallback to first tag
-          SHA_TAG=$(echo "${{ steps.meta.outputs.tags }}" | grep "sha-" | head -1 || echo "")
+          SHA_TAG=$(echo "${TAGS}" | grep "sha-" | head -1 || echo "")
+          echo "SHA_TAG found: ${SHA_TAG}"
+          
           if [ -n "$SHA_TAG" ]; then
             echo "Using SHA tag: ${SHA_TAG}"
             echo "image=${SHA_TAG}" >> $GITHUB_OUTPUT
             echo "DEBUG: Set output to ${SHA_TAG}"
           else
-            FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+            FIRST_TAG=$(echo "${TAGS}" | head -1)
             echo "Using first tag: ${FIRST_TAG}"
             echo "image=${FIRST_TAG}" >> $GITHUB_OUTPUT
             echo "DEBUG: Set output to ${FIRST_TAG}"
           fi
+          
+          echo "=== VERIFY OUTPUT SETTING ==="
+          echo "Image output should be set to: $(if [ -n '$SHA_TAG' ]; then echo '$SHA_TAG'; else echo '$FIRST_TAG'; fi)"
           
       - name: Verify output and set job output
         id: verify
