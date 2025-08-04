@@ -1,0 +1,88 @@
+name: Infrastructure Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy infrastructure'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - prod
+      destroy:
+        description: 'Destroy infrastructure instead of deploy'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  AZURE_RESOURCE_GROUP_DEV: 'ai-stock-tracker-dev-rg'
+  AZURE_RESOURCE_GROUP_PROD: 'ai-stock-tracker-prod-rg'
+
+jobs:
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+    name: Deploy Infrastructure
+    environment: ${{ github.event.inputs.environment == 'prod' && 'production' || 'development' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Create Resource Group
+      if: github.event.inputs.destroy != 'true'
+      run: |
+        if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+        else
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+        fi
+        
+        az group create --name "$RG_NAME" --location "East US"
+
+    - name: Deploy Bicep Template
+      if: github.event.inputs.destroy != 'true'
+      uses: azure/arm-deploy@v1
+      with:
+        subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        resourceGroupName: ${{ github.event.inputs.environment == 'prod' && env.AZURE_RESOURCE_GROUP_PROD || env.AZURE_RESOURCE_GROUP_DEV }}
+        template: ./infrastructure/main.bicep
+        parameters: |
+          ./infrastructure/parameters.${{ github.event.inputs.environment }}.json
+          containerImage=ai-stock-trade-app:latest
+          alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+        failOnStdErr: false
+
+    - name: Destroy Infrastructure
+      if: github.event.inputs.destroy == 'true'
+      run: |
+        if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+        else
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+        fi
+        
+        echo "Destroying resource group: $RG_NAME"
+        az group delete --name "$RG_NAME" --yes --no-wait
+
+    - name: Deployment Summary
+      if: github.event.inputs.destroy != 'true'
+      run: |
+        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Resource Group**: ${{ github.event.inputs.environment == 'prod' && env.AZURE_RESOURCE_GROUP_PROD || env.AZURE_RESOURCE_GROUP_DEV }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status**: Infrastructure deployment completed" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+          echo "- **Web App URL**: https://ai-stock-tracker-prod-webapp.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- **Web App URL**: https://ai-stock-tracker-dev-webapp.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+        fi

@@ -5,6 +5,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
+// Add health checks
+builder.Services.AddHealthChecks();
+
 // Add HttpClient for external API calls
 builder.Services.AddHttpClient<IStockDataService, StockDataService>();
 
@@ -31,6 +34,9 @@ if (!app.Environment.IsDevelopment())
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
+
+// Health check endpoint
+app.MapHealthChecks("/health");
 
 app.UseHttpsRedirection();
 app.UseRouting();

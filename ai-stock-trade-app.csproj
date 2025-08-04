@@ -7,4 +7,9 @@
     <RootNamespace>ai_stock_trade_app</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <None Include=".github\workflows\ci-cd.yml" />
+    <None Include=".github\workflows\infrastructure.yml" />
+  </ItemGroup>
+
 </Project>
