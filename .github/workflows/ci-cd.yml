@@ -173,20 +173,33 @@ jobs:
           
           # Set outputs directly for the job - no intermediate steps
           echo "Writing to GITHUB_OUTPUT file: $GITHUB_OUTPUT"
+          echo "About to write container_image=${DEPLOY_IMAGE}"
+          echo "About to write test_output=hello-from-combined-step"
+          
+          # Write with explicit debugging
           echo "container_image=${DEPLOY_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "test_output=hello-from-combined-step" >> "$GITHUB_OUTPUT"
           
-          # Verify the file was written
-          if [ ! -f "$GITHUB_OUTPUT" ]; then
-            echo "ERROR: GITHUB_OUTPUT file does not exist!"
-            exit 1
-          fi
-          
+          # Verify what we actually wrote
           echo "=== VERIFICATION ==="
           echo "GITHUB_OUTPUT file exists: $([ -f "$GITHUB_OUTPUT" ] && echo "YES" || echo "NO")"
           echo "GITHUB_OUTPUT file size: $(wc -c < "$GITHUB_OUTPUT" 2>/dev/null || echo "ERROR")"
           echo "GITHUB_OUTPUT contents:"
           cat "$GITHUB_OUTPUT" || echo "ERROR: Could not read GITHUB_OUTPUT"
+          
+          # Double-check our variables one more time
+          echo "=== FINAL VARIABLE CHECK ==="
+          echo "DEPLOY_IMAGE value: '${DEPLOY_IMAGE}'"
+          echo "DEPLOY_IMAGE is empty check: $([ -z "${DEPLOY_IMAGE}" ] && echo "YES-EMPTY" || echo "NO-HAS-VALUE")"
+          echo "DEPLOY_IMAGE character count: ${#DEPLOY_IMAGE}"
+          
+          # Manually check each line in GITHUB_OUTPUT
+          echo "=== MANUAL OUTPUT CHECK ==="
+          echo "Checking each line in GITHUB_OUTPUT:"
+          while IFS= read -r line; do
+            echo "Line: '$line'"
+          done < "$GITHUB_OUTPUT"
+          
           echo "=== END COMBINED STEP ==="
           
       - name: Test final output
