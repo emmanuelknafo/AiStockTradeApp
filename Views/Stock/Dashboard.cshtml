@@ -1,0 +1,155 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "AI-Powered Stock Tracker";
+}
+
+@Html.AntiForgeryToken()
+
+<div class="container">
+    <header class="app-header">
+        <h1>AI-Powered Stock Tracker</h1>
+        <div class="header-controls">
+            <button id="theme-toggle" class="control-btn">🌙</button>
+            <button id="auto-refresh-toggle" class="control-btn">⏸️</button>
+            <button id="alerts-toggle" class="control-btn">🔔</button>
+            <button id="settings-toggle" class="control-btn">⚙️</button>
+        </div>
+    </header>
+
+    <!-- API Status -->
+    <div id="api-status" class="api-status">
+        <strong>Status:</strong> Using multiple APIs for real-time data
+    </div>
+
+    <div class="search-bar">
+        <div class="search-container">
+            <input type="text" id="ticker-input" placeholder="Enter ticker symbol (e.g., AAPL)" autocomplete="off" />
+            <div id="search-suggestions" class="search-suggestions"></div>
+        </div>
+        <button id="add-button">Add Stock</button>
+        <button id="clear-all" class="danger-btn">Clear All</button>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel" class="settings-panel hidden">
+        <h3>Settings</h3>
+        <div class="setting-group">
+            <label>
+                <input type="checkbox" id="auto-refresh-checkbox" @(Model.Settings.AutoRefresh ? "checked" : "")> Auto-refresh every 
+                <select id="refresh-interval">
+                    <option value="10000" @(Model.Settings.RefreshInterval == 10000 ? "selected" : "")>10 seconds</option>
+                    <option value="30000" @(Model.Settings.RefreshInterval == 30000 ? "selected" : "")>30 seconds</option>
+                    <option value="60000" @(Model.Settings.RefreshInterval == 60000 ? "selected" : "")>1 minute</option>
+                    <option value="300000" @(Model.Settings.RefreshInterval == 300000 ? "selected" : "")>5 minutes</option>
+                </select>
+            </label>
+        </div>
+        <div class="setting-group">
+            <label>
+                <input type="checkbox" id="sound-notifications" @(Model.Settings.SoundNotifications ? "checked" : "")> Sound notifications
+            </label>
+        </div>
+        <div class="setting-group">
+            <label>
+                <input type="checkbox" id="show-charts" @(Model.Settings.ShowCharts ? "checked" : "")> Show mini charts
+            </label>
+        </div>
+    </div>
+
+    <!-- Watchlist -->
+    <div id="watchlist" class="watchlist">
+        @foreach (var item in Model.Watchlist)
+        {
+            <div class="stock-card" id="card-@item.Symbol">
+                <div class="card-header">
+                    <h2>@item.Symbol</h2>
+                    <button class="remove-button" data-ticker="@item.Symbol" title="Remove @item.Symbol">&times;</button>
+                </div>
+                <div class="card-body">
+                    @if (item.StockData != null)
+                    {
+                        <p class="price">Price: <span>$@item.StockData.Price.ToString("F2")</span></p>
+                        <p class="change @item.StockData.ChangeClass">Change: <span>@item.StockData.ChangePrefix$@Math.Abs(item.StockData.Change).ToString("F2")</span></p>
+                        <p class="percent @item.StockData.ChangeClass">Percent: <span>@item.StockData.PercentChange</span></p>
+                        @if (Model.Settings.ShowCharts)
+                        {
+                            <div class="mini-chart">📈 Chart Coming Soon</div>
+                        }
+                        <div class="ai-analysis"><strong>Analysis:</strong> @(item.StockData.AIAnalysis ?? "Loading...")</div>
+                        <div class="ai-recommend"><strong>Recommendation:</strong> @(item.StockData.Recommendation ?? "Loading...") - @(item.StockData.RecommendationReason ?? "")</div>
+                    }
+                    else
+                    {
+                        <p class="price">Price: <span>Loading...</span></p>
+                        <p class="change">Change: <span>Loading...</span></p>
+                        <p class="percent">Percent: <span>Loading...</span></p>
+                        <div class="ai-analysis"><strong>Analysis:</strong> <em>Loading...</em></div>
+                        <div class="ai-recommend"><strong>Recommendation:</strong> <em>Loading...</em></div>
+                    }
+                </div>
+                @if (Model.Alerts.Any(a => a.Symbol == item.Symbol))
+                {
+                    <div class="alert-indicator" title="@Model.Alerts.Count(a => a.Symbol == item.Symbol) alert(s) set">🔔</div>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- Portfolio Summary and Export -->
+    <div id="portfolio-summary" class="portfolio-summary">
+        <h2>Portfolio Summary</h2>
+        <div class="portfolio-stats">
+            <div class="stat-item">
+                <span class="stat-label">Total Value:</span>
+                <span class="stat-value">$<span id="total-value">@Model.Portfolio.TotalValue.ToString("F2")</span></span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Today's Change:</span>
+                <span class="stat-value @Model.Portfolio.ChangeClass" id="total-change">
+                    @Model.Portfolio.ChangePrefix$@Math.Abs(Model.Portfolio.TotalChange).ToString("F2") (@Model.Portfolio.TotalChangePercent.ToString("F2")%)
+                </span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Stocks:</span>
+                <span class="stat-value" id="stock-count">@Model.Portfolio.StockCount</span>
+            </div>
+        </div>
+        <div class="portfolio-actions">
+            <a href="@Url.Action("ExportCsv", "Stock")" id="export-csv">Export CSV</a>
+            <a href="@Url.Action("ExportJson", "Stock")" id="export-json">Export JSON</a>
+            <button id="import-data">Import Data</button>
+            <input type="file" id="import-file" accept=".json,.csv" style="display: none;">
+        </div>
+    </div>
+
+    <!-- Price Alerts Panel -->
+    <div id="alerts-panel" class="alerts-panel hidden">
+        <h3>Price Alerts</h3>
+        <div id="alerts-list">
+            @foreach (var alert in Model.Alerts)
+            {
+                <div class="alert-item">
+                    <strong>@alert.Symbol</strong> @alert.AlertType $@alert.TargetPrice
+                    <small>(@alert.CreatedDate.ToString("MM/dd/yyyy"))</small>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Notification Container -->
+<div id="notification-container"></div>
+
+@section Scripts {
+    <script>
+        // Global configuration
+        window.stockTrackerConfig = {
+            refreshInterval: @Model.Settings.RefreshInterval,
+            autoRefresh: @Model.Settings.AutoRefresh.ToString().ToLower(),
+            soundNotifications: @Model.Settings.SoundNotifications.ToString().ToLower(),
+            showCharts: @Model.Settings.ShowCharts.ToString().ToLower(),
+            theme: '@Model.Settings.Theme'
+        };
+    </script>
+    <script src="~/js/stock-tracker.js"></script>
+}
