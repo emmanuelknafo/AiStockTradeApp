@@ -123,10 +123,11 @@ jobs:
           failOnStdErr: false
 
       - name: Update Web App Container
-        uses: azure/webapps-deploy@v2
-        with:
-          app-name: ai-stock-tracker-dev-webapp
-          images: ${{ needs.build.outputs.container-image }}
+        run: |
+          az webapp config container set \
+            --name ai-stock-tracker-dev-webapp \
+            --resource-group rg-ai-stock-tracker-dev \
+            --docker-custom-image-name ${{ needs.build.outputs.container-image }}
 
   deploy-prod:
     runs-on: ubuntu-latest
@@ -166,10 +167,11 @@ jobs:
           failOnStdErr: false
 
       - name: Update Web App Container
-        uses: azure/webapps-deploy@v2
-        with:
-          app-name: ai-stock-tracker-prod-webapp
-          images: ${{ needs.build.outputs.container-image }}
+        run: |
+          az webapp config container set \
+            --name ai-stock-tracker-prod-webapp \
+            --resource-group rg-ai-stock-tracker-prod \
+            --docker-custom-image-name ${{ needs.build.outputs.container-image }}
 
       - name: Run Health Check
         run: |
