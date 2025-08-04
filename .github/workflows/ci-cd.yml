@@ -124,10 +124,14 @@ jobs:
 
       - name: Update Web App Container
         run: |
+          echo "Container Image: ${{ needs.build.outputs.container-image }}"
           az webapp config container set \
             --name ai-stock-tracker-dev-webapp \
             --resource-group rg-ai-stock-tracker-dev \
-            --docker-custom-image-name ${{ needs.build.outputs.container-image }}
+            --docker-custom-image-name "${{ needs.build.outputs.container-image }}" \
+            --docker-registry-server-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
+            --docker-registry-server-user "${{ secrets.REGISTRY_USERNAME }}" \
+            --docker-registry-server-password "${{ secrets.REGISTRY_PASSWORD }}"
 
   deploy-prod:
     runs-on: ubuntu-latest
@@ -168,10 +172,14 @@ jobs:
 
       - name: Update Web App Container
         run: |
+          echo "Container Image: ${{ needs.build.outputs.container-image }}"
           az webapp config container set \
             --name ai-stock-tracker-prod-webapp \
             --resource-group rg-ai-stock-tracker-prod \
-            --docker-custom-image-name ${{ needs.build.outputs.container-image }}
+            --docker-custom-image-name "${{ needs.build.outputs.container-image }}" \
+            --docker-registry-server-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
+            --docker-registry-server-user "${{ secrets.REGISTRY_USERNAME }}" \
+            --docker-registry-server-password "${{ secrets.REGISTRY_PASSWORD }}"
 
       - name: Run Health Check
         run: |
