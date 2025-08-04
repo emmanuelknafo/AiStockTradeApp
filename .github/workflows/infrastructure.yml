@@ -11,6 +11,11 @@ on:
         options:
         - dev
         - prod
+      location:
+        description: 'Azure region for deployment'
+        required: true
+        default: 'Canada Central'
+        type: string
       destroy:
         description: 'Destroy infrastructure instead of deploy'
         required: false
@@ -51,7 +56,7 @@ jobs:
           RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
         fi
         
-        az group create --name "$RG_NAME" --location "East US"
+        az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
 
     - name: Deploy Bicep Template
       if: github.event.inputs.destroy != 'true'
