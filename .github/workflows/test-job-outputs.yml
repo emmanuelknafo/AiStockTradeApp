@@ -1,0 +1,216 @@
+name: Test Job Outputs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+    paths:
+      - '.github/workflows/test-job-outputs.yml'
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    name: Build Test Job
+    outputs:
+      simple-output: ${{ steps.simple.outputs.value }}
+      container-image: ${{ steps.docker.outputs.image }}
+      test-output: ${{ steps.verify.outputs.test-output }}
+      final-image: ${{ steps.verify.outputs.final-image }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Simple output test
+        id: simple
+        run: |
+          echo "=== SIMPLE OUTPUT TEST ==="
+          echo "Setting simple value"
+          echo "value=hello-world" >> $GITHUB_OUTPUT
+          echo "Simple output set to: hello-world"
+
+      - name: Docker metadata simulation
+        id: docker
+        run: |
+          echo "=== DOCKER SIMULATION ==="
+          # Simulate what docker/metadata-action would produce
+          REGISTRY="aistocktrackerprod"
+          APP_NAME="ai-stock-trade-app"
+          SHA="bf0a8b4"
+          
+          # Create simulated tags like the real workflow
+          TAGS="${REGISTRY}.azurecr.io/${APP_NAME}:main
+          ${REGISTRY}.azurecr.io/${APP_NAME}:latest
+          ${REGISTRY}.azurecr.io/${APP_NAME}:sha-${SHA}"
+          
+          echo "Simulated tags:"
+          echo "${TAGS}"
+          
+          # Process tags like the real workflow
+          SHA_TAG=$(echo "${TAGS}" | grep "sha-" | head -1 || echo "")
+          echo "SHA_TAG found: ${SHA_TAG}"
+          
+          if [ -n "$SHA_TAG" ]; then
+            echo "Using SHA tag: ${SHA_TAG}"
+            echo "image=${SHA_TAG}" >> $GITHUB_OUTPUT
+            echo "DEBUG: Set Docker output to ${SHA_TAG}"
+          else
+            FIRST_TAG=$(echo "${TAGS}" | head -1)
+            echo "Using first tag: ${FIRST_TAG}"
+            echo "image=${FIRST_TAG}" >> $GITHUB_OUTPUT
+            echo "DEBUG: Set Docker output to ${FIRST_TAG}"
+          fi
+          
+          # Verify the output was written
+          echo "=== VERIFYING GITHUB_OUTPUT ==="
+          echo "GITHUB_OUTPUT file contents:"
+          cat $GITHUB_OUTPUT || echo "Could not read GITHUB_OUTPUT file"
+
+      - name: Test immediate reading
+        run: |
+          echo "=== IMMEDIATE READING TEST ==="
+          echo "Simple output: ${{ steps.simple.outputs.value }}"
+          echo "Docker output: ${{ steps.docker.outputs.image }}"
+          echo "Can we read outputs immediately? This tests step-to-step communication"
+
+      - name: Verify and set additional outputs
+        id: verify
+        run: |
+          echo "=== VERIFICATION STEP ==="
+          echo "Simple value from step: ${{ steps.simple.outputs.value }}"
+          echo "Docker image from step: ${{ steps.docker.outputs.image }}"
+          
+          # Set additional outputs for job-level testing
+          echo "test-output=verification-successful" >> $GITHUB_OUTPUT
+          echo "final-image=${{ steps.docker.outputs.image }}" >> $GITHUB_OUTPUT
+          
+          echo "=== JOB OUTPUTS PREVIEW ==="
+          echo "Job will output:"
+          echo "  simple-output: ${{ steps.simple.outputs.value }}"
+          echo "  container-image: ${{ steps.docker.outputs.image }}"
+          echo "  test-output: verification-successful"
+          echo "  final-image: ${{ steps.docker.outputs.image }}"
+
+      - name: Final verification
+        run: |
+          echo "=== FINAL BUILD JOB VERIFICATION ==="
+          echo "All step outputs accessible:"
+          echo "  Simple: ${{ steps.simple.outputs.value }}"
+          echo "  Docker: ${{ steps.docker.outputs.image }}"
+          echo "  Verify test: ${{ steps.verify.outputs.test-output }}"
+          echo "  Verify final: ${{ steps.verify.outputs.final-image }}"
+
+  deploy-test:
+    runs-on: ubuntu-latest
+    needs: build-test
+    name: Deploy Test Job
+
+    steps:
+      - name: Debug received outputs
+        run: |
+          echo "=== DEPLOY JOB DEBUG ==="
+          echo "Build job result: ${{ needs.build-test.result }}"
+          echo "=== ALL BUILD OUTPUTS (JSON) ==="
+          echo "${{ toJson(needs.build-test.outputs) }}"
+          echo "=== INDIVIDUAL OUTPUTS ==="
+          echo "Simple output: '${{ needs.build-test.outputs.simple-output }}'"
+          echo "Container image: '${{ needs.build-test.outputs.container-image }}'"
+          echo "Test output: '${{ needs.build-test.outputs.test-output }}'"
+          echo "Final image: '${{ needs.build-test.outputs.final-image }}'"
+          echo "=== OUTPUT VALIDATION ==="
+          echo "Simple output empty? ${{ needs.build-test.outputs.simple-output == '' }}"
+          echo "Container image empty? ${{ needs.build-test.outputs.container-image == '' }}"
+          echo "Test output empty? ${{ needs.build-test.outputs.test-output == '' }}"
+          echo "Final image empty? ${{ needs.build-test.outputs.final-image == '' }}"
+
+      - name: Test output usage
+        run: |
+          echo "=== TESTING OUTPUT USAGE ==="
+          
+          # Test each output
+          if [ -z "${{ needs.build-test.outputs.simple-output }}" ]; then
+            echo "❌ Simple output is empty!"
+          else
+            echo "✅ Simple output received: ${{ needs.build-test.outputs.simple-output }}"
+          fi
+          
+          if [ -z "${{ needs.build-test.outputs.container-image }}" ]; then
+            echo "❌ Container image is empty!"
+          else
+            echo "✅ Container image received: ${{ needs.build-test.outputs.container-image }}"
+          fi
+          
+          if [ -z "${{ needs.build-test.outputs.test-output }}" ]; then
+            echo "❌ Test output is empty!"
+          else
+            echo "✅ Test output received: ${{ needs.build-test.outputs.test-output }}"
+          fi
+          
+          if [ -z "${{ needs.build-test.outputs.final-image }}" ]; then
+            echo "❌ Final image is empty!"
+          else
+            echo "✅ Final image received: ${{ needs.build-test.outputs.final-image }}"
+          fi
+
+  environment-test:
+    runs-on: ubuntu-latest
+    needs: build-test
+    name: Environment Test
+    environment: production
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Test outputs with environment protection
+        run: |
+          echo "=== ENVIRONMENT PROTECTED JOB ==="
+          echo "This job uses environment protection like the real deployment"
+          echo "=== BUILD OUTPUTS RECEIVED ==="
+          echo "Build job outputs: ${{ toJson(needs.build-test.outputs) }}"
+          echo "Simple output: '${{ needs.build-test.outputs.simple-output }}'"
+          echo "Container image: '${{ needs.build-test.outputs.container-image }}'"
+          echo "Test output: '${{ needs.build-test.outputs.test-output }}'"
+          echo "Final image: '${{ needs.build-test.outputs.final-image }}'"
+          echo "=== ENVIRONMENT IMPACT TEST ==="
+          echo "Does environment protection affect job outputs?"
+          
+          if [ -z "${{ needs.build-test.outputs.container-image }}" ]; then
+            echo "❌ ISSUE: Container image is empty in environment-protected job!"
+            echo "This might be the root cause of our deployment issue"
+          else
+            echo "✅ Container image works with environment protection: ${{ needs.build-test.outputs.container-image }}"
+          fi
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [build-test, deploy-test, environment-test]
+    name: Test Summary
+    if: always()
+
+    steps:
+      - name: Test Results Summary
+        run: |
+          echo "=== JOB OUTPUT TEST SUMMARY ==="
+          echo "Build job result: ${{ needs.build-test.result }}"
+          echo "Deploy job result: ${{ needs.deploy-test.result }}"
+          echo "Environment job result: ${{ needs.environment-test.result }}"
+          echo "=== FINAL OUTPUT CHECK ==="
+          echo "Can we still access build outputs here?"
+          echo "Simple output: '${{ needs.build-test.outputs.simple-output }}'"
+          echo "Container image: '${{ needs.build-test.outputs.container-image }}'"
+          echo "Test output: '${{ needs.build-test.outputs.test-output }}'"
+          echo "Final image: '${{ needs.build-test.outputs.final-image }}'"
+          
+          # Determine test results
+          if [ "${{ needs.build-test.result }}" != "success" ]; then
+            echo "❌ Build job failed"
+          elif [ "${{ needs.deploy-test.result }}" != "success" ]; then
+            echo "❌ Deploy test failed"
+          elif [ -z "${{ needs.build-test.outputs.container-image }}" ]; then
+            echo "❌ Container image output is empty - this is our main issue"
+          else
+            echo "✅ All tests passed - job outputs are working correctly"
+          fi
