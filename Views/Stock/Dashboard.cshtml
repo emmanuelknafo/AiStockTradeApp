@@ -35,23 +35,23 @@
         <h3>Settings</h3>
         <div class="setting-group">
             <label>
-                <input type="checkbox" id="auto-refresh-checkbox" @(Model.Settings.AutoRefresh ? "checked" : "")> Auto-refresh every 
+                <input type="checkbox" id="auto-refresh-checkbox" checked="@Model.Settings.AutoRefresh" /> Auto-refresh every 
                 <select id="refresh-interval">
-                    <option value="10000" @(Model.Settings.RefreshInterval == 10000 ? "selected" : "")>10 seconds</option>
-                    <option value="30000" @(Model.Settings.RefreshInterval == 30000 ? "selected" : "")>30 seconds</option>
-                    <option value="60000" @(Model.Settings.RefreshInterval == 60000 ? "selected" : "")>1 minute</option>
-                    <option value="300000" @(Model.Settings.RefreshInterval == 300000 ? "selected" : "")>5 minutes</option>
+                    <option value="10000" selected="@(Model.Settings.RefreshInterval == 10000)">10 seconds</option>
+                    <option value="30000" selected="@(Model.Settings.RefreshInterval == 30000)">30 seconds</option>
+                    <option value="60000" selected="@(Model.Settings.RefreshInterval == 60000)">1 minute</option>
+                    <option value="300000" selected="@(Model.Settings.RefreshInterval == 300000)">5 minutes</option>
                 </select>
             </label>
         </div>
         <div class="setting-group">
             <label>
-                <input type="checkbox" id="sound-notifications" @(Model.Settings.SoundNotifications ? "checked" : "")> Sound notifications
+                <input type="checkbox" id="sound-notifications" checked="@Model.Settings.SoundNotifications" /> Sound notifications
             </label>
         </div>
         <div class="setting-group">
             <label>
-                <input type="checkbox" id="show-charts" @(Model.Settings.ShowCharts ? "checked" : "")> Show mini charts
+                <input type="checkbox" id="show-charts" checked="@Model.Settings.ShowCharts" /> Show mini charts
             </label>
         </div>
     </div>

@@ -173,7 +173,7 @@ namespace ai_stock_trade_app.Services
             };
         }
 
-        public async Task ImportDataAsync(string sessionId, ExportData data)
+        public Task ImportDataAsync(string sessionId, ExportData data)
         {
             if (data.Watchlist?.Any() == true)
             {
@@ -196,6 +196,7 @@ namespace ai_stock_trade_app.Services
                     }
                 }
             }
+            return Task.CompletedTask;
         }
     }
 }
