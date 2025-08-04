@@ -48,8 +48,8 @@ jobs:
     needs: test
     name: Build and Push Container
     outputs:
-      container_image: ${{ steps.simple-output.outputs.container_image }}
-      test_output: ${{ steps.simple-output.outputs.test_output }}
+      container_image: ${{ steps.final-output.outputs.container_image }}
+      test_output: ${{ steps.final-output.outputs.test_output }}
 
     steps:
       - name: Checkout code
@@ -118,11 +118,11 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      - name: Extract container image for deployment
-        id: extract-image
+      - name: Extract and set container image for deployment
+        id: final-output
         run: |
           set -e  # Exit on any error
-          echo "=== EXTRACTING DEPLOYMENT IMAGE ==="
+          echo "=== COMBINED EXTRACT AND OUTPUT STEP ==="
           
           # Get tags from metadata step using heredoc to preserve newlines
           echo "Attempting to read metadata tags..."
@@ -160,7 +160,7 @@ jobs:
             echo "Using first tag: ${DEPLOY_IMAGE}"
           fi
           
-          echo "=== SETTING OUTPUTS ==="
+          echo "=== SETTING JOB OUTPUTS DIRECTLY ==="
           echo "Final deployment image: '${DEPLOY_IMAGE}'"
           echo "DEPLOY_IMAGE length: ${#DEPLOY_IMAGE}"
           
@@ -171,10 +171,10 @@ jobs:
             exit 1
           fi
           
-          # Set outputs with explicit formatting and verification
+          # Set outputs directly for the job - no intermediate steps
           echo "Writing to GITHUB_OUTPUT file: $GITHUB_OUTPUT"
-          echo "image=${DEPLOY_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "test-output=hello-world" >> "$GITHUB_OUTPUT"
+          echo "container_image=${DEPLOY_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "test_output=hello-from-combined-step" >> "$GITHUB_OUTPUT"
           
           # Verify the file was written
           if [ ! -f "$GITHUB_OUTPUT" ]; then
@@ -187,51 +187,24 @@ jobs:
           echo "GITHUB_OUTPUT file size: $(wc -c < "$GITHUB_OUTPUT" 2>/dev/null || echo "ERROR")"
           echo "GITHUB_OUTPUT contents:"
           cat "$GITHUB_OUTPUT" || echo "ERROR: Could not read GITHUB_OUTPUT"
-          echo "=== END GITHUB_OUTPUT ==="
+          echo "=== END COMBINED STEP ==="
           
-          # Double-check our outputs are accessible immediately
-          echo "=== IMMEDIATE STEP OUTPUT CHECK ==="
-          echo "Can we read our own outputs?"
-          # This won't work in the same step, but let's see what happens
-          echo "This step's image output should be: ${DEPLOY_IMAGE}"
-          
-      - name: Set simple outputs for job
-        id: simple-output
+      - name: Test final output
         run: |
-          echo "=== SETTING SIMPLE JOB OUTPUTS ==="
-          # Get the image from the extract step
-          CONTAINER_IMAGE="${{ steps.extract-image.outputs.image }}"
-          echo "Container image from extract step: '${CONTAINER_IMAGE}'"
+          echo "=== FINAL OUTPUT TEST ==="
+          echo "Can we read the final output immediately?"
+          echo "Final step - Container: ${{ steps.final-output.outputs.container_image }}"
+          echo "Final step - Test: ${{ steps.final-output.outputs.test_output }}"
           
-          # Set outputs using the most basic approach
-          echo "container_image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "test_output=hello-world-simple" >> "$GITHUB_OUTPUT"
-          
-          echo "=== SIMPLE OUTPUT VERIFICATION ==="
-          echo "Simple outputs set:"
-          cat "$GITHUB_OUTPUT"
-          
-      - name: Test immediate output reading
-        run: |
-          echo "=== IMMEDIATE OUTPUT TEST ==="
-          echo "Can we read the image output immediately?"
-          echo "Extract step - Image: ${{ steps.extract-image.outputs.image }}"
-          echo "Extract step - Test: ${{ steps.extract-image.outputs.test-output }}"
-          echo "Simple step - Container: ${{ steps.simple-output.outputs.container_image }}"
-          echo "Simple step - Test: ${{ steps.simple-output.outputs.test_output }}"
-          
-      - name: Final output verification
+      - name: Final verification
         run: |
           echo "=== FINAL VERIFICATION ==="
-          echo "Extract step outputs:"
-          echo "  Image: ${{ steps.extract-image.outputs.image }}"
-          echo "  Test: ${{ steps.extract-image.outputs.test-output }}"
-          echo "Simple step outputs:"
-          echo "  Container: ${{ steps.simple-output.outputs.container_image }}"
-          echo "  Test: ${{ steps.simple-output.outputs.test_output }}"
+          echo "Final step outputs:"
+          echo "  Container: ${{ steps.final-output.outputs.container_image }}"
+          echo "  Test: ${{ steps.final-output.outputs.test_output }}"
           echo "=== JOB OUTPUTS WILL BE ==="
-          echo "container_image: ${{ steps.simple-output.outputs.container_image }}"
-          echo "test_output: ${{ steps.simple-output.outputs.test_output }}"
+          echo "container_image: ${{ steps.final-output.outputs.container_image }}"
+          echo "test_output: ${{ steps.final-output.outputs.test_output }}"
 
   deploy-dev:
     runs-on: ubuntu-latest
