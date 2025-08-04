@@ -101,6 +101,17 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Debug metadata outputs
+        run: |
+          echo "=== METADATA STEP DEBUG ==="
+          echo "Meta step ID: meta"
+          echo "Meta outputs (JSON): ${{ toJson(steps.meta.outputs) }}"
+          echo "Meta tags: '${{ steps.meta.outputs.tags }}'"
+          echo "Meta labels: '${{ steps.meta.outputs.labels }}'"
+          echo "Meta version: '${{ steps.meta.outputs.version }}'"
+          echo "Tags length: ${#'${{ steps.meta.outputs.tags }}'}"
+          echo "=== END METADATA DEBUG ==="
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -118,9 +129,18 @@ jobs:
           TAGS="${{ steps.meta.outputs.tags }}"
           echo "Available tags from metadata:"
           echo "${TAGS}"
+          echo "TAGS length: ${#TAGS}"
+          
+          # Check if TAGS is empty
+          if [ -z "${TAGS}" ]; then
+            echo "ERROR: No tags received from metadata step!"
+            echo "Meta step outputs: ${{ toJson(steps.meta.outputs) }}"
+            exit 1
+          fi
           
           # Find SHA tag (preferred for deployment)
           SHA_TAG=$(echo "${TAGS}" | grep -E "sha-[a-f0-9]+" | head -1 | xargs)
+          echo "SHA_TAG search result: '${SHA_TAG}'"
           
           if [ -n "${SHA_TAG}" ]; then
             echo "Found SHA tag: ${SHA_TAG}"
@@ -132,15 +152,23 @@ jobs:
           fi
           
           echo "=== SETTING OUTPUTS ==="
-          echo "Deployment image: ${DEPLOY_IMAGE}"
-          {
-            echo "image=${DEPLOY_IMAGE}"
-            echo "test-output=hello-world"
-          } >> "$GITHUB_OUTPUT"
+          echo "Deployment image: '${DEPLOY_IMAGE}'"
+          echo "DEPLOY_IMAGE length: ${#DEPLOY_IMAGE}"
+          
+          # Check if DEPLOY_IMAGE is empty
+          if [ -z "${DEPLOY_IMAGE}" ]; then
+            echo "ERROR: DEPLOY_IMAGE is empty!"
+            exit 1
+          fi
+          
+          # Set outputs with explicit formatting
+          echo "image=${DEPLOY_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "test-output=hello-world" >> "$GITHUB_OUTPUT"
           
           echo "=== VERIFICATION ==="
           echo "GITHUB_OUTPUT contents:"
           cat "$GITHUB_OUTPUT"
+          echo "=== END GITHUB_OUTPUT ==="
           
       - name: Test immediate output reading
         run: |
