@@ -48,8 +48,8 @@ jobs:
     needs: test
     name: Build and Push Container
     outputs:
-      container-image: ${{ steps.simple-output.outputs.container-image }}
-      test-output: ${{ steps.simple-output.outputs.test-output }}
+      container_image: ${{ steps.simple-output.outputs.container_image }}
+      test_output: ${{ steps.simple-output.outputs.test_output }}
 
     steps:
       - name: Checkout code
@@ -204,8 +204,8 @@ jobs:
           echo "Container image from extract step: '${CONTAINER_IMAGE}'"
           
           # Set outputs using the most basic approach
-          echo "container-image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "test-output=hello-world-simple" >> "$GITHUB_OUTPUT"
+          echo "container_image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "test_output=hello-world-simple" >> "$GITHUB_OUTPUT"
           
           echo "=== SIMPLE OUTPUT VERIFICATION ==="
           echo "Simple outputs set:"
@@ -217,8 +217,8 @@ jobs:
           echo "Can we read the image output immediately?"
           echo "Extract step - Image: ${{ steps.extract-image.outputs.image }}"
           echo "Extract step - Test: ${{ steps.extract-image.outputs.test-output }}"
-          echo "Simple step - Container: ${{ steps.simple-output.outputs.container-image }}"
-          echo "Simple step - Test: ${{ steps.simple-output.outputs.test-output }}"
+          echo "Simple step - Container: ${{ steps.simple-output.outputs.container_image }}"
+          echo "Simple step - Test: ${{ steps.simple-output.outputs.test_output }}"
           
       - name: Final output verification
         run: |
@@ -227,11 +227,11 @@ jobs:
           echo "  Image: ${{ steps.extract-image.outputs.image }}"
           echo "  Test: ${{ steps.extract-image.outputs.test-output }}"
           echo "Simple step outputs:"
-          echo "  Container: ${{ steps.simple-output.outputs.container-image }}"
-          echo "  Test: ${{ steps.simple-output.outputs.test-output }}"
+          echo "  Container: ${{ steps.simple-output.outputs.container_image }}"
+          echo "  Test: ${{ steps.simple-output.outputs.test_output }}"
           echo "=== JOB OUTPUTS WILL BE ==="
-          echo "container-image: ${{ steps.simple-output.outputs.container-image }}"
-          echo "test-output: ${{ steps.simple-output.outputs.test-output }}"
+          echo "container_image: ${{ steps.simple-output.outputs.container_image }}"
+          echo "test_output: ${{ steps.simple-output.outputs.test_output }}"
 
   deploy-dev:
     runs-on: ubuntu-latest
@@ -261,20 +261,20 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-ai-stock-tracker-dev
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.dev.json containerImage=${{ needs.build.outputs.container-image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./infrastructure/parameters.dev.json containerImage=${{ needs.build.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
-          echo "Container Image: ${{ needs.build.outputs.container-image }}"
-          if [ -z "${{ needs.build.outputs.container-image }}" ]; then
+          echo "Container Image: ${{ needs.build.outputs.container_image }}"
+          if [ -z "${{ needs.build.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
           az webapp config container set \
             --name ai-stock-tracker-dev-webapp \
             --resource-group rg-ai-stock-tracker-dev \
-            --container-image-name "${{ needs.build.outputs.container-image }}" \
+            --container-image-name "${{ needs.build.outputs.container_image }}" \
             --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
             --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
             --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
@@ -311,12 +311,12 @@ jobs:
           echo "=== BUILD JOB OUTPUTS ==="
           echo "Build job result: ${{ needs.build.result }}"
           echo "Build job outputs: ${{ toJson(needs.build.outputs) }}"
-          echo "Container image from needs: ${{ needs.build.outputs.container-image }}"
-          echo "Test output: ${{ needs.build.outputs.test-output }}"
+          echo "Container image from needs: ${{ needs.build.outputs.container_image }}"
+          echo "Test output: ${{ needs.build.outputs.test_output }}"
           echo "=== VARIABLES ==="
           echo "Resource Group: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
-          echo "Container Image: ${{ needs.build.outputs.container-image }}"
+          echo "Container Image: ${{ needs.build.outputs.container_image }}"
 
       - name: Deploy Bicep template
         uses: azure/arm-deploy@v1
@@ -324,20 +324,20 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-ai-stock-tracker-prod
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.prod.json containerImage=${{ needs.build.outputs.container-image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./infrastructure/parameters.prod.json containerImage=${{ needs.build.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
-          echo "Container Image: ${{ needs.build.outputs.container-image }}"
-          if [ -z "${{ needs.build.outputs.container-image }}" ]; then
+          echo "Container Image: ${{ needs.build.outputs.container_image }}"
+          if [ -z "${{ needs.build.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
           az webapp config container set \
             --name ai-stock-tracker-prod-webapp \
             --resource-group rg-ai-stock-tracker-prod \
-            --container-image-name "${{ needs.build.outputs.container-image }}" \
+            --container-image-name "${{ needs.build.outputs.container_image }}" \
             --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
             --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
             --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
@@ -362,7 +362,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ needs.build.outputs.container-image }}
+          image-ref: ${{ needs.build.outputs.container_image }}
           format: "sarif"
           output: "trivy-results.sarif"
 
