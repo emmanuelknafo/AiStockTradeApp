@@ -583,7 +583,7 @@ class StockTracker {
             const saved = localStorage.getItem('stockTracker_settings');
             if (saved) {
                 const settings = JSON.parse(saved);
-                this.isAutoRefreshEnabled = settings.autoRefresh ?? this.isAutoRefreshEnabled;
+                this.isAutoRefreshEnabled = settings.autoRefresh ?? false;
                 this.config.refreshInterval = settings.refreshInterval ?? this.config.refreshInterval;
                 this.config.soundNotifications = settings.soundNotifications ?? this.config.soundNotifications;
                 this.config.showCharts = settings.showCharts ?? this.config.showCharts;

@@ -12,7 +12,7 @@ namespace ai_stock_trade_app.Models
 
     public class UserSettings
     {
-        public bool AutoRefresh { get; set; } = true;
+        public bool AutoRefresh { get; set; } = false;
         public int RefreshInterval { get; set; } = 30000; // 30 seconds
         public bool SoundNotifications { get; set; } = false;
         public bool ShowCharts { get; set; } = true;
