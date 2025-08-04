@@ -47,14 +47,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     name: Build and Push Container
-    environment: ${{ (github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')) && 'production' || 'development' }}
     outputs:
       container-image: ${{ steps.image.outputs.image }}
       container-image-backup: ${{ steps.verify.outputs.final-image }}
-
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
       - name: Checkout code
@@ -63,31 +58,35 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Set container registry name
+        id: registry
+        run: |
+          # Set the registry name based on branch/environment
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.event.inputs.environment }}" == "prod" ]]; then
+            echo "registry_name=aitrackerprod" >> $GITHUB_OUTPUT
+          else
+            echo "registry_name=aitrackerdev" >> $GITHUB_OUTPUT
+          fi
+
       - name: Debug Environment Variables
         run: |
           echo "Available environment variables:"
-          echo "CONTAINER_REGISTRY_NAME: ${{ vars.CONTAINER_REGISTRY_NAME }}"
-          echo "AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}"
-          echo "Registry username available: ${{ secrets.REGISTRY_USERNAME != '' }}"
-          echo "Registry password available: ${{ secrets.REGISTRY_PASSWORD != '' }}"
+          echo "Registry name: ${{ steps.registry.outputs.registry_name }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
 
-      - name: Azure Login for Container Registry
-        uses: azure/login@v2
+      - name: Log in to Azure Container Registry (using Docker Hub temporarily)
+        uses: docker/login-action@v3
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Log in to Azure Container Registry
-        run: |
-          echo "Logging into ACR: ${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io"
-          az acr login --name ${{ vars.CONTAINER_REGISTRY_NAME }}
+          registry: ${{ steps.registry.outputs.registry_name }}.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io/ai-stock-trade-app
+          images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/ai-stock-trade-app
           tags: |
             type=ref,event=branch
             type=ref,event=pr
