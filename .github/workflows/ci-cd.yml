@@ -50,6 +50,7 @@ jobs:
     environment: ${{ (github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')) && 'production' || 'development' }}
     outputs:
       container-image: ${{ steps.image.outputs.image }}
+      container-image-backup: ${{ steps.verify.outputs.final-image }}
 
     steps:
       - name: Checkout code
@@ -102,10 +103,19 @@ jobs:
             echo "DEBUG: Set output to ${FIRST_TAG}"
           fi
           
-      - name: Verify output
+      - name: Verify output and set job output
+        id: verify
         run: |
-          echo "Build job output verification:"
+          echo "=== BUILD JOB OUTPUT VERIFICATION ==="
+          echo "Step image ID: image"
+          echo "Step output: ${{ steps.image.outputs.image }}"
+          echo "Job outputs will be:"
           echo "container-image: ${{ steps.image.outputs.image }}"
+          echo "=== DEBUG: All step outputs ==="
+          echo "Meta outputs tags: ${{ steps.meta.outputs.tags }}"
+          echo "Image step outputs: ${{ toJson(steps.image.outputs) }}"
+          # Also set the output from this step for debugging
+          echo "final-image=${{ steps.image.outputs.image }}" >> $GITHUB_OUTPUT
 
   deploy-dev:
     runs-on: ubuntu-latest
@@ -177,6 +187,17 @@ jobs:
 
       - name: Debug Variables
         run: |
+          echo "=== DEPLOYMENT DEBUG INFO ==="
+          echo "Job name: deploy-prod"
+          echo "GitHub ref: ${{ github.ref }}"
+          echo "Event name: ${{ github.event_name }}"
+          echo "Environment input: ${{ github.event.inputs.environment }}"
+          echo "=== BUILD JOB OUTPUTS ==="
+          echo "Build job result: ${{ needs.build.result }}"
+          echo "Build job outputs: ${{ toJson(needs.build.outputs) }}"
+          echo "Container image from needs: ${{ needs.build.outputs.container-image }}"
+          echo "Container image backup: ${{ needs.build.outputs.container-image-backup }}"
+          echo "=== VARIABLES ==="
           echo "Resource Group: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
           echo "Container Image: ${{ needs.build.outputs.container-image }}"
