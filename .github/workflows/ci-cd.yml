@@ -50,6 +50,7 @@ jobs:
     outputs:
       container-image: ${{ steps.image.outputs.image }}
       container-image-backup: ${{ steps.verify.outputs.final-image }}
+      test-output: ${{ steps.verify.outputs.test-output }}
 
     steps:
       - name: Checkout code
@@ -74,13 +75,20 @@ jobs:
           echo "Registry name: ${{ steps.registry.outputs.registry_name }}"
           echo "Branch: ${{ github.ref }}"
           echo "Event: ${{ github.event_name }}"
+          echo "ACR_USERNAME available: ${{ secrets.ACR_USERNAME != '' }}"
+          echo "ACR_PASSWORD available: ${{ secrets.ACR_PASSWORD != '' }}"
 
-      - name: Log in to Azure Container Registry (using Docker Hub temporarily)
+      - name: Log in to Azure Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ steps.registry.outputs.registry_name }}.azurecr.io
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Verify Docker login
+        run: |
+          echo "Docker login successful"
+          echo "Registry: ${{ steps.registry.outputs.registry_name }}.azurecr.io"
 
       - name: Extract metadata
         id: meta
@@ -132,6 +140,16 @@ jobs:
           echo "Image step outputs: ${{ toJson(steps.image.outputs) }}"
           # Also set the output from this step for debugging
           echo "final-image=${{ steps.image.outputs.image }}" >> $GITHUB_OUTPUT
+          echo "=== TESTING OUTPUT SETTING ==="
+          echo "test-output=hello-world" >> $GITHUB_OUTPUT
+          echo "Should see test-output in job outputs"
+          
+      - name: Final output verification
+        run: |
+          echo "=== FINAL VERIFICATION ==="
+          echo "Image output: ${{ steps.image.outputs.image }}"
+          echo "Verify output: ${{ steps.verify.outputs.final-image }}"
+          echo "Test output: ${{ steps.verify.outputs.test-output }}"
 
   deploy-dev:
     runs-on: ubuntu-latest
@@ -213,6 +231,7 @@ jobs:
           echo "Build job outputs: ${{ toJson(needs.build.outputs) }}"
           echo "Container image from needs: ${{ needs.build.outputs.container-image }}"
           echo "Container image backup: ${{ needs.build.outputs.container-image-backup }}"
+          echo "Test output: ${{ needs.build.outputs.test-output }}"
           echo "=== VARIABLES ==="
           echo "Resource Group: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
