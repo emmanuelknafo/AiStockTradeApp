@@ -1,4 +1,5 @@
 using ai_stock_trade_app.Models;
+using System.Text.Json;
 
 namespace ai_stock_trade_app.Services
 {
@@ -88,42 +89,42 @@ namespace ai_stock_trade_app.Services
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
 
-            if (data?.ContainsKey("Error Message") == true)
+            if (root.TryGetProperty("Error Message", out var errorElement))
             {
-                throw new InvalidOperationException(data["Error Message"].ToString());
+                throw new InvalidOperationException(errorElement.GetString() ?? "Unknown error");
             }
 
-            if (data?.ContainsKey("Note") == true)
+            if (root.TryGetProperty("Note", out var noteElement))
             {
                 throw new InvalidOperationException("API rate limit exceeded");
             }
 
-            if (data?.ContainsKey("Global Quote") == true)
+            if (root.TryGetProperty("Global Quote", out var quoteElement))
             {
-                var quoteData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(
-                    data["Global Quote"].ToString() ?? "{}");
-
-                if (quoteData?.ContainsKey("05. price") == true)
+                if (quoteElement.TryGetProperty("05. price", out var priceElement) &&
+                    quoteElement.TryGetProperty("09. change", out var changeElement) &&
+                    quoteElement.TryGetProperty("10. change percent", out var percentElement))
                 {
-                    var price = decimal.Parse(quoteData["05. price"]);
-                    var change = decimal.Parse(quoteData["09. change"]);
-                    var percent = quoteData["10. change percent"];
-
-                    return new StockQuoteResponse
+                    if (decimal.TryParse(priceElement.GetString(), out var price) &&
+                        decimal.TryParse(changeElement.GetString(), out var change))
                     {
-                        Success = true,
-                        Data = new StockData
+                        return new StockQuoteResponse
                         {
-                            Symbol = symbol.ToUpper(),
-                            Price = price,
-                            Change = change,
-                            PercentChange = percent,
-                            LastUpdated = DateTime.UtcNow,
-                            CompanyName = symbol.ToUpper()
-                        }
-                    };
+                            Success = true,
+                            Data = new StockData
+                            {
+                                Symbol = symbol.ToUpper(),
+                                Price = price,
+                                Change = change,
+                                PercentChange = percentElement.GetString() ?? "0.00%",
+                                LastUpdated = DateTime.UtcNow,
+                                CompanyName = symbol.ToUpper()
+                            }
+                        };
+                    }
                 }
             }
 
@@ -137,50 +138,40 @@ namespace ai_stock_trade_app.Services
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
 
-            if (data?.ContainsKey("chart") == true)
+            if (root.TryGetProperty("chart", out var chartElement) &&
+                chartElement.TryGetProperty("result", out var resultElement) &&
+                resultElement.GetArrayLength() > 0)
             {
-                var chartData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(
-                    data["chart"].ToString() ?? "{}");
-
-                if (chartData?.ContainsKey("result") == true)
+                var result = resultElement[0];
+                if (result.TryGetProperty("meta", out var metaElement))
                 {
-                    var resultArray = System.Text.Json.JsonSerializer.Deserialize<object[]>(
-                        chartData["result"].ToString() ?? "[]");
-
-                    if (resultArray?.Length > 0)
+                    if (metaElement.TryGetProperty("regularMarketPrice", out var priceElement) &&
+                        metaElement.TryGetProperty("previousClose", out var previousCloseElement))
                     {
-                        var result = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(
-                            resultArray[0].ToString() ?? "{}");
-
-                        if (result?.ContainsKey("meta") == true)
+                        var price = GetDecimalFromJsonElement(priceElement);
+                        var previousClose = GetDecimalFromJsonElement(previousCloseElement);
+                        
+                        if (price.HasValue && previousClose.HasValue)
                         {
-                            var meta = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(
-                                result["meta"].ToString() ?? "{}");
+                            var change = price.Value - previousClose.Value;
+                            var percent = $"{(change / previousClose.Value * 100):F2}%";
 
-                            if (meta?.ContainsKey("regularMarketPrice") == true && 
-                                meta?.ContainsKey("previousClose") == true)
+                            return new StockQuoteResponse
                             {
-                                var price = Convert.ToDecimal(meta["regularMarketPrice"]);
-                                var previousClose = Convert.ToDecimal(meta["previousClose"]);
-                                var change = price - previousClose;
-                                var percent = $"{(change / previousClose * 100):F2}%";
-
-                                return new StockQuoteResponse
+                                Success = true,
+                                Data = new StockData
                                 {
-                                    Success = true,
-                                    Data = new StockData
-                                    {
-                                        Symbol = symbol.ToUpper(),
-                                        Price = Math.Round(price, 2),
-                                        Change = Math.Round(change, 2),
-                                        PercentChange = percent,
-                                        LastUpdated = DateTime.UtcNow,
-                                        CompanyName = symbol.ToUpper()
-                                    }
-                                };
-                            }
+                                    Symbol = symbol.ToUpper(),
+                                    Price = Math.Round(price.Value, 2),
+                                    Change = Math.Round(change, 2),
+                                    PercentChange = percent,
+                                    LastUpdated = DateTime.UtcNow,
+                                    CompanyName = symbol.ToUpper()
+                                }
+                            };
                         }
                     }
                 }
@@ -191,40 +182,77 @@ namespace ai_stock_trade_app.Services
 
         private async Task<StockQuoteResponse> FetchFromTwelveDataAsync(string symbol)
         {
-            var url = $"https://api.twelvedata.com/quote?symbol={symbol}&apikey=demo";
+            var apiKey = _configuration["TwelveData:ApiKey"];
+            
+            // Use demo key as fallback if no API key is configured
+            if (string.IsNullOrEmpty(apiKey) || apiKey == "YOUR_TWELVE_DATA_API_KEY")
+            {
+                apiKey = "demo";
+            }
+
+            var url = $"https://api.twelvedata.com/quote?symbol={symbol}&apikey={apiKey}";
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
 
-            if (data?.ContainsKey("status") == true && data["status"].ToString() == "error")
+            if (root.TryGetProperty("status", out var statusElement) && 
+                statusElement.GetString() == "error")
             {
-                throw new InvalidOperationException(data.ContainsKey("message") ? data["message"].ToString() : "Unknown error");
+                var message = root.TryGetProperty("message", out var messageElement) 
+                    ? messageElement.GetString() 
+                    : "Unknown error";
+                throw new InvalidOperationException(message ?? "Unknown error");
             }
 
-            if (data?.ContainsKey("close") == true)
+            if (root.TryGetProperty("close", out var closeElement))
             {
-                var price = Convert.ToDecimal(data["close"]);
-                var change = data.ContainsKey("change") ? Convert.ToDecimal(data["change"]) : 0;
-                var percent = data.ContainsKey("percent_change") ? $"{data["percent_change"]}%" : "0.00%";
+                var price = GetDecimalFromJsonElement(closeElement);
+                var change = root.TryGetProperty("change", out var changeElement) 
+                    ? GetDecimalFromJsonElement(changeElement) ?? 0 
+                    : 0;
+                var percent = root.TryGetProperty("percent_change", out var percentElement) 
+                    ? $"{GetDecimalFromJsonElement(percentElement) ?? 0:F2}%" 
+                    : "0.00%";
 
-                return new StockQuoteResponse
+                if (price.HasValue)
                 {
-                    Success = true,
-                    Data = new StockData
+                    return new StockQuoteResponse
                     {
-                        Symbol = symbol.ToUpper(),
-                        Price = price,
-                        Change = change,
-                        PercentChange = percent,
-                        LastUpdated = DateTime.UtcNow,
-                        CompanyName = symbol.ToUpper()
-                    }
-                };
+                        Success = true,
+                        Data = new StockData
+                        {
+                            Symbol = symbol.ToUpper(),
+                            Price = price.Value,
+                            Change = change,
+                            PercentChange = percent,
+                            LastUpdated = DateTime.UtcNow,
+                            CompanyName = symbol.ToUpper()
+                        }
+                    };
+                }
             }
 
             throw new InvalidOperationException("Invalid response format from Twelve Data");
+        }
+
+        private static decimal? GetDecimalFromJsonElement(JsonElement element)
+        {
+            try
+            {
+                return element.ValueKind switch
+                {
+                    JsonValueKind.Number => element.GetDecimal(),
+                    JsonValueKind.String => decimal.TryParse(element.GetString(), out var result) ? result : null,
+                    _ => null
+                };
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static async Task ApplyRateLimitAsync()

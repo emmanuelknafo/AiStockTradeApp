@@ -62,21 +62,28 @@ The application supports multiple stock data sources with automatic fallback:
 
 1. **Alpha Vantage** (Primary) - Real-time data with API key
 2. **Yahoo Finance** (Fallback) - Free, no API key required
-3. **Twelve Data** (Fallback) - Free tier available
+3. **Twelve Data** (Fallback) - Free tier available with API key
 
 ### Configuration
 
-Update `appsettings.json` with your Alpha Vantage API key:
+Update `appsettings.json` with your API keys:
 
 ```json
 {
   "AlphaVantage": {
     "ApiKey": "YOUR_ALPHA_VANTAGE_API_KEY"
+  },
+  "TwelveData": {
+    "ApiKey": "YOUR_TWELVE_DATA_API_KEY"
   }
 }
 ```
 
-Get a free API key from [Alpha Vantage](https://www.alphavantage.co/support/#api-key).
+**API Key Sources:**
+- Get a free Alpha Vantage API key from [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
+- Get a free Twelve Data API key from [Twelve Data](https://twelvedata.com/pricing) (Basic plan includes 800 requests/day)
+
+**Note:** If no Twelve Data API key is provided, the application will use the free "demo" API key with limited functionality.
 
 ## Building and Running
 
