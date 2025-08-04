@@ -297,15 +297,25 @@ namespace ai_stock_trade_app.Services
         {
             try
             {
+                _logger.LogInformation("Fetching historical data for {Symbol}, days: {Days}", symbol, days);
                 await ApplyRateLimitAsync();
 
                 // Try Alpha Vantage first if API key is available
                 var apiKey = _configuration["AlphaVantage:ApiKey"];
+                _logger.LogInformation("Alpha Vantage API key configured: {HasKey}", !string.IsNullOrEmpty(apiKey) && apiKey != "YOUR_ALPHA_VANTAGE_API_KEY");
+                
                 if (!string.IsNullOrEmpty(apiKey) && apiKey != "YOUR_ALPHA_VANTAGE_API_KEY")
                 {
                     try
                     {
-                        return await FetchHistoricalFromAlphaVantageAsync(symbol, apiKey, days);
+                        _logger.LogInformation("Attempting to fetch from Alpha Vantage for {Symbol}", symbol);
+                        var result = await FetchHistoricalFromAlphaVantageAsync(symbol, apiKey, days);
+                        _logger.LogInformation("Alpha Vantage returned {Count} data points for {Symbol}", result.Count, symbol);
+                        if (result.Count > 0)
+                        {
+                            return result;
+                        }
+                        _logger.LogWarning("Alpha Vantage returned no data for {Symbol}, using fallback", symbol);
                     }
                     catch (Exception ex)
                     {
@@ -314,22 +324,32 @@ namespace ai_stock_trade_app.Services
                 }
 
                 // Fallback to generated demo data
-                return GenerateDemoChartData(symbol, days);
+                _logger.LogInformation("Generating demo chart data for {Symbol}", symbol);
+                var demoData = GenerateDemoChartData(symbol, days);
+                _logger.LogInformation("Generated {Count} demo data points for {Symbol}", demoData.Count, symbol);
+                return demoData;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error fetching historical data for {Symbol}", symbol);
-                return GenerateDemoChartData(symbol, days);
+                var fallbackData = GenerateDemoChartData(symbol, days);
+                _logger.LogInformation("Generated {Count} fallback data points for {Symbol}", fallbackData.Count, symbol);
+                return fallbackData;
             }
         }
 
         private async Task<List<ChartDataPoint>> FetchHistoricalFromAlphaVantageAsync(string symbol, string apiKey, int days)
         {
             var url = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={apiKey}&outputsize=compact";
+            _logger.LogInformation("Calling Alpha Vantage API: {Url}", url.Replace(apiKey, "***"));
+            
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
+            _logger.LogInformation("Alpha Vantage response length: {Length}", json.Length);
+            _logger.LogDebug("Alpha Vantage raw response: {Response}", json.Length > 1000 ? json.Substring(0, 1000) + "..." : json);
+            
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
 
@@ -337,6 +357,7 @@ namespace ai_stock_trade_app.Services
 
             if (root.TryGetProperty("Time Series (Daily)", out var timeSeriesElement))
             {
+                _logger.LogInformation("Found Time Series (Daily) data for {Symbol}", symbol);
                 var count = 0;
                 foreach (var dateEntry in timeSeriesElement.EnumerateObject().OrderByDescending(x => x.Name))
                 {
@@ -364,9 +385,26 @@ namespace ai_stock_trade_app.Services
                     }
                     count++;
                 }
+                _logger.LogInformation("Processed {Count} data points from Alpha Vantage for {Symbol}", chartData.Count, symbol);
+            }
+            else
+            {
+                _logger.LogWarning("No 'Time Series (Daily)' property found in Alpha Vantage response for {Symbol}", symbol);
+                
+                // Check for error messages
+                if (root.TryGetProperty("Error Message", out var errorElement))
+                {
+                    _logger.LogError("Alpha Vantage error: {Error}", errorElement.GetString());
+                }
+                else if (root.TryGetProperty("Note", out var noteElement))
+                {
+                    _logger.LogWarning("Alpha Vantage note: {Note}", noteElement.GetString());
+                }
             }
 
-            return chartData.OrderBy(x => x.Date).ToList();
+            var orderedData = chartData.OrderBy(x => x.Date).ToList();
+            _logger.LogInformation("Returning {Count} ordered data points for {Symbol}", orderedData.Count, symbol);
+            return orderedData;
         }
 
         private List<ChartDataPoint> GenerateDemoChartData(string symbol, int days)

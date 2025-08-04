@@ -19,7 +19,12 @@ class StockTracker {
         this.initializeSearchSuggestions();
         this.setupKeyboardShortcuts();
         this.loadSettings();
-        this.initializeCharts();
+        
+        // Initialize charts after everything else is ready
+        setTimeout(() => {
+            console.log('Delayed chart initialization...');
+            this.initializeCharts();
+        }, 100);
     }
 
     setupEventListeners() {
@@ -618,7 +623,13 @@ class StockTracker {
 
     // Chart Management Methods
     initializeCharts() {
-        if (!this.config.showCharts) return;
+        console.log('initializeCharts called - config.showCharts:', this.config.showCharts);
+        console.log('Current config:', this.config);
+        
+        if (!this.config.showCharts) {
+            console.log('Charts disabled in config');
+            return;
+        }
         
         // Check if Chart.js is available
         if (typeof Chart === 'undefined') {
@@ -626,19 +637,39 @@ class StockTracker {
             return;
         }
         
+        console.log('Chart.js is available, looking for stock cards...');
+        
         // Initialize charts for all existing stock cards
         const stockCards = document.querySelectorAll('.stock-card');
+        console.log('Found', stockCards.length, 'stock cards');
+        
         stockCards.forEach(card => {
             const symbol = card.id.replace('card-', '');
             const canvas = card.querySelector(`canvas[id="chart-${symbol}"]`);
+            console.log(`Card ${symbol}: canvas found =`, !!canvas, canvas);
+            
             if (canvas && !this.charts.has(symbol)) {
+                console.log(`Creating chart for ${symbol}`);
                 this.createChart(symbol, canvas);
+            } else if (this.charts.has(symbol)) {
+                console.log(`Chart for ${symbol} already exists`);
+            } else if (!canvas) {
+                console.log(`No canvas found for ${symbol} - ShowCharts might be disabled or canvas not rendered`);
             }
         });
+    }
+    
+    // Method to manually trigger chart initialization (for debugging)
+    forceInitializeCharts() {
+        console.log('Force initializing charts...');
+        this.charts.clear();
+        this.initializeCharts();
     }
 
     async createChart(symbol, canvas) {
         try {
+            console.log(`Creating chart for ${symbol}...`);
+            
             // Check if Chart.js is available
             if (typeof Chart === 'undefined') {
                 console.warn('Chart.js not available - skipping chart creation for', symbol);
@@ -646,7 +677,12 @@ class StockTracker {
             }
 
             const chartData = await this.fetchChartData(symbol);
-            if (chartData.length === 0) return;
+            console.log(`Chart data for ${symbol}:`, chartData.length, 'points');
+            
+            if (chartData.length === 0) {
+                console.warn(`No chart data available for ${symbol}`);
+                return;
+            }
 
             const ctx = canvas.getContext('2d');
             
@@ -728,10 +764,14 @@ class StockTracker {
 
     async fetchChartData(symbol, days = 30) {
         try {
+            console.log(`Fetching chart data for ${symbol}...`);
             const response = await fetch(`/Stock/GetChartData?symbol=${encodeURIComponent(symbol)}&days=${days}`);
             const result = await response.json();
             
+            console.log(`Chart data response for ${symbol}:`, result);
+            
             if (result.success) {
+                console.log(`Successfully fetched ${result.data.length} data points for ${symbol}`);
                 return result.data;
             } else {
                 console.error(`Error fetching chart data for ${symbol}:`, result.message);
@@ -798,5 +838,11 @@ class StockTracker {
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new StockTracker();
+    console.log('DOM loaded, initializing StockTracker...');
+    const stockTracker = new StockTracker();
+    
+    // Make it globally available for debugging
+    window.stockTracker = stockTracker;
+    
+    console.log('StockTracker initialized, available as window.stockTracker');
 });
