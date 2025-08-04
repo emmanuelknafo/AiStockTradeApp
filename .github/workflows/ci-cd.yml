@@ -87,9 +87,12 @@ jobs:
       - name: Set image output
         id: image
         run: |
-          # Extract the sha tag from the metadata output
-          SHA_TAG=$(echo "${{ steps.meta.outputs.tags }}" | grep "sha-" | head -1)
-          echo "image=${SHA_TAG}" >> $GITHUB_OUTPUT
+          echo "Available tags:"
+          echo "${{ steps.meta.outputs.tags }}"
+          # Use the first tag from the metadata output
+          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+          echo "Using tag: ${FIRST_TAG}"
+          echo "image=${FIRST_TAG}" >> $GITHUB_OUTPUT
 
   deploy-dev:
     runs-on: ubuntu-latest
@@ -125,13 +128,17 @@ jobs:
       - name: Update Web App Container
         run: |
           echo "Container Image: ${{ needs.build.outputs.container-image }}"
+          if [ -z "${{ needs.build.outputs.container-image }}" ]; then
+            echo "ERROR: Container image is empty!"
+            exit 1
+          fi
           az webapp config container set \
             --name ai-stock-tracker-dev-webapp \
             --resource-group rg-ai-stock-tracker-dev \
-            --docker-custom-image-name "${{ needs.build.outputs.container-image }}" \
-            --docker-registry-server-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
-            --docker-registry-server-user "${{ secrets.REGISTRY_USERNAME }}" \
-            --docker-registry-server-password "${{ secrets.REGISTRY_PASSWORD }}"
+            --container-image-name "${{ needs.build.outputs.container-image }}" \
+            --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
+            --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
+            --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
 
   deploy-prod:
     runs-on: ubuntu-latest
@@ -173,13 +180,17 @@ jobs:
       - name: Update Web App Container
         run: |
           echo "Container Image: ${{ needs.build.outputs.container-image }}"
+          if [ -z "${{ needs.build.outputs.container-image }}" ]; then
+            echo "ERROR: Container image is empty!"
+            exit 1
+          fi
           az webapp config container set \
             --name ai-stock-tracker-prod-webapp \
             --resource-group rg-ai-stock-tracker-prod \
-            --docker-custom-image-name "${{ needs.build.outputs.container-image }}" \
-            --docker-registry-server-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
-            --docker-registry-server-user "${{ secrets.REGISTRY_USERNAME }}" \
-            --docker-registry-server-password "${{ secrets.REGISTRY_PASSWORD }}"
+            --container-image-name "${{ needs.build.outputs.container-image }}" \
+            --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
+            --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
+            --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
 
       - name: Run Health Check
         run: |
