@@ -170,7 +170,30 @@ Potential improvements that could be added:
 
 ## API Keys and Environment Variables
 
-For production deployment, consider using:
+### Local Development
+
+Update `appsettings.json` with your Alpha Vantage API key:
+
+```json
+{
+  "AlphaVantage": {
+    "ApiKey": "YOUR_ALPHA_VANTAGE_API_KEY"
+  }
+}
+```
+
+Get a free API key from [Alpha Vantage](https://www.alphavantage.co/support/#api-key).
+
+### Production Deployment
+
+For production deployment to Azure, you'll need to set up:
+
+#### Azure Federated Identity (Recommended)
+- Follow the guide in [`docs/AZURE_FEDERATED_IDENTITY_SETUP.md`](docs/AZURE_FEDERATED_IDENTITY_SETUP.md)
+- Set up GitHub repository variables: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+- Set up GitHub repository secrets: `ALPHA_VANTAGE_API_KEY`, `TWELVE_DATA_API_KEY`
+
+#### Alternative Options
 - Azure Key Vault for API key storage
 - Environment variables for configuration
 - Application Insights for logging and monitoring

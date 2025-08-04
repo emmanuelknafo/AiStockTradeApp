@@ -27,6 +27,10 @@ jobs:
     name: Deploy Infrastructure
     environment: ${{ github.event.inputs.environment == 'prod' && 'production' || 'development' }}
     
+    permissions:
+      id-token: write
+      contents: read
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -34,7 +38,9 @@ jobs:
     - name: Azure Login
       uses: azure/login@v2
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        client-id: ${{ vars.AZURE_CLIENT_ID }}
+        tenant-id: ${{ vars.AZURE_TENANT_ID }}
+        subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
     - name: Create Resource Group
       if: github.event.inputs.destroy != 'true'
