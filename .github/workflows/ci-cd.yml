@@ -48,7 +48,7 @@ jobs:
     needs: test
     name: Build and Push Container
     outputs:
-      container_image: ${{ steps.final-output.outputs.container_image }}
+      image: ${{ steps.final-output.outputs.image }}
       test_output: ${{ steps.final-output.outputs.test_output }}
 
     steps:
@@ -171,34 +171,32 @@ jobs:
             exit 1
           fi
           
-          # Set outputs directly for the job - no intermediate steps
-          echo "Writing to GITHUB_OUTPUT file: $GITHUB_OUTPUT"
-          echo "About to write container_image=${DEPLOY_IMAGE}"
-          echo "About to write test_output=hello-from-combined-step"
+          # Use a completely different approach - write to a temporary file first
+          echo "=== ALTERNATIVE OUTPUT METHOD ==="
+          TEMP_OUTPUT=$(mktemp)
+          echo "image=${DEPLOY_IMAGE}" > "${TEMP_OUTPUT}"
+          echo "test_output=hello-from-combined-step" >> "${TEMP_OUTPUT}"
           
-          # Write with explicit debugging
-          echo "container_image=${DEPLOY_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "test_output=hello-from-combined-step" >> "$GITHUB_OUTPUT"
+          echo "Temp file contents:"
+          cat "${TEMP_OUTPUT}"
           
-          # Verify what we actually wrote
-          echo "=== VERIFICATION ==="
-          echo "GITHUB_OUTPUT file exists: $([ -f "$GITHUB_OUTPUT" ] && echo "YES" || echo "NO")"
-          echo "GITHUB_OUTPUT file size: $(wc -c < "$GITHUB_OUTPUT" 2>/dev/null || echo "ERROR")"
-          echo "GITHUB_OUTPUT contents:"
-          cat "$GITHUB_OUTPUT" || echo "ERROR: Could not read GITHUB_OUTPUT"
+          # Copy to GITHUB_OUTPUT
+          cat "${TEMP_OUTPUT}" >> "$GITHUB_OUTPUT"
+          rm "${TEMP_OUTPUT}"
           
-          # Double-check our variables one more time
-          echo "=== FINAL VARIABLE CHECK ==="
-          echo "DEPLOY_IMAGE value: '${DEPLOY_IMAGE}'"
-          echo "DEPLOY_IMAGE is empty check: $([ -z "${DEPLOY_IMAGE}" ] && echo "YES-EMPTY" || echo "NO-HAS-VALUE")"
-          echo "DEPLOY_IMAGE character count: ${#DEPLOY_IMAGE}"
+          echo "Final GITHUB_OUTPUT contents:"
+          cat "$GITHUB_OUTPUT"
           
-          # Manually check each line in GITHUB_OUTPUT
-          echo "=== MANUAL OUTPUT CHECK ==="
-          echo "Checking each line in GITHUB_OUTPUT:"
-          while IFS= read -r line; do
-            echo "Line: '$line'"
-          done < "$GITHUB_OUTPUT"
+          # Also try using GitHub's native output format
+          echo "=== GITHUB NATIVE OUTPUT ==="
+          {
+            echo "image<<EOF"
+            echo "${DEPLOY_IMAGE}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          
+          echo "After adding native format:"
+          cat "$GITHUB_OUTPUT"
           
           echo "=== END COMBINED STEP ==="
           
@@ -206,17 +204,17 @@ jobs:
         run: |
           echo "=== FINAL OUTPUT TEST ==="
           echo "Can we read the final output immediately?"
-          echo "Final step - Container: ${{ steps.final-output.outputs.container_image }}"
+          echo "Final step - Image: ${{ steps.final-output.outputs.image }}"
           echo "Final step - Test: ${{ steps.final-output.outputs.test_output }}"
           
       - name: Final verification
         run: |
           echo "=== FINAL VERIFICATION ==="
           echo "Final step outputs:"
-          echo "  Container: ${{ steps.final-output.outputs.container_image }}"
+          echo "  Image: ${{ steps.final-output.outputs.image }}"
           echo "  Test: ${{ steps.final-output.outputs.test_output }}"
           echo "=== JOB OUTPUTS WILL BE ==="
-          echo "container_image: ${{ steps.final-output.outputs.container_image }}"
+          echo "image: ${{ steps.final-output.outputs.image }}"
           echo "test_output: ${{ steps.final-output.outputs.test_output }}"
 
   deploy-dev:
@@ -247,20 +245,20 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-ai-stock-tracker-dev
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.dev.json containerImage=${{ needs.build.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./infrastructure/parameters.dev.json containerImage=${{ needs.build.outputs.image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
-          echo "Container Image: ${{ needs.build.outputs.container_image }}"
-          if [ -z "${{ needs.build.outputs.container_image }}" ]; then
+          echo "Container Image: ${{ needs.build.outputs.image }}"
+          if [ -z "${{ needs.build.outputs.image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
           az webapp config container set \
             --name ai-stock-tracker-dev-webapp \
             --resource-group rg-ai-stock-tracker-dev \
-            --container-image-name "${{ needs.build.outputs.container_image }}" \
+            --container-image-name "${{ needs.build.outputs.image }}" \
             --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
             --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
             --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
@@ -297,12 +295,12 @@ jobs:
           echo "=== BUILD JOB OUTPUTS ==="
           echo "Build job result: ${{ needs.build.result }}"
           echo "Build job outputs: ${{ toJson(needs.build.outputs) }}"
-          echo "Container image from needs: ${{ needs.build.outputs.container_image }}"
+          echo "Container image from needs: ${{ needs.build.outputs.image }}"
           echo "Test output: ${{ needs.build.outputs.test_output }}"
           echo "=== VARIABLES ==="
           echo "Resource Group: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
-          echo "Container Image: ${{ needs.build.outputs.container_image }}"
+          echo "Container Image: ${{ needs.build.outputs.image }}"
 
       - name: Deploy Bicep template
         uses: azure/arm-deploy@v1
@@ -310,20 +308,20 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-ai-stock-tracker-prod
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.prod.json containerImage=${{ needs.build.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./infrastructure/parameters.prod.json containerImage=${{ needs.build.outputs.image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
-          echo "Container Image: ${{ needs.build.outputs.container_image }}"
-          if [ -z "${{ needs.build.outputs.container_image }}" ]; then
+          echo "Container Image: ${{ needs.build.outputs.image }}"
+          if [ -z "${{ needs.build.outputs.image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
           az webapp config container set \
             --name ai-stock-tracker-prod-webapp \
             --resource-group rg-ai-stock-tracker-prod \
-            --container-image-name "${{ needs.build.outputs.container_image }}" \
+            --container-image-name "${{ needs.build.outputs.image }}" \
             --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
             --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
             --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
@@ -348,7 +346,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ needs.build.outputs.container_image }}
+          image-ref: ${{ needs.build.outputs.image }}
           format: "sarif"
           output: "trivy-results.sarif"
 
