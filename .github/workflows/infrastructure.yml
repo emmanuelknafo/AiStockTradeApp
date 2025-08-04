@@ -72,13 +72,15 @@ jobs:
 
     - name: Deploy Bicep Template
       if: github.event.inputs.destroy != 'true'
-      uses: azure/arm-deploy@v1
-      with:
-        subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-        resourceGroupName: ${{ github.event.inputs.environment == 'prod' && env.AZURE_RESOURCE_GROUP_PROD || env.AZURE_RESOURCE_GROUP_DEV }}
-        template: ./infrastructure/main.bicep
-        parameters: ./infrastructure/parameters.${{ github.event.inputs.environment }}.json location=${{ github.event.inputs.location }} containerImage=ai-stock-trade-app:latest alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
-        failOnStdErr: false
+      run: |
+        az deployment group create \
+          --resource-group ${{ github.event.inputs.environment == 'prod' && env.AZURE_RESOURCE_GROUP_PROD || env.AZURE_RESOURCE_GROUP_DEV }} \
+          --template-file ./infrastructure/main.bicep \
+          --parameters ./infrastructure/parameters.${{ github.event.inputs.environment }}.json \
+          --parameters location="${{ github.event.inputs.location }}" \
+          --parameters containerImage="ai-stock-trade-app:latest" \
+          --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
+          --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}"
 
     - name: Destroy Infrastructure
       if: github.event.inputs.destroy == 'true'
