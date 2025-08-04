@@ -48,9 +48,9 @@ jobs:
     needs: test
     name: Build and Push Container
     outputs:
-      container-image: ${{ steps.set-image.outputs.image }}
-      container-image-backup: ${{ steps.verify.outputs.final-image }}
-      test-output: ${{ steps.verify.outputs.test-output }}
+      container-image: ${{ steps.extract-image.outputs.image }}
+      test-output: ${{ steps.extract-image.outputs.test-output }}
+      meta-tags: ${{ steps.meta.outputs.tags }}
 
     steps:
       - name: Checkout code
@@ -109,84 +109,57 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      - name: Set image output
-        id: set-image
+      - name: Extract container image for deployment
+        id: extract-image
         run: |
-          echo "=== METADATA DEBUG ==="
-          echo "Meta step outputs:"
-          echo "Tags: ${{ steps.meta.outputs.tags }}"
-          echo "Labels: ${{ steps.meta.outputs.labels }}"
-          echo "Version: ${{ steps.meta.outputs.version }}"
-          echo "JSON: ${{ steps.meta.outputs.json }}"
+          echo "=== EXTRACTING DEPLOYMENT IMAGE ==="
           
-          echo "=== PROCESSING TAGS ==="
-          echo "Available tags:"
-          echo "${{ steps.meta.outputs.tags }}"
-          
-          # Store tags in variable for processing
+          # Get tags from metadata step
           TAGS="${{ steps.meta.outputs.tags }}"
-          echo "TAGS variable: ${TAGS}"
+          echo "Available tags from metadata:"
+          echo "${TAGS}"
           
-          # Prefer SHA tag for deployment, fallback to first tag
-          SHA_TAG=$(echo "${TAGS}" | grep "sha-" | head -1 || echo "")
-          echo "SHA_TAG found: ${SHA_TAG}"
+          # Find SHA tag (preferred for deployment)
+          SHA_TAG=$(echo "${TAGS}" | grep -E "sha-[a-f0-9]+" | head -1 | xargs)
           
-          if [ -n "$SHA_TAG" ]; then
-            echo "Using SHA tag: ${SHA_TAG}"
-            echo "image=${SHA_TAG}" >> $GITHUB_OUTPUT
-            echo "DEBUG: Set output to ${SHA_TAG}"
-            # Verify the output was written
-            echo "=== VERIFYING GITHUB_OUTPUT ==="
-            echo "GITHUB_OUTPUT file contents:"
-            cat $GITHUB_OUTPUT || echo "Could not read GITHUB_OUTPUT file"
+          if [ -n "${SHA_TAG}" ]; then
+            echo "Found SHA tag: ${SHA_TAG}"
+            DEPLOY_IMAGE="${SHA_TAG}"
           else
-            FIRST_TAG=$(echo "${TAGS}" | head -1)
-            echo "Using first tag: ${FIRST_TAG}"
-            echo "image=${FIRST_TAG}" >> $GITHUB_OUTPUT
-            echo "DEBUG: Set output to ${FIRST_TAG}"
-            # Verify the output was written
-            echo "=== VERIFYING GITHUB_OUTPUT ==="
-            echo "GITHUB_OUTPUT file contents:"
-            cat $GITHUB_OUTPUT || echo "Could not read GITHUB_OUTPUT file"
+            # Fallback to first tag
+            DEPLOY_IMAGE=$(echo "${TAGS}" | head -1 | xargs)
+            echo "Using first tag: ${DEPLOY_IMAGE}"
           fi
           
-          echo "=== VERIFY OUTPUT SETTING ==="
-          if [ -n "$SHA_TAG" ]; then
-            echo "Image output should be set to: ${SHA_TAG}"
-          else
-            echo "Image output should be set to: ${FIRST_TAG}"
-          fi
+          echo "=== SETTING OUTPUTS ==="
+          echo "Deployment image: ${DEPLOY_IMAGE}"
+          {
+            echo "image=${DEPLOY_IMAGE}"
+            echo "test-output=hello-world"
+          } >> "$GITHUB_OUTPUT"
+          
+          echo "=== VERIFICATION ==="
+          echo "GITHUB_OUTPUT contents:"
+          cat "$GITHUB_OUTPUT"
           
       - name: Test immediate output reading
         run: |
           echo "=== IMMEDIATE OUTPUT TEST ==="
           echo "Can we read the image output immediately?"
-          echo "Image output from previous step: ${{ steps.set-image.outputs.image }}"
-          echo "This should show the SHA tag if output was set correctly"
-          
-      - name: Verify output and set job output
-        id: verify
-        run: |
-          echo "=== BUILD JOB OUTPUT VERIFICATION ==="
-          echo "Step image ID: set-image"
-          echo "Step output: ${{ steps.set-image.outputs.image }}"
-          echo "Job outputs will be:"
-          echo "container-image: ${{ steps.set-image.outputs.image }}"
-          echo "=== DEBUG: All step outputs ==="
-          echo "Meta outputs tags: ${{ steps.meta.outputs.tags }}"
-          echo "Image step outputs: ${{ toJson(steps.set-image.outputs) }}"
-          # Also set the output from this step for debugging
-          echo "final-image=${{ steps.set-image.outputs.image }}" >> $GITHUB_OUTPUT
-          echo "=== TESTING OUTPUT SETTING ==="
-          echo "test-output=hello-world" >> $GITHUB_OUTPUT
-          echo "Should see test-output in job outputs"
+          echo "Image output from previous step: ${{ steps.extract-image.outputs.image }}"
+          echo "Test output from previous step: ${{ steps.extract-image.outputs.test-output }}"
+          echo "Meta tags: ${{ steps.meta.outputs.tags }}"
           
       - name: Final output verification
         run: |
           echo "=== FINAL VERIFICATION ==="
-          echo "Image output: ${{ steps.set-image.outputs.image }}"
-          echo "Verify output: ${{ steps.verify.outputs.final-image }}"
-          echo "Test output: ${{ steps.verify.outputs.test-output }}"
+          echo "Container image: ${{ steps.extract-image.outputs.image }}"
+          echo "Test output: ${{ steps.extract-image.outputs.test-output }}"
+          echo "Meta tags: ${{ steps.meta.outputs.tags }}"
+          echo "=== JOB OUTPUTS WILL BE ==="
+          echo "container-image: ${{ steps.extract-image.outputs.image }}"
+          echo "test-output: ${{ steps.extract-image.outputs.test-output }}"
+          echo "meta-tags: ${{ steps.meta.outputs.tags }}"
 
   deploy-dev:
     runs-on: ubuntu-latest
@@ -267,8 +240,8 @@ jobs:
           echo "Build job result: ${{ needs.build.result }}"
           echo "Build job outputs: ${{ toJson(needs.build.outputs) }}"
           echo "Container image from needs: ${{ needs.build.outputs.container-image }}"
-          echo "Container image backup: ${{ needs.build.outputs.container-image-backup }}"
           echo "Test output: ${{ needs.build.outputs.test-output }}"
+          echo "Meta tags: ${{ needs.build.outputs.meta-tags }}"
           echo "=== VARIABLES ==="
           echo "Resource Group: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
