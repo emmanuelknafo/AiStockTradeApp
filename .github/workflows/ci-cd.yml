@@ -106,10 +106,9 @@ jobs:
           echo "=== METADATA STEP DEBUG ==="
           echo "Meta step ID: meta"
           echo "Meta outputs (JSON): ${{ toJson(steps.meta.outputs) }}"
-          echo "Meta tags: '${{ steps.meta.outputs.tags }}'"
-          echo "Meta labels: '${{ steps.meta.outputs.labels }}'"
+          echo "Meta tags raw:"
+          echo '${{ steps.meta.outputs.tags }}'
           echo "Meta version: '${{ steps.meta.outputs.version }}'"
-          echo "Tags length: ${#'${{ steps.meta.outputs.tags }}'}"
           echo "=== END METADATA DEBUG ==="
 
       - name: Build and push Docker image
@@ -125,11 +124,15 @@ jobs:
         run: |
           echo "=== EXTRACTING DEPLOYMENT IMAGE ==="
           
-          # Get tags from metadata step
-          TAGS="${{ steps.meta.outputs.tags }}"
+          # Get tags from metadata step using heredoc to preserve newlines
+          TAGS=$(cat << 'EOFTAGS'
+          ${{ steps.meta.outputs.tags }}
+          EOFTAGS
+          )
+          
           echo "Available tags from metadata:"
           echo "${TAGS}"
-          echo "TAGS length: ${#TAGS}"
+          echo "Number of tags: $(echo "${TAGS}" | wc -l)"
           
           # Check if TAGS is empty
           if [ -z "${TAGS}" ]; then
@@ -138,16 +141,16 @@ jobs:
             exit 1
           fi
           
-          # Find SHA tag (preferred for deployment)
-          SHA_TAG=$(echo "${TAGS}" | grep -E "sha-[a-f0-9]+" | head -1 | xargs)
+          # Find SHA tag (preferred for deployment) - handle multiline properly
+          SHA_TAG=$(echo "${TAGS}" | grep -E "sha-[a-f0-9]+" | head -1 | tr -d '\n\r')
           echo "SHA_TAG search result: '${SHA_TAG}'"
           
           if [ -n "${SHA_TAG}" ]; then
             echo "Found SHA tag: ${SHA_TAG}"
             DEPLOY_IMAGE="${SHA_TAG}"
           else
-            # Fallback to first tag
-            DEPLOY_IMAGE=$(echo "${TAGS}" | head -1 | xargs)
+            # Fallback to first tag - strip whitespace and newlines
+            DEPLOY_IMAGE=$(echo "${TAGS}" | head -1 | tr -d '\n\r' | xargs)
             echo "Using first tag: ${DEPLOY_IMAGE}"
           fi
           
