@@ -620,6 +620,12 @@ class StockTracker {
     initializeCharts() {
         if (!this.config.showCharts) return;
         
+        // Check if Chart.js is available
+        if (typeof Chart === 'undefined') {
+            console.warn('Chart.js not loaded - charts will not be displayed');
+            return;
+        }
+        
         // Initialize charts for all existing stock cards
         const stockCards = document.querySelectorAll('.stock-card');
         stockCards.forEach(card => {
@@ -633,6 +639,12 @@ class StockTracker {
 
     async createChart(symbol, canvas) {
         try {
+            // Check if Chart.js is available
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js not available - skipping chart creation for', symbol);
+                return;
+            }
+
             const chartData = await this.fetchChartData(symbol);
             if (chartData.length === 0) return;
 
@@ -703,6 +715,14 @@ class StockTracker {
             this.charts.set(symbol, chart);
         } catch (error) {
             console.error(`Error creating chart for ${symbol}:`, error);
+            // Show fallback text when chart fails
+            const canvas = document.getElementById(`chart-${symbol}`);
+            if (canvas) {
+                const container = canvas.parentElement;
+                if (container) {
+                    container.innerHTML = '<div class="mini-chart-placeholder">📈 Chart unavailable</div>';
+                }
+            }
         }
     }
 
