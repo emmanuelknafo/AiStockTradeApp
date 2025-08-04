@@ -135,15 +135,34 @@ jobs:
             echo "Using SHA tag: ${SHA_TAG}"
             echo "image=${SHA_TAG}" >> $GITHUB_OUTPUT
             echo "DEBUG: Set output to ${SHA_TAG}"
+            # Verify the output was written
+            echo "=== VERIFYING GITHUB_OUTPUT ==="
+            echo "GITHUB_OUTPUT file contents:"
+            cat $GITHUB_OUTPUT || echo "Could not read GITHUB_OUTPUT file"
           else
             FIRST_TAG=$(echo "${TAGS}" | head -1)
             echo "Using first tag: ${FIRST_TAG}"
             echo "image=${FIRST_TAG}" >> $GITHUB_OUTPUT
             echo "DEBUG: Set output to ${FIRST_TAG}"
+            # Verify the output was written
+            echo "=== VERIFYING GITHUB_OUTPUT ==="
+            echo "GITHUB_OUTPUT file contents:"
+            cat $GITHUB_OUTPUT || echo "Could not read GITHUB_OUTPUT file"
           fi
           
           echo "=== VERIFY OUTPUT SETTING ==="
-          echo "Image output should be set to: $(if [ -n '$SHA_TAG' ]; then echo '$SHA_TAG'; else echo '$FIRST_TAG'; fi)"
+          if [ -n "$SHA_TAG" ]; then
+            echo "Image output should be set to: ${SHA_TAG}"
+          else
+            echo "Image output should be set to: ${FIRST_TAG}"
+          fi
+          
+      - name: Test immediate output reading
+        run: |
+          echo "=== IMMEDIATE OUTPUT TEST ==="
+          echo "Can we read the image output immediately?"
+          echo "Image output from previous step: ${{ steps.image.outputs.image }}"
+          echo "This should show the SHA tag if output was set correctly"
           
       - name: Verify output and set job output
         id: verify
