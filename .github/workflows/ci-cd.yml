@@ -114,7 +114,7 @@ jobs:
         uses: azure/arm-deploy@v1
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP_DEV }}
+          resourceGroupName: rg-ai-stock-tracker-dev
           template: ./infrastructure/main.bicep
           parameters: |
             ./infrastructure/parameters.dev.json
@@ -151,11 +151,17 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Debug Variables
+        run: |
+          echo "Resource Group: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
+          echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
+          echo "Container Image: ${{ needs.build.outputs.container-image }}"
+
       - name: Deploy Bicep template
         uses: azure/arm-deploy@v1
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}
+          resourceGroupName: rg-ai-stock-tracker-prod
           template: ./infrastructure/main.bicep
           parameters: |
             ./infrastructure/parameters.prod.json
