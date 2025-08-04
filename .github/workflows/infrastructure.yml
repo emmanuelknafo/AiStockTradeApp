@@ -60,11 +60,7 @@ jobs:
         subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
         resourceGroupName: ${{ github.event.inputs.environment == 'prod' && env.AZURE_RESOURCE_GROUP_PROD || env.AZURE_RESOURCE_GROUP_DEV }}
         template: ./infrastructure/main.bicep
-        parameters: |
-          ./infrastructure/parameters.${{ github.event.inputs.environment }}.json
-          containerImage=ai-stock-trade-app:latest
-          alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }}
-          twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+        parameters: ./infrastructure/parameters.${{ github.event.inputs.environment }}.json containerImage=ai-stock-trade-app:latest alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
         failOnStdErr: false
 
     - name: Destroy Infrastructure
