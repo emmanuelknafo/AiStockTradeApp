@@ -89,10 +89,23 @@ jobs:
         run: |
           echo "Available tags:"
           echo "${{ steps.meta.outputs.tags }}"
-          # Use the first tag from the metadata output
-          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
-          echo "Using tag: ${FIRST_TAG}"
-          echo "image=${FIRST_TAG}" >> $GITHUB_OUTPUT
+          # Prefer SHA tag for deployment, fallback to first tag
+          SHA_TAG=$(echo "${{ steps.meta.outputs.tags }}" | grep "sha-" | head -1 || echo "")
+          if [ -n "$SHA_TAG" ]; then
+            echo "Using SHA tag: ${SHA_TAG}"
+            echo "image=${SHA_TAG}" >> $GITHUB_OUTPUT
+            echo "DEBUG: Set output to ${SHA_TAG}"
+          else
+            FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+            echo "Using first tag: ${FIRST_TAG}"
+            echo "image=${FIRST_TAG}" >> $GITHUB_OUTPUT
+            echo "DEBUG: Set output to ${FIRST_TAG}"
+          fi
+          
+      - name: Verify output
+        run: |
+          echo "Build job output verification:"
+          echo "container-image: ${{ steps.image.outputs.image }}"
 
   deploy-dev:
     runs-on: ubuntu-latest
