@@ -116,11 +116,7 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-ai-stock-tracker-dev
           template: ./infrastructure/main.bicep
-          parameters: |
-            ./infrastructure/parameters.dev.json
-            containerImage=${{ needs.build.outputs.container-image }}
-            alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }}
-            twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./infrastructure/parameters.dev.json containerImage=${{ needs.build.outputs.container-image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
@@ -163,11 +159,7 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-ai-stock-tracker-prod
           template: ./infrastructure/main.bicep
-          parameters: |
-            ./infrastructure/parameters.prod.json
-            containerImage=${{ needs.build.outputs.container-image }}
-            alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }}
-            twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./infrastructure/parameters.prod.json containerImage=${{ needs.build.outputs.container-image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
