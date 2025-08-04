@@ -63,9 +63,9 @@ jobs:
         run: |
           # Set the registry name based on branch/environment
           if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.event.inputs.environment }}" == "prod" ]]; then
-            echo "registry_name=aitrackerprod" >> $GITHUB_OUTPUT
+            echo "registry_name=aistocktrackerprod" >> $GITHUB_OUTPUT
           else
-            echo "registry_name=aitrackerdev" >> $GITHUB_OUTPUT
+            echo "registry_name=aistocktrackerdev" >> $GITHUB_OUTPUT
           fi
 
       - name: Debug Environment Variables
