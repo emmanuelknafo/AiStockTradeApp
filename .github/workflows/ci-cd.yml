@@ -160,7 +160,7 @@ jobs:
             echo "Using first tag: ${DEPLOY_IMAGE}"
           fi
           
-          echo "=== SETTING JOB OUTPUTS DIRECTLY ==="
+          echo "=== SETTING OUTPUTS AND ARTIFACTS ==="
           echo "Final deployment image: '${DEPLOY_IMAGE}'"
           echo "DEPLOY_IMAGE length: ${#DEPLOY_IMAGE}"
           
@@ -171,34 +171,35 @@ jobs:
             exit 1
           fi
           
-          # Use a completely different approach - write to a temporary file first
-          echo "=== ALTERNATIVE OUTPUT METHOD ==="
-          TEMP_OUTPUT=$(mktemp)
-          echo "image=${DEPLOY_IMAGE}" > "${TEMP_OUTPUT}"
-          echo "test_output=hello-from-combined-step" >> "${TEMP_OUTPUT}"
+          # Write to artifact file for reliable transfer
+          echo "=== CREATING ARTIFACT ==="
+          mkdir -p build-outputs
+          echo "${DEPLOY_IMAGE}" > build-outputs/container-image.txt
+          echo "hello-from-combined-step" > build-outputs/test-output.txt
           
-          echo "Temp file contents:"
-          cat "${TEMP_OUTPUT}"
+          echo "Artifact files created:"
+          ls -la build-outputs/
+          echo "Container image file contents:"
+          cat build-outputs/container-image.txt
+          echo "Test output file contents:"
+          cat build-outputs/test-output.txt
           
-          # Copy to GITHUB_OUTPUT
-          cat "${TEMP_OUTPUT}" >> "$GITHUB_OUTPUT"
-          rm "${TEMP_OUTPUT}"
+          # Also try traditional GitHub outputs as backup
+          echo "=== BACKUP GITHUB OUTPUT ==="
+          echo "image=${DEPLOY_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "test_output=hello-from-combined-step" >> "$GITHUB_OUTPUT"
           
-          echo "Final GITHUB_OUTPUT contents:"
-          cat "$GITHUB_OUTPUT"
-          
-          # Also try using GitHub's native output format
-          echo "=== GITHUB NATIVE OUTPUT ==="
-          {
-            echo "image<<EOF"
-            echo "${DEPLOY_IMAGE}"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-          
-          echo "After adding native format:"
+          echo "GITHUB_OUTPUT contents:"
           cat "$GITHUB_OUTPUT"
           
           echo "=== END COMBINED STEP ==="
+          
+      - name: Upload build outputs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-outputs
+          path: build-outputs/
+          retention-days: 1
           
       - name: Test final output
         run: |
@@ -232,6 +233,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: build-outputs
+          path: build-outputs/
+
+      - name: Load container image from artifact
+        id: load-image
+        run: |
+          echo "=== LOADING CONTAINER IMAGE FROM ARTIFACT ==="
+          if [ -f "build-outputs/container-image.txt" ]; then
+            CONTAINER_IMAGE=$(cat build-outputs/container-image.txt)
+            echo "Container image from artifact: '${CONTAINER_IMAGE}'"
+            echo "container_image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ERROR: container-image.txt not found in artifacts!"
+            ls -la build-outputs/
+            exit 1
+          fi
+
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -245,20 +266,20 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-ai-stock-tracker-dev
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.dev.json containerImage=${{ needs.build.outputs.image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./infrastructure/parameters.dev.json containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
-          echo "Container Image: ${{ needs.build.outputs.image }}"
-          if [ -z "${{ needs.build.outputs.image }}" ]; then
+          echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
+          if [ -z "${{ steps.load-image.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
           az webapp config container set \
             --name ai-stock-tracker-dev-webapp \
             --resource-group rg-ai-stock-tracker-dev \
-            --container-image-name "${{ needs.build.outputs.image }}" \
+            --container-image-name "${{ steps.load-image.outputs.container_image }}" \
             --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
             --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
             --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
@@ -277,6 +298,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: build-outputs
+          path: build-outputs/
+
+      - name: Load container image from artifact
+        id: load-image
+        run: |
+          echo "=== LOADING CONTAINER IMAGE FROM ARTIFACT ==="
+          if [ -f "build-outputs/container-image.txt" ]; then
+            CONTAINER_IMAGE=$(cat build-outputs/container-image.txt)
+            echo "Container image from artifact: '${CONTAINER_IMAGE}'"
+            echo "container_image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ERROR: container-image.txt not found in artifacts!"
+            ls -la build-outputs/
+            exit 1
+          fi
 
       - name: Azure Login
         uses: azure/login@v2
@@ -297,10 +338,12 @@ jobs:
           echo "Build job outputs: ${{ toJson(needs.build.outputs) }}"
           echo "Container image from needs: ${{ needs.build.outputs.image }}"
           echo "Test output: ${{ needs.build.outputs.test_output }}"
+          echo "=== ARTIFACT DATA ==="
+          echo "Container image from artifact: ${{ steps.load-image.outputs.container_image }}"
           echo "=== VARIABLES ==="
           echo "Resource Group: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
-          echo "Container Image: ${{ needs.build.outputs.image }}"
+          echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
 
       - name: Deploy Bicep template
         uses: azure/arm-deploy@v1
@@ -308,20 +351,20 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-ai-stock-tracker-prod
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.prod.json containerImage=${{ needs.build.outputs.image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./infrastructure/parameters.prod.json containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
-          echo "Container Image: ${{ needs.build.outputs.image }}"
-          if [ -z "${{ needs.build.outputs.image }}" ]; then
+          echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
+          if [ -z "${{ steps.load-image.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
           az webapp config container set \
             --name ai-stock-tracker-prod-webapp \
             --resource-group rg-ai-stock-tracker-prod \
-            --container-image-name "${{ needs.build.outputs.image }}" \
+            --container-image-name "${{ steps.load-image.outputs.container_image }}" \
             --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
             --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
             --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
@@ -343,10 +386,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: build-outputs
+          path: build-outputs/
+
+      - name: Load container image from artifact
+        id: load-image
+        run: |
+          if [ -f "build-outputs/container-image.txt" ]; then
+            CONTAINER_IMAGE=$(cat build-outputs/container-image.txt)
+            echo "Container image from artifact: '${CONTAINER_IMAGE}'"
+            echo "container_image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ERROR: container-image.txt not found in artifacts!"
+            exit 1
+          fi
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ needs.build.outputs.image }}
+          image-ref: ${{ steps.load-image.outputs.container_image }}
           format: "sarif"
           output: "trivy-results.sarif"
 
