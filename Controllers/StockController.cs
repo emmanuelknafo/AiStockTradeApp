@@ -366,20 +366,37 @@ namespace ai_stock_trade_app.Controllers
                 using var reader = new StreamReader(file.OpenReadStream());
                 var content = await reader.ReadToEndAsync();
                 
-                var exportData = JsonSerializer.Deserialize<ExportData>(content, new JsonSerializerOptions
+                ExportData exportData;
+                
+                // Determine file type based on extension or content
+                var isJsonFile = file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+                var isCsvFile = file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
+                
+                if (isCsvFile || (!isJsonFile && content.StartsWith("Ticker,") || content.Contains("Ticker,Price,Change")))
                 {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
+                    // Parse CSV content
+                    exportData = ParseCsvContent(content);
+                }
+                else
+                {
+                    // Parse JSON content
+                    var deserializedData = JsonSerializer.Deserialize<ExportData>(content, new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    });
 
-                if (exportData?.Watchlist == null)
-                {
-                    return Json(new { success = false, message = "Invalid file format" });
+                    if (deserializedData?.Watchlist == null)
+                    {
+                        return Json(new { success = false, message = "Invalid JSON file format" });
+                    }
+                    
+                    exportData = deserializedData;
                 }
 
                 var sessionId = GetSessionId();
                 await _watchlistService.ImportDataAsync(sessionId, exportData);
                 
-                return Json(new { success = true, message = "Data imported successfully" });
+                return Json(new { success = true, message = $"Data imported successfully: {exportData.Watchlist.Count} stocks added" });
             }
             catch (Exception ex)
             {
@@ -419,6 +436,94 @@ namespace ai_stock_trade_app.Controllers
             }
 
             return string.Join("\n", lines);
+        }
+
+        private static ExportData ParseCsvContent(string csvContent)
+        {
+            var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            var watchlist = new List<WatchlistItem>();
+
+            // Skip header line
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i].Trim();
+                if (string.IsNullOrEmpty(line)) continue;
+
+                var parts = SplitCsvLine(line);
+                if (parts.Length >= 6)
+                {
+                    try
+                    {
+                        var symbol = parts[0].Trim();
+                        var price = decimal.Parse(parts[1].Trim());
+                        var change = decimal.Parse(parts[2].Trim());
+                        var percent = parts[3].Trim();
+                        var recommendation = parts[4].Trim();
+                        var analysis = parts[5].Trim();
+
+                        var stockData = new StockData
+                        {
+                            Symbol = symbol,
+                            Price = price,
+                            Change = change,
+                            PercentChange = percent,
+                            Recommendation = recommendation == "N/A" ? null : recommendation,
+                            AIAnalysis = analysis == "N/A" ? null : analysis,
+                            LastUpdated = DateTime.UtcNow,
+                            CompanyName = symbol
+                        };
+
+                        watchlist.Add(new WatchlistItem
+                        {
+                            Symbol = symbol,
+                            StockData = stockData,
+                            AddedDate = DateTime.UtcNow
+                        });
+                    }
+                    catch
+                    {
+                        // Skip invalid lines and continue
+                        continue;
+                    }
+                }
+            }
+
+            return new ExportData
+            {
+                Watchlist = watchlist,
+                Portfolio = new PortfolioSummary(),
+                ExportDate = DateTime.UtcNow,
+                Version = "1.0"
+            };
+        }
+
+        private static string[] SplitCsvLine(string line)
+        {
+            var result = new List<string>();
+            var currentField = new System.Text.StringBuilder();
+            bool inQuotes = false;
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+
+                if (c == '"')
+                {
+                    inQuotes = !inQuotes;
+                }
+                else if (c == ',' && !inQuotes)
+                {
+                    result.Add(currentField.ToString());
+                    currentField.Clear();
+                }
+                else
+                {
+                    currentField.Append(c);
+                }
+            }
+
+            result.Add(currentField.ToString());
+            return result.ToArray();
         }
     }
 }
