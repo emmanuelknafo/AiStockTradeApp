@@ -6,6 +6,9 @@ This is an ASP.NET Core MVC implementation of the AI-powered stock tracker appli
 
 <img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/f1a7e2cc-d681-475a-aece-0805c11d5411" />
 
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/91c4bbcd-c3ea-4696-995c-132ac27e4927" />
+
+
 ## Features
 
 ### Core Functionality
@@ -206,5 +209,6 @@ For production deployment to Azure, you'll need to set up:
 ## License
 
 This project is for educational and demonstration purposes.
+
 
 
