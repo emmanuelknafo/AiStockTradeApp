@@ -5,6 +5,7 @@ using ai_stock_trade_app.Controllers;
 using ai_stock_trade_app.Models;
 using ai_stock_trade_app.Services;
 using Microsoft.AspNetCore.Http;
+using System.Text;
 
 namespace ai_stock_trade_app.Tests.Controllers
 {
@@ -39,7 +40,10 @@ namespace ai_stock_trade_app.Tests.Controllers
 
             // Setup session to return a test session ID
             var sessionId = "test-session-id";
-            _mockSession.Setup(x => x.GetString("SessionId")).Returns(sessionId);
+            var sessionIdBytes = Encoding.UTF8.GetBytes(sessionId);
+            
+            // Mock the TryGetValue method that ISession.GetString extension method uses internally
+            _mockSession.Setup(x => x.TryGetValue("SessionId", out sessionIdBytes)).Returns(true);
         }
 
         [Fact]
