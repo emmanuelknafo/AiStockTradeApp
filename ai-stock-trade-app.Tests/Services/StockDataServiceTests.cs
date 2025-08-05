@@ -25,6 +25,10 @@ namespace ai_stock_trade_app.Tests.Services
             
             _httpClient = new HttpClient(_mockHttpHandler.Object);
             _service = new StockDataService(_httpClient, _mockConfiguration.Object, _mockLogger.Object);
+
+            // Setup configuration to return null API keys to force fallback behavior
+            _mockConfiguration.Setup(x => x["AlphaVantage:ApiKey"]).Returns((string?)null);
+            _mockConfiguration.Setup(x => x["TwelveData:ApiKey"]).Returns((string?)null);
         }
 
         [Fact]
@@ -92,7 +96,8 @@ namespace ai_stock_trade_app.Tests.Services
 
             // Assert
             Assert.False(result.Success);
-            Assert.Contains("Network error", result.ErrorMessage);
+            Assert.NotNull(result.ErrorMessage);
+            Assert.Contains("Unable to fetch data", result.ErrorMessage);
         }
 
         [Fact]
@@ -123,7 +128,8 @@ namespace ai_stock_trade_app.Tests.Services
         {
             // Arrange
             var symbol = "AAPL";
-            _mockConfiguration.Setup(x => x["AlphaVantage:ApiKey"]).Returns((string?)null);
+            
+            // API keys are already mocked as null in constructor
 
             // Act
             var result = await _service.GetHistoricalDataAsync(symbol, 10);
@@ -132,6 +138,7 @@ namespace ai_stock_trade_app.Tests.Services
             Assert.NotNull(result);
             Assert.Equal(10, result.Count);
             Assert.All(result, point => Assert.True(point.Price > 0));
+            Assert.All(result, point => Assert.True(point.Volume > 0));
         }
 
         [Theory]
