@@ -2,15 +2,15 @@
 
 This is an ASP.NET Core MVC implementation of the AI-powered stock tracker application. It provides the same functionality as the JavaScript version but built using server-side rendering with C# and Razor views.
 
-<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/36fdda73-87b5-4eb7-a20f-8603c83daa42" />
+![AI Stock Tracker Dashboard - Main View](media/stock-tracker-dashboard-1.png)
 
-<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/f1a7e2cc-d681-475a-aece-0805c11d5411" />
+![AI Stock Tracker Dashboard - Portfolio View](media/stock-tracker-dashboard-2.png)
 
-<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/91c4bbcd-c3ea-4696-995c-132ac27e4927" />
+![AI Stock Tracker Dashboard - Analysis View](media/stock-tracker-dashboard-3.png)
 
 But when you have full tokens (tokens replenished):
 
-<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/45ac16ac-0603-4e8d-af5c-d6c88156e73d" />
+![AI Stock Tracker Dashboard - Full Tokens](media/stock-tracker-dashboard-4.png)
 
 ## Features
 
