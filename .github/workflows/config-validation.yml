@@ -1,0 +1,90 @@
+name: Configuration Validation
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - '.github/workflows/**'
+      - '**/appsettings*.json'
+      - '**/*.config'
+      - 'Dockerfile*'
+      - '.dockerignore'
+      - '**/*.bicep'
+      - '**/parameters*.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - '**/appsettings*.json'
+      - '**/*.config'
+      - 'Dockerfile*'
+      - '.dockerignore'
+      - '**/*.bicep'
+      - '**/parameters*.json'
+
+jobs:
+  validate-config:
+    runs-on: ubuntu-latest
+    name: Validate Configuration Files
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate JSON files
+        run: |
+          echo "Validating JSON configuration files..."
+          find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*" | while read -r file; do
+            echo "Validating: $file"
+            if ! python -m json.tool "$file" > /dev/null; then
+              echo "ERROR: Invalid JSON in $file"
+              exit 1
+            fi
+          done
+          echo "All JSON files are valid!"
+
+      - name: Validate Bicep templates
+        if: contains(github.event.head_commit.modified, '.bicep') || contains(github.event.pull_request.changed_files, '.bicep')
+        run: |
+          echo "Installing Azure CLI..."
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          
+          echo "Validating Bicep templates..."
+          find . -name "*.bicep" | while read -r file; do
+            echo "Validating: $file"
+            az bicep build --file "$file" --stdout > /dev/null
+            if [ $? -ne 0 ]; then
+              echo "ERROR: Invalid Bicep template in $file"
+              exit 1
+            fi
+          done
+          echo "All Bicep templates are valid!"
+
+      - name: Validate Dockerfile
+        if: contains(github.event.head_commit.modified, 'Dockerfile') || contains(github.event.pull_request.changed_files, 'Dockerfile')
+        run: |
+          echo "Validating Dockerfile..."
+          find . -name "Dockerfile*" -not -name "*.md" | while read -r file; do
+            echo "Validating: $file"
+            # Basic Dockerfile validation - check for FROM instruction
+            if ! grep -q "^FROM" "$file"; then
+              echo "ERROR: $file is missing FROM instruction"
+              exit 1
+            fi
+            echo "$file appears to be valid"
+          done
+          echo "Dockerfile validation completed!"
+
+      - name: Validate GitHub Actions workflows
+        run: |
+          echo "Validating GitHub Actions workflow files..."
+          find .github/workflows -name "*.yml" -o -name "*.yaml" | while read -r file; do
+            echo "Validating: $file"
+            # Basic YAML syntax check
+            python -c "import yaml; yaml.safe_load(open('$file'))" 2>/dev/null
+            if [ $? -ne 0 ]; then
+              echo "ERROR: Invalid YAML syntax in $file"
+              exit 1
+            fi
+          done
+          echo "All workflow files have valid YAML syntax!"

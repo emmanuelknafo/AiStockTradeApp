@@ -1,0 +1,70 @@
+name: Documentation Updates
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - '**.md'
+      - '**/README.md'
+      - 'docs/**'
+      - 'AGENTS.md'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.md'
+      - '**/README.md'
+      - 'docs/**'
+      - 'AGENTS.md'
+
+jobs:
+  validate-docs:
+    runs-on: ubuntu-latest
+    name: Validate Documentation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for broken links in Markdown files
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          use-verbose-mode: 'yes'
+          config-file: '.github/workflows/markdown-link-check-config.json'
+          folder-path: 'docs/'
+          max-depth: 3
+
+      - name: Validate README files
+        run: |
+          echo "Validating README files..."
+          find . -name "README.md" -type f | while read -r file; do
+            echo "Checking: $file"
+            # Check if file is not empty
+            if [ ! -s "$file" ]; then
+              echo "ERROR: $file is empty"
+              exit 1
+            fi
+            # Check for basic structure (at least one heading)
+            if ! grep -q "^#" "$file"; then
+              echo "WARNING: $file might be missing headings"
+            fi
+          done
+
+      - name: Check documentation structure
+        run: |
+          echo "Checking documentation structure..."
+          # Ensure main README exists
+          if [ ! -f "README.md" ]; then
+            echo "ERROR: Main README.md is missing"
+            exit 1
+          fi
+          
+          # Check for documentation folder
+          if [ -d "docs/" ]; then
+            echo "Documentation folder found"
+            ls -la docs/
+          else
+            echo "No docs/ folder found"
+          fi
+          
+          echo "Documentation validation completed successfully!"
