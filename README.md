@@ -8,6 +8,9 @@ This is an ASP.NET Core MVC implementation of the AI-powered stock tracker appli
 
 <img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/91c4bbcd-c3ea-4696-995c-132ac27e4927" />
 
+But when you have full tokens (tokens replenished):
+
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/45ac16ac-0603-4e8d-af5c-d6c88156e73d" />
 
 ## Features
 
@@ -209,6 +212,7 @@ For production deployment to Azure, you'll need to set up:
 ## License
 
 This project is for educational and demonstration purposes.
+
 
 
 
