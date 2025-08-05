@@ -2,6 +2,8 @@
 
 This is an ASP.NET Core MVC implementation of the AI-powered stock tracker application. It provides the same functionality as the JavaScript version but built using server-side rendering with C# and Razor views.
 
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/36fdda73-87b5-4eb7-a20f-8603c83daa42" />
+
 ## Features
 
 ### Core Functionality
@@ -202,3 +204,4 @@ For production deployment to Azure, you'll need to set up:
 ## License
 
 This project is for educational and demonstration purposes.
+
