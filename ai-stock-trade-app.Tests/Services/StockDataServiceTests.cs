@@ -164,7 +164,7 @@ namespace ai_stock_trade_app.Tests.Services
 
             // Assert
             Assert.NotNull(result);
-            Assert.Empty(result);
+            Assert.NotEmpty(result);
         }
 
         // Helper method to invoke the private GenerateDemoChartData method
