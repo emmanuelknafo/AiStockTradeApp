@@ -83,31 +83,75 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Set container registry name
+      - name: Azure Login for Registry Access
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get Container Registry Information
         id: registry
         run: |
-          # Set the registry name based on branch/environment
+          # Determine environment and instance number
           if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.event.inputs.environment }}" == "prod" ]]; then
-            echo "registry_name=aistocktrackerprod" >> $GITHUB_OUTPUT
+            ENV="prod"
           else
-            echo "registry_name=aistocktrackerdev" >> $GITHUB_OUTPUT
+            ENV="dev"
           fi
+          
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber || '001' }}"
+          RG_NAME="rg-aistock-${ENV}-${INSTANCE_NUM}"
+          
+          echo "Environment: ${ENV}"
+          echo "Instance Number: ${INSTANCE_NUM}"
+          echo "Resource Group: ${RG_NAME}"
+          
+          # Get container registry name from resource group
+          REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+          
+          if [ -z "${REGISTRY_NAME}" ] || [ "${REGISTRY_NAME}" == "null" ]; then
+            echo "ERROR: No container registry found in resource group ${RG_NAME}"
+            echo "Available resource groups:"
+            az group list --query '[].name' --output table
+            exit 1
+          fi
+          
+          echo "Found registry: ${REGISTRY_NAME}"
+          echo "registry_name=${REGISTRY_NAME}" >> $GITHUB_OUTPUT
+          echo "resource_group=${RG_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Debug Environment Variables
+      - name: Get Container Registry Credentials
+        id: registry-creds
         run: |
-          echo "Available environment variables:"
+          REGISTRY_NAME="${{ steps.registry.outputs.registry_name }}"
+          RG_NAME="${{ steps.registry.outputs.resource_group }}"
+          
+          # Get admin credentials
+          REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+          REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+          
+          echo "Registry Username: ${REGISTRY_USERNAME}"
+          echo "Password length: ${#REGISTRY_PASSWORD}"
+          
+          echo "registry_username=${REGISTRY_USERNAME}" >> $GITHUB_OUTPUT
+          echo "registry_password=${REGISTRY_PASSWORD}" >> $GITHUB_OUTPUT
+
+      - name: Debug Registry Information
+        run: |
+          echo "=== REGISTRY DEBUG INFO ==="
           echo "Registry name: ${{ steps.registry.outputs.registry_name }}"
-          echo "Branch: ${{ github.ref }}"
-          echo "Event: ${{ github.event_name }}"
-          echo "ACR_USERNAME available: ${{ secrets.ACR_USERNAME != '' }}"
-          echo "ACR_PASSWORD available: ${{ secrets.ACR_PASSWORD != '' }}"
+          echo "Resource group: ${{ steps.registry.outputs.resource_group }}"
+          echo "Registry URL: ${{ steps.registry.outputs.registry_name }}.azurecr.io"
+          echo "Username: ${{ steps.registry-creds.outputs.registry_username }}"
+          echo "Password available: ${{ steps.registry-creds.outputs.registry_password != '' }}"
 
       - name: Log in to Azure Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ steps.registry.outputs.registry_name }}.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          username: ${{ steps.registry-creds.outputs.registry_username }}
+          password: ${{ steps.registry-creds.outputs.registry_password }}
 
       - name: Verify Docker login
         run: |
@@ -300,20 +344,29 @@ jobs:
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
           WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
           RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+          
+          # Get registry information from the same resource group
+          REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+          REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+          REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+          
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
           echo "Web App Name: ${WEBAPP_NAME}"
           echo "Resource Group: ${RG_NAME}"
+          echo "Registry Name: ${REGISTRY_NAME}"
+          
           if [ -z "${{ steps.load-image.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
+          
           az webapp config container set \
             --name "${WEBAPP_NAME}" \
             --resource-group "${RG_NAME}" \
             --container-image-name "${{ steps.load-image.outputs.container_image }}" \
-            --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
-            --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
-            --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
+            --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+            --container-registry-user "${REGISTRY_USERNAME}" \
+            --container-registry-password "${REGISTRY_PASSWORD}"
 
   deploy-prod:
     runs-on: ubuntu-latest
@@ -394,20 +447,29 @@ jobs:
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
           WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
           RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+          
+          # Get registry information from the same resource group
+          REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+          REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+          REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+          
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
           echo "Web App Name: ${WEBAPP_NAME}"
           echo "Resource Group: ${RG_NAME}"
+          echo "Registry Name: ${REGISTRY_NAME}"
+          
           if [ -z "${{ steps.load-image.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
+          
           az webapp config container set \
             --name "${WEBAPP_NAME}" \
             --resource-group "${RG_NAME}" \
             --container-image-name "${{ steps.load-image.outputs.container_image }}" \
-            --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
-            --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
-            --container-registry-password "${{ secrets.REGISTRY_PASSWORD }}"
+            --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+            --container-registry-user "${REGISTRY_USERNAME}" \
+            --container-registry-password "${REGISTRY_PASSWORD}"
 
       - name: Run Health Check
         run: |
