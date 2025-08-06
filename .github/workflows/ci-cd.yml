@@ -76,6 +76,10 @@ jobs:
       image: ${{ steps.final-output.outputs.image }}
       test_output: ${{ steps.final-output.outputs.test_output }}
 
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
