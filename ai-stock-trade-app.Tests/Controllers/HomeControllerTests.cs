@@ -2,6 +2,9 @@ using ai_stock_trade_app.Controllers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Moq;
+using FluentAssertions;
+using Xunit;
 
 namespace ai_stock_trade_app.Tests.Controllers
 {
@@ -70,7 +73,7 @@ namespace ai_stock_trade_app.Tests.Controllers
         public void Error_WithoutTraceIdentifier_ShouldHandleNullRequestId()
         {
             // Arrange
-            _mockHttpContext.Setup(x => x.TraceIdentifier).Returns((string?)null);
+            _mockHttpContext.Setup(x => x.TraceIdentifier).Returns(string.Empty);
 
             // Act
             var result = _controller.Error();
@@ -82,8 +85,7 @@ namespace ai_stock_trade_app.Tests.Controllers
             viewResult.Model.Should().BeOfType<ai_stock_trade_app.Models.ErrorViewModel>();
             
             var errorModel = viewResult.Model as ai_stock_trade_app.Models.ErrorViewModel;
-            // The RequestId can be null when both Activity.Current?.Id and TraceIdentifier are null
-            // This is acceptable behavior for the error view model
+            // The RequestId will use Activity.Current?.Id if TraceIdentifier is empty
             errorModel.Should().NotBeNull();
         }
     }

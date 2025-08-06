@@ -57,7 +57,7 @@ namespace ai_stock_trade_app.Tests.Controllers
                     {
                         return true;
                     }
-                    value = null;
+                    value = Array.Empty<byte>();
                     return false;
                 });
         }
