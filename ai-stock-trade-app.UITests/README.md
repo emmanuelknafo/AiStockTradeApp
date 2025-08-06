@@ -23,6 +23,12 @@ playwright install
 
 ### Run All Tests
 ```bash
+# Start your application first
+cd ai-stock-trade-app
+dotnet run
+
+# In another terminal, run tests
+cd ai-stock-trade-app.UITests
 dotnet test
 ```
 
@@ -65,15 +71,18 @@ Failed tests automatically generate:
 
 ## Configuration
 
-Update `BaseUITest.cs` to match your application:
-- `BaseUrl`: Your application's URL
+Application URL is configured to match launchSettings.json:
+- `BaseUrl`: `https://localhost:7043` (matches your application configuration)
 - Viewport settings
 - Timeout configurations
 
+**Important**: Ensure your application is running on `https://localhost:7043` before executing tests.
+
 ## Best Practices
 
-1. **Page Object Model**: Consider creating page objects for complex pages
-2. **Test Data**: Use test-specific data to avoid conflicts
-3. **Cleanup**: Each test should clean up its data
-4. **Isolation**: Tests should be independent and able to run in parallel
-5. **Assertions**: Use meaningful assertions with clear error messages
+1. **Start Application First**: Always start the web application before running tests
+2. **Page Object Model**: Consider creating page objects for complex pages
+3. **Test Data**: Use test-specific data to avoid conflicts
+4. **Cleanup**: Each test should clean up its data
+5. **Isolation**: Tests should be independent and able to run in parallel
+6. **Assertions**: Use meaningful assertions with clear error messages
