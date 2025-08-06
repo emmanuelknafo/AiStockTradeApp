@@ -28,8 +28,8 @@ on:
         type: boolean
 
 env:
-  AZURE_RESOURCE_GROUP_DEV: 'rg-ai-stock-tracker-dev-${{ github.event.inputs.instanceNumber }}'
-  AZURE_RESOURCE_GROUP_PROD: 'rg-ai-stock-tracker-prod-${{ github.event.inputs.instanceNumber }}'
+  AZURE_RESOURCE_GROUP_DEV: 'rg-aistock-dev-${{ github.event.inputs.instanceNumber }}'
+  AZURE_RESOURCE_GROUP_PROD: 'rg-aistock-prod-${{ github.event.inputs.instanceNumber }}'
 
 jobs:
   deploy-infrastructure:
@@ -111,7 +111,7 @@ jobs:
         echo "- **Status**: Infrastructure deployment completed" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
-          echo "- **Web App URL**: https://app-ai-stock-tracker-prod-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- **Web App URL**: https://app-aistock-prod-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
         else
-          echo "- **Web App URL**: https://app-ai-stock-tracker-dev-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- **Web App URL**: https://app-aistock-dev-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
         fi

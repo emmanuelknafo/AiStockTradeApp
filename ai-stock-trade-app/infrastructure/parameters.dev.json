@@ -3,7 +3,7 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "appName": {
-      "value": "ai-stock-tracker"
+      "value": "aistock"
     },
     "environment": {
       "value": "dev"
