@@ -175,12 +175,6 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
   }
 }
 
-// Enable Application Insights site extension
-resource webAppSiteExtension 'Microsoft.Web/sites/siteextensions@2022-09-01' = {
-  parent: webApp
-  name: 'Microsoft.ApplicationInsights.AzureWebSites'
-}
-
 // Grant Key Vault access to Web App
 resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: keyVault
