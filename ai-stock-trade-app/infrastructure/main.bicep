@@ -130,7 +130,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     siteConfig: {
-      linuxFxVersion: deployContainerRegistry ? 'DOCKER|${containerRegistry.properties.loginServer}/${containerImage}' : 'DOCKER|${containerImage}'
+      linuxFxVersion: deployContainerRegistry ? 'DOCKER|${containerRegistry!.properties.loginServer}/${containerImage}' : 'DOCKER|${containerImage}'
       alwaysOn: true
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
@@ -143,6 +143,18 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: applicationInsights.properties.ConnectionString
+        }
+        {
+          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
+          value: applicationInsights.properties.InstrumentationKey
+        }
+        {
+          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
+          value: '~3'
+        }
+        {
+          name: 'XDT_MicrosoftApplicationInsights_Mode'
+          value: 'Recommended'
         }
         {
           name: 'ASPNETCORE_ENVIRONMENT'
@@ -163,6 +175,12 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
   }
 }
 
+// Enable Application Insights site extension
+resource webAppSiteExtension 'Microsoft.Web/sites/siteextensions@2022-09-01' = {
+  parent: webApp
+  name: 'Microsoft.ApplicationInsights.AzureWebSites'
+}
+
 // Grant Key Vault access to Web App
 resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: keyVault
@@ -177,7 +195,7 @@ resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-0
 // Outputs
 output webAppName string = webApp.name
 output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
-output containerRegistryName string = deployContainerRegistry ? containerRegistry.name : 'not-deployed'
-output containerRegistryLoginServer string = deployContainerRegistry ? containerRegistry.properties.loginServer : 'not-deployed'
+output containerRegistryName string = deployContainerRegistry ? containerRegistry!.name : 'not-deployed'
+output containerRegistryLoginServer string = deployContainerRegistry ? containerRegistry!.properties.loginServer : 'not-deployed'
 output keyVaultName string = keyVault.name
 output applicationInsightsName string = applicationInsights.name
