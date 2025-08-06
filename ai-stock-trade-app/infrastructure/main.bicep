@@ -11,6 +11,7 @@ param environment string = 'dev'
 param appServicePlanSku string = 'B1'
 
 @description('Container registry name')
+@minLength(5)
 param containerRegistryName string
 
 @description('Container image name and tag')
@@ -24,17 +25,20 @@ param alphaVantageApiKey string = ''
 @secure()
 param twelveDataApiKey string = ''
 
+@description('Instance number for resource differentiation')
+param instanceNumber string = '001'
+
 // Variables
 var resourceNamePrefix = '${appName}-${environment}'
-var appServicePlanName = '${resourceNamePrefix}-asp'
-var webAppName = '${resourceNamePrefix}-webapp'
-var containerRegistryResourceName = '${containerRegistryName}${environment}'
-var keyVaultName = '${resourceNamePrefix}-kv'
-var applicationInsightsName = '${resourceNamePrefix}-ai'
-var logAnalyticsWorkspaceName = '${resourceNamePrefix}-law'
+var appServicePlanName = 'asp-${resourceNamePrefix}-${instanceNumber}'
+var webAppName = 'app-${resourceNamePrefix}-${instanceNumber}'
+var containerRegistryResourceName = 'cr${toLower(replace(containerRegistryName, '-', ''))}${toLower(environment)}${instanceNumber}${uniqueString(resourceGroup().id)}'
+var keyVaultName = 'kv-${resourceNamePrefix}-${instanceNumber}'
+var applicationInsightsName = 'appi-${resourceNamePrefix}-${instanceNumber}'
+var logAnalyticsWorkspaceName = 'log-${resourceNamePrefix}-${instanceNumber}'
 
 // Log Analytics Workspace
-resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
   name: logAnalyticsWorkspaceName
   location: location
   properties: {
@@ -57,7 +61,7 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 // Container Registry
-resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2025-04-01' = {
   name: containerRegistryResourceName
   location: location
   sku: {
@@ -69,7 +73,7 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' =
 }
 
 // Key Vault
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
   name: keyVaultName
   location: location
   properties: {
@@ -84,7 +88,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 }
 
 // Store API keys in Key Vault
-resource alphaVantageSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(alphaVantageApiKey)) {
+resource alphaVantageSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = if (!empty(alphaVantageApiKey)) {
   parent: keyVault
   name: 'AlphaVantageApiKey'
   properties: {
@@ -92,7 +96,7 @@ resource alphaVantageSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if 
   }
 }
 
-resource twelveDataSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(twelveDataApiKey)) {
+resource twelveDataSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = if (!empty(twelveDataApiKey)) {
   parent: keyVault
   name: 'TwelveDataApiKey'
   properties: {
@@ -101,7 +105,7 @@ resource twelveDataSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!
 }
 
 // App Service Plan
-resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
+resource appServicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
   name: appServicePlanName
   location: location
   kind: 'linux'
@@ -114,7 +118,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
 }
 
 // Web App
-resource webApp 'Microsoft.Web/sites@2023-01-01' = {
+resource webApp 'Microsoft.Web/sites@2024-11-01' = {
   name: webAppName
   location: location
   identity: {
