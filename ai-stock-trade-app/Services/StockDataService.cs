@@ -276,6 +276,12 @@ namespace ai_stock_trade_app.Services
 
         public Task<List<string>> GetStockSuggestionsAsync(string query)
         {
+            // Handle null or empty query
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return Task.FromResult(new List<string>());
+            }
+
             // Popular stock symbols for suggestions (same as in JS app)
             var popularStocks = new[]
             {
@@ -409,12 +415,18 @@ namespace ai_stock_trade_app.Services
 
         private List<ChartDataPoint> GenerateDemoChartData(string symbol, int days)
         {
-            var random = new Random(symbol.GetHashCode()); // Consistent seed for same symbol
+            // Handle null or empty symbol
+            var seedSymbol = string.IsNullOrEmpty(symbol) ? "DEFAULT" : symbol;
+            
+            var random = new Random(seedSymbol.GetHashCode()); // Consistent seed for same symbol
             var chartData = new List<ChartDataPoint>();
             var basePrice = random.Next(50, 500); // Random base price between $50-$500
             var currentPrice = (decimal)basePrice;
 
-            for (int i = days - 1; i >= 0; i--)
+            // Ensure we have at least 1 day of data and handle negative days
+            var actualDays = Math.Max(1, days);
+
+            for (int i = actualDays - 1; i >= 0; i--)
             {
                 var date = DateTime.Today.AddDays(-i);
                 
