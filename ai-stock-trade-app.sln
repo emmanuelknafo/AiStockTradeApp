@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ai-stock-trade-app", "ai-st
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ai-stock-trade-app.Tests", "ai-stock-trade-app.Tests\ai-stock-trade-app.Tests.csproj", "{2C89E876-27EE-C406-FB67-690354BAE763}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ai-stock-trade-app.UITests", "ai-stock-trade-app.UITests\ai-stock-trade-app.UITests.csproj", "{145D0B05-9B10-68AA-C529-C412DB25002A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,18 @@ Global
 		{2C89E876-27EE-C406-FB67-690354BAE763}.Release|x64.Build.0 = Release|Any CPU
 		{2C89E876-27EE-C406-FB67-690354BAE763}.Release|x86.ActiveCfg = Release|Any CPU
 		{2C89E876-27EE-C406-FB67-690354BAE763}.Release|x86.Build.0 = Release|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Debug|x64.Build.0 = Debug|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Debug|x86.Build.0 = Debug|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Release|x64.ActiveCfg = Release|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Release|x64.Build.0 = Release|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Release|x86.ActiveCfg = Release|Any CPU
+		{145D0B05-9B10-68AA-C529-C412DB25002A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

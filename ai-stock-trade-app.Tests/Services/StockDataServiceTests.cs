@@ -167,7 +167,7 @@ namespace ai_stock_trade_app.Tests.Services
             result.Should().BeOfType<List<ChartDataPoint>>();
             // Should always return data (either from API or demo data)
             result.Should().NotBeEmpty();
-            result.Should().HaveCountLessOrEqualTo(days);
+            (result.Count <= days).Should().BeTrue();
             result.All(point => point.Price > 0).Should().BeTrue();
             result.All(point => point.Date <= DateTime.Now.Date).Should().BeTrue();
         }
@@ -188,7 +188,7 @@ namespace ai_stock_trade_app.Tests.Services
             result.Should().BeOfType<List<ChartDataPoint>>();
             // Should return demo data for invalid symbols
             result.Should().NotBeEmpty();
-            result.Should().HaveCountLessOrEqualTo(days);
+            (result.Count <= days).Should().BeTrue();
         }
 
         [Fact]
