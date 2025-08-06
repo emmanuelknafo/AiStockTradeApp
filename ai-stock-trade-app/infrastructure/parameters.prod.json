@@ -16,9 +16,6 @@
     },
     "containerImage": {
       "value": "ai-stock-trade-app:latest"
-    },
-    "instanceNumber": {
-      "value": "001"
     }
   }
 }

@@ -16,6 +16,11 @@ on:
         required: true
         default: 'Canada Central'
         type: string
+      instanceNumber:
+        description: 'Instance number for resource differentiation'
+        required: true
+        default: '001'
+        type: string
       destroy:
         description: 'Destroy infrastructure instead of deploy'
         required: false
@@ -23,14 +28,14 @@ on:
         type: boolean
 
 env:
-  AZURE_RESOURCE_GROUP_DEV: 'rg-ai-stock-tracker-dev'
-  AZURE_RESOURCE_GROUP_PROD: 'rg-ai-stock-tracker-prod'
+  AZURE_RESOURCE_GROUP_DEV: 'rg-ai-stock-tracker-dev-${{ github.event.inputs.instanceNumber }}'
+  AZURE_RESOURCE_GROUP_PROD: 'rg-ai-stock-tracker-prod-${{ github.event.inputs.instanceNumber }}'
 
 jobs:
   deploy-infrastructure:
     runs-on: ubuntu-latest
     name: Deploy Infrastructure
-    environment: ${{ github.event.inputs.environment == 'prod' && 'production' || 'development' }}
+    environment: ${{ github.event.inputs.environment == 'prod' && format('production-{0}', github.event.inputs.instanceNumber) || format('development-{0}', github.event.inputs.instanceNumber) }}
     
     permissions:
       id-token: write
@@ -66,6 +71,7 @@ jobs:
           --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
           --parameters ./ai-stock-trade-app/infrastructure/parameters.${{ github.event.inputs.environment }}.json \
           --parameters location="${{ github.event.inputs.location }}" \
+          --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
           --parameters containerImage="ai-stock-trade-app:latest" \
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}"
@@ -78,6 +84,7 @@ jobs:
           --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
           --parameters ./ai-stock-trade-app/infrastructure/parameters.${{ github.event.inputs.environment }}.json \
           --parameters location="${{ github.event.inputs.location }}" \
+          --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
           --parameters containerImage="ai-stock-trade-app:latest" \
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}"
@@ -99,12 +106,12 @@ jobs:
       run: |
         echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
         echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Instance Number**: ${{ github.event.inputs.instanceNumber }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Resource Group**: ${{ github.event.inputs.environment == 'prod' && env.AZURE_RESOURCE_GROUP_PROD || env.AZURE_RESOURCE_GROUP_DEV }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Status**: Infrastructure deployment completed" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
-          echo "- **Web App URL**: https://ai-stock-tracker-prod-webapp.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- **Web App URL**: https://app-ai-stock-tracker-prod-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
         else
-          echo "- **Web App URL**: https://ai-stock-tracker-dev-webapp.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
-
+          echo "- **Web App URL**: https://app-ai-stock-tracker-dev-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
         fi
