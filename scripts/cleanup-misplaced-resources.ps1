@@ -1,13 +1,13 @@
 # Cleanup Script for Misplaced Azure Resources
-# Resources were deployed to rg-ai-stock-tracker-prod instead of rg-aistock-prod-001
+# Resources were deployed to rg-ai-stock-tracker-prod instead of rg-aistock-prod-002
 
 Write-Host "=== Cleaning up misplaced resources ===" -ForegroundColor Yellow
 Write-Host "Resources in wrong RG: rg-ai-stock-tracker-prod"
-Write-Host "Should be in: rg-aistock-prod-001"
+Write-Host "Should be in: rg-aistock-prod-002"
 
 # Set variables
 $OLD_RG = "rg-ai-stock-tracker-prod"
-$NEW_RG = "rg-aistock-prod-001"
+$NEW_RG = "rg-aistock-prod-002"
 $INSTANCE_NUM = "002"
 
 Write-Host "=== Step 1: List resources in old resource group ===" -ForegroundColor Cyan

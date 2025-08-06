@@ -12,12 +12,12 @@ Following the [official Azure resource abbreviations guide](https://learn.micros
 
 | Resource Type | Old Suffix | New Prefix | Example |
 |---------------|------------|------------|---------|
-| App Service Plan | `-asp` | `asp-` | `asp-ai-stock-tracker-dev-001` |
-| Web App | `-webapp` | `app-` | `app-ai-stock-tracker-dev-001` |
+| App Service Plan | `-asp` | `asp-` | `asp-ai-stock-tracker-dev-002` |
+| Web App | `-webapp` | `app-` | `app-ai-stock-tracker-dev-002` |
 | Container Registry | (suffix) | `cr` | `craistocktrackrdev001{uniqueString}` |
-| Key Vault | `-kv` | `kv-` | `kv-ai-stock-tracker-dev-001` |
-| Application Insights | `-ai` | `appi-` | `appi-ai-stock-tracker-dev-001` |
-| Log Analytics Workspace | `-law` | `log-` | `log-ai-stock-tracker-dev-001` |
+| Key Vault | `-kv` | `kv-` | `kv-ai-stock-tracker-dev-002` |
+| Application Insights | `-ai` | `appi-` | `appi-ai-stock-tracker-dev-002` |
+| Log Analytics Workspace | `-law` | `log-` | `log-ai-stock-tracker-dev-002` |
 
 ### 2. Instance Number Parameter
 
@@ -60,11 +60,11 @@ With parameters:
 - `instanceNumber`: "002"
 
 Generated resource names:
-- App Service Plan: `asp-ai-stock-tracker-dev-001`
-- Web App: `app-ai-stock-tracker-dev-001`
-- Key Vault: `kv-ai-stock-tracker-dev-001`
-- Application Insights: `appi-ai-stock-tracker-dev-001`
-- Log Analytics: `log-ai-stock-tracker-dev-001`
+- App Service Plan: `asp-ai-stock-tracker-dev-002`
+- Web App: `app-ai-stock-tracker-dev-002`
+- Key Vault: `kv-ai-stock-tracker-dev-002`
+- Application Insights: `appi-ai-stock-tracker-dev-002`
+- Log Analytics: `log-ai-stock-tracker-dev-002`
 - Container Registry: `craistocktrackrdev001abc123def` (includes unique string)
 
 ## Validation

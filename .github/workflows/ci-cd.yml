@@ -314,7 +314,7 @@ jobs:
     needs: build
     name: Deploy to Development
     if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
-    environment: ${{ github.event_name == 'workflow_dispatch' && format('development-{0}', github.event.inputs.instanceNumber) || 'development-001' }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && format('development-{0}', github.event.inputs.instanceNumber) || 'development-002' }}
 
     permissions:
       id-token: write
@@ -355,7 +355,7 @@ jobs:
         uses: azure/arm-deploy@v1
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-001' }}
+          resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-002' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
           parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
@@ -409,7 +409,7 @@ jobs:
       (needs.build.result == 'success') &&
       (needs.deploy-dev.result == 'success' || needs.deploy-dev.result == 'skipped') &&
       (github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'))
-    environment: ${{ github.event_name == 'workflow_dispatch' && format('production-{0}', github.event.inputs.instanceNumber) || 'production-001' }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && format('production-{0}', github.event.inputs.instanceNumber) || 'production-002' }}
 
     permissions:
       id-token: write
@@ -473,7 +473,7 @@ jobs:
         uses: azure/arm-deploy@v1
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-001' }}
+          resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
           parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
