@@ -97,19 +97,33 @@ jobs:
       - name: Get Container Registry Information
         id: registry
         run: |
-          # Determine environment and instance number
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.event.inputs.environment }}" == "prod" ]]; then
+          # Determine environment and instance number based on trigger
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Use the environment selected in workflow_dispatch
+            ENV="${{ github.event.inputs.environment }}"
+            INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+            echo "Workflow dispatch detected - Environment: ${ENV}, Instance: ${INSTANCE_NUM}"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             ENV="prod"
-          else
+            INSTANCE_NUM="001"
+            echo "Main branch detected - Environment: ${ENV}, Instance: ${INSTANCE_NUM}"
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             ENV="dev"
+            INSTANCE_NUM="001"
+            echo "Develop branch detected - Environment: ${ENV}, Instance: ${INSTANCE_NUM}"
+          else
+            echo "ERROR: Unable to determine environment from branch ${{ github.ref }} or event ${{ github.event_name }}"
+            exit 1
           fi
           
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber || '001' }}"
           RG_NAME="rg-aistock-${ENV}-${INSTANCE_NUM}"
           
+          echo "=== BUILD ENVIRONMENT INFO ==="
           echo "Environment: ${ENV}"
           echo "Instance Number: ${INSTANCE_NUM}"
           echo "Resource Group: ${RG_NAME}"
+          echo "GitHub Ref: ${{ github.ref }}"
+          echo "Event Name: ${{ github.event_name }}"
           
           # Get container registry name from resource group
           REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
@@ -118,12 +132,15 @@ jobs:
             echo "ERROR: No container registry found in resource group ${RG_NAME}"
             echo "Available resource groups:"
             az group list --query '[].name' --output table
+            echo "This might mean the infrastructure hasn't been deployed yet for ${ENV} environment with instance ${INSTANCE_NUM}"
             exit 1
           fi
           
           echo "Found registry: ${REGISTRY_NAME}"
           echo "registry_name=${REGISTRY_NAME}" >> $GITHUB_OUTPUT
           echo "resource_group=${RG_NAME}" >> $GITHUB_OUTPUT
+          echo "environment=${ENV}" >> $GITHUB_OUTPUT
+          echo "instance_number=${INSTANCE_NUM}" >> $GITHUB_OUTPUT
 
       - name: Get Container Registry Credentials
         id: registry-creds
@@ -144,11 +161,18 @@ jobs:
       - name: Debug Registry Information
         run: |
           echo "=== REGISTRY DEBUG INFO ==="
+          echo "Target Environment: ${{ steps.registry.outputs.environment }}"
+          echo "Instance Number: ${{ steps.registry.outputs.instance_number }}"
           echo "Registry name: ${{ steps.registry.outputs.registry_name }}"
           echo "Resource group: ${{ steps.registry.outputs.resource_group }}"
           echo "Registry URL: ${{ steps.registry.outputs.registry_name }}.azurecr.io"
           echo "Username: ${{ steps.registry-creds.outputs.registry_username }}"
           echo "Password available: ${{ steps.registry-creds.outputs.registry_password != '' }}"
+          echo "=== TRIGGER INFO ==="
+          echo "GitHub Ref: ${{ github.ref }}"
+          echo "Event Name: ${{ github.event_name }}"
+          echo "Workflow Dispatch Environment: ${{ github.event.inputs.environment || 'N/A' }}"
+          echo "Workflow Dispatch Instance: ${{ github.event.inputs.instanceNumber || 'N/A' }}"
 
       - name: Log in to Azure Container Registry
         uses: docker/login-action@v3
@@ -374,9 +398,13 @@ jobs:
 
   deploy-prod:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, deploy-dev]
     name: Deploy to Production
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
+    if: |
+      always() && 
+      (needs.build.result == 'success') &&
+      (needs.deploy-dev.result == 'success' || needs.deploy-dev.result == 'skipped') &&
+      (github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'))
     environment: ${{ github.event_name == 'workflow_dispatch' && format('production-{0}', github.event.inputs.instanceNumber) || 'production-001' }}
 
     permissions:
