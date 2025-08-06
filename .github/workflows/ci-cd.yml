@@ -38,7 +38,7 @@ on:
       instanceNumber:
         description: 'Instance number for resource differentiation'
         required: true
-        default: '001'
+        default: '002'
         type: string
 
 env:
@@ -97,46 +97,39 @@ jobs:
       - name: Get Container Registry Information
         id: registry
         run: |
-          # Determine environment and instance number based on trigger
+          # Always use dev environment container registry (shared across all environments)
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            # Use the environment selected in workflow_dispatch
-            ENV="${{ github.event.inputs.environment }}"
             INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-            echo "Workflow dispatch detected - Environment: ${ENV}, Instance: ${INSTANCE_NUM}"
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            ENV="prod"
-            INSTANCE_NUM="001"
-            echo "Main branch detected - Environment: ${ENV}, Instance: ${INSTANCE_NUM}"
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            ENV="dev"
-            INSTANCE_NUM="001"
-            echo "Develop branch detected - Environment: ${ENV}, Instance: ${INSTANCE_NUM}"
+            echo "Workflow dispatch detected - Instance: ${INSTANCE_NUM}"
           else
-            echo "ERROR: Unable to determine environment from branch ${{ github.ref }} or event ${{ github.event_name }}"
-            exit 1
+            INSTANCE_NUM="002"
+            echo "Branch push detected - Using default instance: ${INSTANCE_NUM}"
           fi
           
+          # Always target dev resource group for container registry
+          ENV="dev"
           RG_NAME="rg-aistock-${ENV}-${INSTANCE_NUM}"
           
           echo "=== BUILD ENVIRONMENT INFO ==="
-          echo "Environment: ${ENV}"
+          echo "Container Registry Environment: ${ENV} (shared registry)"
           echo "Instance Number: ${INSTANCE_NUM}"
-          echo "Resource Group: ${RG_NAME}"
+          echo "Registry Resource Group: ${RG_NAME}"
           echo "GitHub Ref: ${{ github.ref }}"
           echo "Event Name: ${{ github.event_name }}"
           
-          # Get container registry name from resource group
+          # Get container registry name from dev resource group
           REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
           
           if [ -z "${REGISTRY_NAME}" ] || [ "${REGISTRY_NAME}" == "null" ]; then
             echo "ERROR: No container registry found in resource group ${RG_NAME}"
             echo "Available resource groups:"
             az group list --query '[].name' --output table
-            echo "This might mean the infrastructure hasn't been deployed yet for ${ENV} environment with instance ${INSTANCE_NUM}"
+            echo "This might mean the dev infrastructure hasn't been deployed yet for instance ${INSTANCE_NUM}"
+            echo "Please deploy dev environment first to create the shared container registry."
             exit 1
           fi
           
-          echo "Found registry: ${REGISTRY_NAME}"
+          echo "Found shared registry: ${REGISTRY_NAME}"
           echo "registry_name=${REGISTRY_NAME}" >> $GITHUB_OUTPUT
           echo "resource_group=${RG_NAME}" >> $GITHUB_OUTPUT
           echo "environment=${ENV}" >> $GITHUB_OUTPUT
@@ -364,12 +357,12 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-001' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
-          parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
-          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
           RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
           
@@ -450,7 +443,7 @@ jobs:
           echo "Event name: ${{ github.event_name }}"
           echo "Environment input: ${{ github.event.inputs.environment }}"
           echo "Instance Number: ${{ github.event.inputs.instanceNumber }}"
-          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           echo "Resolved Instance Number: ${INSTANCE_NUM}"
           echo "Resource Group: rg-aistock-prod-${INSTANCE_NUM}"
           echo "Web App Name: app-aistock-prod-${INSTANCE_NUM}"
@@ -471,24 +464,26 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-001' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
-          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
-          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
           RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
           
-          # Get registry information from the same resource group
-          REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+          # Get registry information from DEV resource group (shared registry)
+          DEV_RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+          REGISTRY_NAME=$(az acr list --resource-group "${DEV_RG_NAME}" --query '[0].name' --output tsv)
           REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
           REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
           
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
           echo "Web App Name: ${WEBAPP_NAME}"
-          echo "Resource Group: ${RG_NAME}"
-          echo "Registry Name: ${REGISTRY_NAME}"
+          echo "Prod Resource Group: ${RG_NAME}"
+          echo "Dev Registry Resource Group: ${DEV_RG_NAME}"
+          echo "Shared Registry Name: ${REGISTRY_NAME}"
           
           if [ -z "${{ steps.load-image.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
@@ -505,7 +500,7 @@ jobs:
 
       - name: Run Health Check
         run: |
-          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
           HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
           echo "Waiting for deployment to be ready..."

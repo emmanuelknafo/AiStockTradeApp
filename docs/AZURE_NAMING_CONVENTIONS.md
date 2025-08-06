@@ -21,11 +21,11 @@ Following the [official Azure resource abbreviations guide](https://learn.micros
 
 ### 2. Instance Number Parameter
 
-Added a new parameter `instanceNumber` with default value `"001"` to support multiple instances of the same resource type:
+Added a new parameter `instanceNumber` with default value `"002"` to support multiple instances of the same resource type:
 
 ```bicep
 @description('Instance number for resource differentiation')
-param instanceNumber string = '001'
+param instanceNumber string = '002'
 ```
 
 ### 3. Updated Naming Pattern
@@ -42,7 +42,7 @@ cr{containerregistryname}{environment}{instance}{uniquestring}
 
 ### 4. Parameter Files Updated
 
-Both `parameters.dev.json` and `parameters.prod.json` have been updated to include the new `instanceNumber` parameter with value `"001"`.
+Both `parameters.dev.json` and `parameters.prod.json` have been updated to include the new `instanceNumber` parameter with value `"002"`.
 
 ## Benefits
 
@@ -57,7 +57,7 @@ Both `parameters.dev.json` and `parameters.prod.json` have been updated to inclu
 With parameters:
 - `appName`: "ai-stock-tracker"
 - `environment`: "dev"
-- `instanceNumber`: "001"
+- `instanceNumber`: "002"
 
 Generated resource names:
 - App Service Plan: `asp-ai-stock-tracker-dev-001`

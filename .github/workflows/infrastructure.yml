@@ -19,7 +19,7 @@ on:
       instanceNumber:
         description: 'Instance number for resource differentiation'
         required: true
-        default: '001'
+        default: '002'
         type: string
       destroy:
         description: 'Destroy infrastructure instead of deploy'
@@ -32,10 +32,11 @@ env:
   AZURE_RESOURCE_GROUP_PROD: 'rg-aistock-prod-${{ github.event.inputs.instanceNumber }}'
 
 jobs:
-  deploy-infrastructure:
+  deploy-dev:
     runs-on: ubuntu-latest
-    name: Deploy Infrastructure
-    environment: ${{ github.event.inputs.environment == 'prod' && format('production-{0}', github.event.inputs.instanceNumber) || format('development-{0}', github.event.inputs.instanceNumber) }}
+    name: Deploy Development Infrastructure
+    if: github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'prod'
+    environment: ${{ format('development-{0}', github.event.inputs.instanceNumber) }}
     
     permissions:
       id-token: write
@@ -52,66 +53,143 @@ jobs:
         tenant-id: ${{ vars.AZURE_TENANT_ID }}
         subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-    - name: Create Resource Group
+    - name: Create Dev Resource Group
       if: github.event.inputs.destroy != 'true'
       run: |
-        if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
-          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
-        else
-          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
-        fi
-        
+        RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+        echo "Creating dev resource group: $RG_NAME"
         az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
 
-    - name: Validate Bicep Template
+    - name: Validate Dev Bicep Template
       if: github.event.inputs.destroy != 'true'
       run: |
         az deployment group validate \
-          --resource-group ${{ github.event.inputs.environment == 'prod' && env.AZURE_RESOURCE_GROUP_PROD || env.AZURE_RESOURCE_GROUP_DEV }} \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
           --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-          --parameters ./ai-stock-trade-app/infrastructure/parameters.${{ github.event.inputs.environment }}.json \
+          --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
           --parameters location="${{ github.event.inputs.location }}" \
           --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
           --parameters containerImage="ai-stock-trade-app:latest" \
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}"
 
-    - name: Deploy Bicep Template
+    - name: Deploy Dev Infrastructure
       if: github.event.inputs.destroy != 'true'
       run: |
+        echo "Deploying dev infrastructure with container registry..."
         az deployment group create \
-          --resource-group ${{ github.event.inputs.environment == 'prod' && env.AZURE_RESOURCE_GROUP_PROD || env.AZURE_RESOURCE_GROUP_DEV }} \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
           --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-          --parameters ./ai-stock-trade-app/infrastructure/parameters.${{ github.event.inputs.environment }}.json \
+          --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
           --parameters location="${{ github.event.inputs.location }}" \
           --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
           --parameters containerImage="ai-stock-trade-app:latest" \
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}"
 
-    - name: Destroy Infrastructure
+    - name: Destroy Dev Infrastructure
       if: github.event.inputs.destroy == 'true'
       run: |
-        if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
-          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
-        else
-          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
-        fi
-        
-        echo "Destroying resource group: $RG_NAME"
+        RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+        echo "Destroying dev resource group: $RG_NAME"
         az group delete --name "$RG_NAME" --yes --no-wait
 
-    - name: Deployment Summary
+  deploy-prod:
+    runs-on: ubuntu-latest
+    name: Deploy Production Infrastructure
+    needs: deploy-dev
+    if: github.event.inputs.environment == 'prod' && always() && (needs.deploy-dev.result == 'success')
+    environment: ${{ format('production-{0}', github.event.inputs.instanceNumber) }}
+    
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        client-id: ${{ vars.AZURE_CLIENT_ID }}
+        tenant-id: ${{ vars.AZURE_TENANT_ID }}
+        subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Create Prod Resource Group
       if: github.event.inputs.destroy != 'true'
       run: |
-        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-        echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+        echo "Creating prod resource group: $RG_NAME"
+        az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
+
+    - name: Validate Prod Bicep Template
+      if: github.event.inputs.destroy != 'true'
+      run: |
+        az deployment group validate \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
+          --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+          --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+          --parameters location="${{ github.event.inputs.location }}" \
+          --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+          --parameters containerImage="ai-stock-trade-app:latest" \
+          --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
+          --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
+          --parameters deployContainerRegistry=false
+
+    - name: Deploy Prod Infrastructure
+      if: github.event.inputs.destroy != 'true'
+      run: |
+        echo "Deploying prod infrastructure WITHOUT container registry..."
+        az deployment group create \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
+          --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+          --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+          --parameters location="${{ github.event.inputs.location }}" \
+          --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+          --parameters containerImage="ai-stock-trade-app:latest" \
+          --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
+          --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
+          --parameters deployContainerRegistry=false
+
+    - name: Destroy Prod Infrastructure
+      if: github.event.inputs.destroy == 'true'
+      run: |
+        RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+        echo "Destroying prod resource group: $RG_NAME"
+        az group delete --name "$RG_NAME" --yes --no-wait
+
+  deployment-summary:
+    runs-on: ubuntu-latest
+    name: Deployment Summary
+    needs: [deploy-dev, deploy-prod]
+    if: always() && github.event.inputs.destroy != 'true'
+    
+    steps:
+    - name: Generate Summary
+      run: |
+        echo "## Infrastructure Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment Requested**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Instance Number**: ${{ github.event.inputs.instanceNumber }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Resource Group**: ${{ github.event.inputs.environment == 'prod' && env.AZURE_RESOURCE_GROUP_PROD || env.AZURE_RESOURCE_GROUP_DEV }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Status**: Infrastructure deployment completed" >> $GITHUB_STEP_SUMMARY
+        echo "- **Location**: ${{ github.event.inputs.location }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.deploy-dev.result }}" == "success" ]; then
+          echo "✅ **Dev Infrastructure**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dev Resource Group**: ${{ env.AZURE_RESOURCE_GROUP_DEV }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dev Web App**: https://app-aistock-dev-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- **Container Registry**: Deployed in dev environment (shared with prod)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Dev Infrastructure**: ${{ needs.deploy-dev.result }}" >> $GITHUB_STEP_SUMMARY
+        fi
         
         if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
-          echo "- **Web App URL**: https://app-aistock-prod-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "- **Web App URL**: https://app-aistock-dev-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.deploy-prod.result }}" == "success" ]; then
+            echo "✅ **Prod Infrastructure**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "- **Prod Resource Group**: ${{ env.AZURE_RESOURCE_GROUP_PROD }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Prod Web App**: https://app-aistock-prod-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+            echo "- **Container Registry**: Uses shared registry from dev environment" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Prod Infrastructure**: ${{ needs.deploy-prod.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
         fi

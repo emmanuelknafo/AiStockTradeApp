@@ -26,7 +26,10 @@ param alphaVantageApiKey string = ''
 param twelveDataApiKey string = ''
 
 @description('Instance number for resource differentiation')
-param instanceNumber string = '001'
+param instanceNumber string = '002'
+
+@description('Whether to deploy container registry (only for dev environment)')
+param deployContainerRegistry bool = true
 
 // Variables
 var resourceNamePrefix = '${appName}-${environment}'
@@ -60,8 +63,8 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-// Container Registry
-resource containerRegistry 'Microsoft.ContainerRegistry/registries@2025-04-01' = {
+// Container Registry (only deployed for dev environment)
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2025-04-01' = if (deployContainerRegistry) {
   name: containerRegistryResourceName
   location: location
   sku: {
@@ -127,7 +130,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     siteConfig: {
-      linuxFxVersion: 'DOCKER|${containerRegistry.properties.loginServer}/${containerImage}'
+      linuxFxVersion: deployContainerRegistry ? 'DOCKER|${containerRegistry.properties.loginServer}/${containerImage}' : 'DOCKER|${containerImage}'
       alwaysOn: true
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
@@ -136,18 +139,6 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
         {
           name: 'WEBSITES_ENABLE_APP_SERVICE_STORAGE'
           value: 'false'
-        }
-        {
-          name: 'DOCKER_REGISTRY_SERVER_URL'
-          value: 'https://${containerRegistry.properties.loginServer}'
-        }
-        {
-          name: 'DOCKER_REGISTRY_SERVER_USERNAME'
-          value: containerRegistry.listCredentials().username
-        }
-        {
-          name: 'DOCKER_REGISTRY_SERVER_PASSWORD'
-          value: containerRegistry.listCredentials().passwords[0].value
         }
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -186,7 +177,7 @@ resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-0
 // Outputs
 output webAppName string = webApp.name
 output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
-output containerRegistryName string = containerRegistry.name
-output containerRegistryLoginServer string = containerRegistry.properties.loginServer
+output containerRegistryName string = deployContainerRegistry ? containerRegistry.name : 'not-deployed'
+output containerRegistryLoginServer string = deployContainerRegistry ? containerRegistry.properties.loginServer : 'not-deployed'
 output keyVaultName string = keyVault.name
 output applicationInsightsName string = applicationInsights.name

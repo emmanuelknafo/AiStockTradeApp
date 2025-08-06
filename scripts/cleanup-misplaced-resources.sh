@@ -9,7 +9,7 @@ echo "Should be in: rg-aistock-prod-001"
 # Set variables
 OLD_RG="rg-ai-stock-tracker-prod"
 NEW_RG="rg-aistock-prod-001"
-INSTANCE_NUM="001"
+INSTANCE_NUM="002"
 
 echo "=== Step 1: List resources in old resource group ==="
 az resource list --resource-group $OLD_RG --output table
