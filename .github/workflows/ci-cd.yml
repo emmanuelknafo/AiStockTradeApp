@@ -35,6 +35,11 @@ on:
         options:
           - dev
           - prod
+      instanceNumber:
+        description: 'Instance number for resource differentiation'
+        required: true
+        default: '001'
+        type: string
 
 env:
   AZURE_WEBAPP_PACKAGE_PATH: "."
@@ -244,7 +249,7 @@ jobs:
     needs: build
     name: Deploy to Development
     if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
-    environment: development
+    environment: ${{ github.event_name == 'workflow_dispatch' && format('development-{0}', github.event.inputs.instanceNumber) || 'development-001' }}
 
     permissions:
       id-token: write
@@ -285,21 +290,26 @@ jobs:
         uses: azure/arm-deploy@v1
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: rg-ai-stock-tracker-dev
+          resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-001' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
-          parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
+          WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
+          echo "Web App Name: ${WEBAPP_NAME}"
+          echo "Resource Group: ${RG_NAME}"
           if [ -z "${{ steps.load-image.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
           az webapp config container set \
-            --name ai-stock-tracker-dev-webapp \
-            --resource-group rg-ai-stock-tracker-dev \
+            --name "${WEBAPP_NAME}" \
+            --resource-group "${RG_NAME}" \
             --container-image-name "${{ steps.load-image.outputs.container_image }}" \
             --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
             --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
@@ -310,7 +320,7 @@ jobs:
     needs: build
     name: Deploy to Production
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
-    environment: production
+    environment: ${{ github.event_name == 'workflow_dispatch' && format('production-{0}', github.event.inputs.instanceNumber) || 'production-001' }}
 
     permissions:
       id-token: write
@@ -354,6 +364,11 @@ jobs:
           echo "GitHub ref: ${{ github.ref }}"
           echo "Event name: ${{ github.event_name }}"
           echo "Environment input: ${{ github.event.inputs.environment }}"
+          echo "Instance Number: ${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
+          echo "Resolved Instance Number: ${INSTANCE_NUM}"
+          echo "Resource Group: rg-aistock-prod-${INSTANCE_NUM}"
+          echo "Web App Name: app-aistock-prod-${INSTANCE_NUM}"
           echo "=== BUILD JOB OUTPUTS ==="
           echo "Build job result: ${{ needs.build.result }}"
           echo "Build job outputs: ${{ toJson(needs.build.outputs) }}"
@@ -362,7 +377,6 @@ jobs:
           echo "=== ARTIFACT DATA ==="
           echo "Container image from artifact: ${{ steps.load-image.outputs.container_image }}"
           echo "=== VARIABLES ==="
-          echo "Resource Group: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
 
@@ -370,21 +384,26 @@ jobs:
         uses: azure/arm-deploy@v1
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          resourceGroupName: rg-ai-stock-tracker-prod
+          resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-001' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
-          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
       - name: Update Web App Container
         run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
+          WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
+          echo "Web App Name: ${WEBAPP_NAME}"
+          echo "Resource Group: ${RG_NAME}"
           if [ -z "${{ steps.load-image.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
           az webapp config container set \
-            --name ai-stock-tracker-prod-webapp \
-            --resource-group rg-ai-stock-tracker-prod \
+            --name "${WEBAPP_NAME}" \
+            --resource-group "${RG_NAME}" \
             --container-image-name "${{ steps.load-image.outputs.container_image }}" \
             --container-registry-url "https://${{ vars.CONTAINER_REGISTRY_NAME }}.azurecr.io" \
             --container-registry-user "${{ secrets.REGISTRY_USERNAME }}" \
@@ -392,9 +411,13 @@ jobs:
 
       - name: Run Health Check
         run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '001' }}"
+          WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
+          HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
           echo "Waiting for deployment to be ready..."
+          echo "Health check URL: ${HEALTH_URL}"
           sleep 30
-          curl -f https://ai-stock-tracker-prod-webapp.azurewebsites.net/health || exit 1
+          curl -f "${HEALTH_URL}" || exit 1
           echo "Health check passed!"
 
   security-scan:
