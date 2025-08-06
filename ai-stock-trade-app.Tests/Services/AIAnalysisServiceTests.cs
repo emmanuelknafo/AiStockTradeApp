@@ -111,7 +111,7 @@ namespace ai_stock_trade_app.Tests.Services
             var stockData = CreateTestStockData("AAPL");
 
             // Act
-            var result = await _aiAnalysisService.GenerateAnalysisAsync(null, stockData);
+            var result = await _aiAnalysisService.GenerateAnalysisAsync(null!, stockData);
 
             // Assert
             result.recommendation.Should().NotBeNull();
@@ -218,7 +218,7 @@ namespace ai_stock_trade_app.Tests.Services
             var symbol = "AAPL";
 
             // Act
-            var result = await _aiAnalysisService.GenerateAnalysisAsync(symbol, null);
+            var result = await _aiAnalysisService.GenerateAnalysisAsync(symbol, null!);
 
             // Assert
             result.analysis.Should().Be("Unable to generate analysis at this time.");

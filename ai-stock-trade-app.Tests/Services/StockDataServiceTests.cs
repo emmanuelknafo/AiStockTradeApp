@@ -58,7 +58,6 @@ namespace ai_stock_trade_app.Tests.Services
 
         [Theory]
         [InlineData("")]
-        [InlineData(null)]
         [InlineData("INVALID123")]
         [InlineData("TOOLONG")]
         public async Task GetStockQuoteAsync_InvalidSymbol_ShouldHandleGracefully(string symbol)
@@ -72,6 +71,25 @@ namespace ai_stock_trade_app.Tests.Services
             // Assert
             result.Should().NotBeNull();
             // The service should handle invalid symbols gracefully
+            // Either return success with valid data or failure with error message
+            if (!result.Success)
+            {
+                result.ErrorMessage.Should().NotBeNullOrEmpty();
+            }
+        }
+
+        [Fact]
+        public async Task GetStockQuoteAsync_NullSymbol_ShouldHandleGracefully()
+        {
+            // Arrange
+            var service = CreateService();
+
+            // Act
+            var result = await service.GetStockQuoteAsync(null!);
+
+            // Assert
+            result.Should().NotBeNull();
+            // The service should handle null symbols gracefully
             // Either return success with valid data or failure with error message
             if (!result.Success)
             {
@@ -104,7 +122,6 @@ namespace ai_stock_trade_app.Tests.Services
 
         [Theory]
         [InlineData("")]
-        [InlineData(null)]
         [InlineData("   ")]
         public async Task GetStockSuggestionsAsync_EmptyQuery_ShouldReturnEmptyList(string query)
         {
@@ -113,6 +130,20 @@ namespace ai_stock_trade_app.Tests.Services
 
             // Act
             var result = await service.GetStockSuggestionsAsync(query);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task GetStockSuggestionsAsync_NullQuery_ShouldReturnEmptyList()
+        {
+            // Arrange
+            var service = CreateService();
+
+            // Act
+            var result = await service.GetStockSuggestionsAsync(null!);
 
             // Assert
             result.Should().NotBeNull();
@@ -167,7 +198,7 @@ namespace ai_stock_trade_app.Tests.Services
             var service = CreateService();
 
             // Act
-            var result = await service.GetHistoricalDataAsync(null, 30);
+            var result = await service.GetHistoricalDataAsync(null!, 30);
 
             // Assert
             result.Should().NotBeNull();

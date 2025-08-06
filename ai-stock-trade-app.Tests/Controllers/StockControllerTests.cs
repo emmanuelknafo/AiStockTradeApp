@@ -50,14 +50,15 @@ namespace ai_stock_trade_app.Tests.Controllers
             _mockSession.Setup(x => x.Set(It.IsAny<string>(), It.IsAny<byte[]>()))
                 .Callback<string, byte[]>((key, value) => sessionData[key] = value);
             
-            _mockSession.Setup(x => x.TryGetValue(It.IsAny<string>(), out It.Ref<byte[]>.IsAny))
-                .Returns((string key, out byte[] value) =>
+            _mockSession.Setup(x => x.TryGetValue(It.IsAny<string>(), out It.Ref<byte[]?>.IsAny))
+                .Returns((string key, out byte[]? value) =>
                 {
-                    if (sessionData.TryGetValue(key, out value))
+                    value = Array.Empty<byte>();
+                    if (sessionData.TryGetValue(key, out var tempValue))
                     {
+                        value = tempValue;
                         return true;
                     }
-                    value = Array.Empty<byte>();
                     return false;
                 });
         }
@@ -65,15 +66,15 @@ namespace ai_stock_trade_app.Tests.Controllers
         private void SetupSessionString(string key, string value)
         {
             var bytes = value != null ? System.Text.Encoding.UTF8.GetBytes(value) : null;
-            _mockSession.Setup(x => x.TryGetValue(key, out It.Ref<byte[]>.IsAny))
-                .Returns((string k, out byte[] v) =>
+            _mockSession.Setup(x => x.TryGetValue(key, out It.Ref<byte[]?>.IsAny))
+                .Returns((string k, out byte[]? v) =>
                 {
+                    v = Array.Empty<byte>();
                     if (k == key && bytes != null)
                     {
                         v = bytes;
                         return true;
                     }
-                    v = null;
                     return false;
                 });
         }
@@ -282,11 +283,22 @@ namespace ai_stock_trade_app.Tests.Controllers
 
         [Theory]
         [InlineData("")]
-        [InlineData(null)]
         public async Task GetSuggestions_EmptyQuery_ShouldReturnEmptyList(string query)
         {
             // Act
             var result = await _controller.GetSuggestions(query);
+
+            // Assert
+            result.Should().BeOfType<JsonResult>();
+            var jsonResult = result as JsonResult;
+            jsonResult!.Value.Should().BeEquivalentTo(new List<string>());
+        }
+
+        [Fact]
+        public async Task GetSuggestions_NullQuery_ShouldReturnEmptyList()
+        {
+            // Act
+            var result = await _controller.GetSuggestions(null!);
 
             // Assert
             result.Should().BeOfType<JsonResult>();
