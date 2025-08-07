@@ -53,6 +53,7 @@ parameters:
     default: "003"
 
 variables:
+  - group: "ai-stock-trade-app" # Variable group for shared variables
   - name: AZURE_SERVICE_CONNECTION
     value: "svc_CSA_sub" # Replace with your Azure service connection name
   - name: AZURE_SUBSCRIPTION_ID

@@ -28,6 +28,7 @@ parameters:
     default: false
 
 variables:
+  - group: "ai-stock-trade-app" # Variable group for shared variables
   - name: AZURE_SERVICE_CONNECTION
     value: "svc_CSA_sub" # Replace with your Azure service connection name
   - name: azureResourceGroupDev
