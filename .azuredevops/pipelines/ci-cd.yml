@@ -197,11 +197,15 @@ stages:
                 echo "Build Source Branch: $(Build.SourceBranch)"
                 echo "Build Reason: $(Build.Reason)"
 
-          - task: Docker@2
+          - task: AzureCLI@2
             displayName: "Login to Azure Container Registry"
             inputs:
-              command: "login"
-              containerRegistry: "$(registryName).azurecr.io"
+              azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+              scriptType: "bash"
+              scriptLocation: "inlineScript"
+              inlineScript: |
+                echo "Logging in to Azure Container Registry: $(registryName).azurecr.io"
+                az acr login --name "$(registryName)"
 
           - task: Bash@3
             displayName: "Generate Container Tags"
@@ -232,16 +236,38 @@ stages:
                 echo "##vso[task.setvariable variable=containerTags]${TAGS}"
                 echo "##vso[task.setvariable variable=deployTag]${SHA_TAG}"
 
-          - task: Docker@2
+          - task: AzureCLI@2
             displayName: "Build and push Docker image"
             inputs:
-              command: "buildAndPush"
-              repository: "ai-stock-trade-app"
-              dockerfile: "./ai-stock-trade-app/Dockerfile"
-              buildContext: "./ai-stock-trade-app"
-              containerRegistry: "$(registryName).azurecr.io"
-              tags: |
-                $(containerTags)
+              azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+              scriptType: "bash"
+              scriptLocation: "inlineScript"
+              inlineScript: |
+                echo "=== BUILDING AND PUSHING CONTAINER IMAGE ==="
+
+                # Parse container tags into individual tags
+                IFS=',' read -ra TAG_ARRAY <<< "$(containerTags)"
+
+                # Build the image first
+                echo "Building Docker image..."
+                docker build -t temp-build-image ./ai-stock-trade-app
+
+                # Tag and push each tag
+                for tag in "${TAG_ARRAY[@]}"; do
+                  # Remove any leading/trailing whitespace
+                  clean_tag=$(echo "$tag" | xargs)
+                  echo "Tagging and pushing: $clean_tag"
+                  
+                  # Tag the image
+                  docker tag temp-build-image "$clean_tag"
+                  
+                  # Push using az acr
+                  az acr repository show --name "$(registryName)" --repository ai-stock-trade-app || echo "Repository doesn't exist yet, will be created on first push"
+                  docker push "$clean_tag"
+                done
+
+                echo "All tags pushed successfully"
+                echo "Deploy tag will be: $(deployTag)"
 
           - task: Bash@3
             displayName: "Extract and set container image for deployment"
