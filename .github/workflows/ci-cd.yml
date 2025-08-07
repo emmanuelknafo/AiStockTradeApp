@@ -11,6 +11,8 @@ on:
       - '.gitignore'
       - '.vscode/**'
       - '.vs/**'
+      - '.azuredevops/**'
+      #- '.github/**'
       - 'AGENTS.md'
       - 'LICENSE'
   pull_request:
@@ -23,6 +25,8 @@ on:
       - '.gitignore'
       - '.vscode/**'
       - '.vs/**'
+      - '.azuredevops/**'
+      #- '.github/**'
       - 'AGENTS.md'
       - 'LICENSE'
   workflow_dispatch:
