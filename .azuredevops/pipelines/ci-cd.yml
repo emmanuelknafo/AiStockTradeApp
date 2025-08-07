@@ -53,6 +53,8 @@ parameters:
     default: "003"
 
 variables:
+  - name: AZURE_SERVICE_CONNECTION
+    value: "svc_CSA_sub" # Replace with your Azure service connection name
   - name: AZURE_WEBAPP_PACKAGE_PATH
     value: "."
   - name: DOTNET_VERSION
