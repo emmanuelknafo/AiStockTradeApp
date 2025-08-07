@@ -15,20 +15,41 @@ namespace ai_stock_trade_app.Services
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _configuration;
         private readonly ILogger<StockDataService> _logger;
+        private readonly IStockDataRepository _repository;
         private static readonly Dictionary<string, DateTime> _lastRequestTimes = new();
         private static readonly TimeSpan _rateLimitDelay = TimeSpan.FromSeconds(1);
 
-        public StockDataService(HttpClient httpClient, IConfiguration configuration, ILogger<StockDataService> logger)
+        public StockDataService(
+            HttpClient httpClient, 
+            IConfiguration configuration, 
+            ILogger<StockDataService> logger,
+            IStockDataRepository repository)
         {
             _httpClient = httpClient;
             _configuration = configuration;
             _logger = logger;
+            _repository = repository;
         }
 
         public async Task<StockQuoteResponse> GetStockQuoteAsync(string symbol)
         {
             try
             {
+                // First, try to get data from cache
+                var cachedData = await _repository.GetCachedStockDataAsync(symbol);
+                if (cachedData != null)
+                {
+                    _logger.LogInformation("Returning cached data for symbol {Symbol}", symbol);
+                    return new StockQuoteResponse
+                    {
+                        Success = true,
+                        Data = cachedData
+                    };
+                }
+
+                // Cache miss or expired - fetch from APIs
+                _logger.LogInformation("Cache miss for symbol {Symbol}, fetching from APIs", symbol);
+                
                 await ApplyRateLimitAsync();
 
                 var apiKey = _configuration["AlphaVantage:ApiKey"];
@@ -38,7 +59,13 @@ namespace ai_stock_trade_app.Services
                 {
                     try
                     {
-                        return await FetchFromAlphaVantageAsync(symbol, apiKey);
+                        var response = await FetchFromAlphaVantageAsync(symbol, apiKey);
+                        if (response.Success && response.Data != null)
+                        {
+                            // Cache the successful response
+                            await _repository.SaveStockDataAsync(response.Data);
+                            return response;
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -49,7 +76,13 @@ namespace ai_stock_trade_app.Services
                 // Fallback to Yahoo Finance
                 try
                 {
-                    return await FetchFromYahooFinanceAsync(symbol);
+                    var response = await FetchFromYahooFinanceAsync(symbol);
+                    if (response.Success && response.Data != null)
+                    {
+                        // Cache the successful response
+                        await _repository.SaveStockDataAsync(response.Data);
+                        return response;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -59,7 +92,13 @@ namespace ai_stock_trade_app.Services
                 // Fallback to Twelve Data
                 try
                 {
-                    return await FetchFromTwelveDataAsync(symbol);
+                    var response = await FetchFromTwelveDataAsync(symbol);
+                    if (response.Success && response.Data != null)
+                    {
+                        // Cache the successful response
+                        await _repository.SaveStockDataAsync(response.Data);
+                        return response;
+                    }
                 }
                 catch (Exception ex)
                 {

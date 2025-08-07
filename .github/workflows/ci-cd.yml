@@ -63,14 +63,43 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Install Entity Framework tools
+        run: dotnet tool install --global dotnet-ef
+
       - name: Restore dependencies
         run: dotnet restore
 
       - name: Build application
         run: dotnet build --no-restore --configuration Release
 
+      - name: Setup SQL Server for testing
+        uses: potatoqualitee/mssqlsuite@v1.7
+        with:
+          install: sqlengine, sqlclient
+          version: 2022
+          sa-password: "YourStrong@Passw0rd"
+          show-log: true
+
+      - name: Wait for SQL Server to start
+        run: sleep 30
+
+      - name: Verify SQL Server is running
+        run: |
+          echo "Checking SQL Server status..."
+          sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -Q "SELECT @@VERSION" -C
+
+      - name: Run database migrations for testing
+        run: |
+          cd ai-stock-trade-app
+          export ConnectionStrings__DefaultConnection="Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          dotnet ef database update
+        env:
+          ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+
       - name: Run tests
         run: dotnet test --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests"
+        env:
+          ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
   build:
     runs-on: ubuntu-latest
@@ -364,6 +393,34 @@ jobs:
           parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
 
+      - name: Setup .NET for migrations
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install Entity Framework tools
+        run: dotnet tool install --global dotnet-ef
+
+      - name: Run database migrations
+        run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+          
+          echo "Getting SQL Server connection details..."
+          
+          # Get SQL Server name from Key Vault
+          KEY_VAULT_NAME="kv-aistock-dev-${INSTANCE_NUM}"
+          CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv)
+          
+          if [ -z "${CONNECTION_STRING}" ]; then
+            echo "WARNING: Could not retrieve connection string from Key Vault. Database migrations will run automatically on app startup."
+          else
+            echo "Running database migrations manually..."
+            cd ai-stock-trade-app
+            export ConnectionStrings__DefaultConnection="${CONNECTION_STRING}"
+            dotnet ef database update --verbose
+          fi
+
       - name: Update Web App Container
         run: |
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
@@ -481,6 +538,34 @@ jobs:
           template: ./ai-stock-trade-app/infrastructure/main.bicep
           parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
           failOnStdErr: false
+
+      - name: Setup .NET for migrations
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install Entity Framework tools
+        run: dotnet tool install --global dotnet-ef
+
+      - name: Run database migrations
+        run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+          
+          echo "Getting SQL Server connection details..."
+          
+          # Get SQL Server name from Key Vault
+          KEY_VAULT_NAME="kv-aistock-prod-${INSTANCE_NUM}"
+          CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv)
+          
+          if [ -z "${CONNECTION_STRING}" ]; then
+            echo "WARNING: Could not retrieve connection string from Key Vault. Database migrations will run automatically on app startup."
+          else
+            echo "Running database migrations manually..."
+            cd ai-stock-trade-app
+            export ConnectionStrings__DefaultConnection="${CONNECTION_STRING}"
+            dotnet ef database update --verbose
+          fi
 
       - name: Update Web App Container
         run: |

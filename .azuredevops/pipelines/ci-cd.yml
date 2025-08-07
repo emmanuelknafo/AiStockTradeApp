@@ -370,7 +370,7 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./ai-stock-trade-app/infrastructure/main.bicep"
                     csmParametersFile: "./ai-stock-trade-app/infrastructure/parameters.dev.json"
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY)"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD)"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
@@ -500,7 +500,7 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./ai-stock-trade-app/infrastructure/main.bicep"
                     csmParametersFile: "./ai-stock-trade-app/infrastructure/parameters.prod.json"
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY)"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD)"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2

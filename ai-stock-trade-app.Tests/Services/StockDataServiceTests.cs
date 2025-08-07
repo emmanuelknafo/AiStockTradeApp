@@ -10,11 +10,13 @@ namespace ai_stock_trade_app.Tests.Services
     {
         private readonly Mock<IConfiguration> _mockConfiguration;
         private readonly Mock<ILogger<StockDataService>> _mockLogger;
+        private readonly Mock<IStockDataRepository> _mockRepository;
 
         public StockDataServiceTests()
         {
             _mockConfiguration = new Mock<IConfiguration>();
             _mockLogger = new Mock<ILogger<StockDataService>>();
+            _mockRepository = new Mock<IStockDataRepository>();
         }
 
         private StockDataService CreateService(HttpClient? httpClient = null)
@@ -25,7 +27,7 @@ namespace ai_stock_trade_app.Tests.Services
             _mockConfiguration.Setup(x => x["AlphaVantage:ApiKey"]).Returns("demo-key");
             _mockConfiguration.Setup(x => x["TwelveData:ApiKey"]).Returns("demo");
             
-            return new StockDataService(client, _mockConfiguration.Object, _mockLogger.Object);
+            return new StockDataService(client, _mockConfiguration.Object, _mockLogger.Object, _mockRepository.Object);
         }
 
         [Theory]
@@ -329,6 +331,73 @@ namespace ai_stock_trade_app.Tests.Services
             // Data should be ordered by date (ascending)
             var dates = result.Select(x => x.Date).ToList();
             dates.Should().BeInAscendingOrder();
+        }
+
+        [Fact]
+        public async Task GetStockQuoteAsync_CacheHit_ShouldReturnCachedData()
+        {
+            // Arrange
+            var cachedStockData = new StockData
+            {
+                Id = 1,
+                Symbol = "AAPL",
+                Price = 150.50m,
+                Change = 2.25m,
+                PercentChange = "1.52%",
+                CompanyName = "Apple Inc.",
+                Currency = "USD",
+                LastUpdated = DateTime.UtcNow.AddMinutes(-5),
+                CachedAt = DateTime.UtcNow.AddMinutes(-5),
+                CacheDuration = TimeSpan.FromMinutes(15)
+            };
+
+            _mockRepository.Setup(x => x.GetCachedStockDataAsync("AAPL"))
+                          .ReturnsAsync(cachedStockData);
+
+            var service = CreateService();
+
+            // Act
+            var result = await service.GetStockQuoteAsync("AAPL");
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Success.Should().BeTrue();
+            result.Data.Should().NotBeNull();
+            result.Data!.Symbol.Should().Be("AAPL");
+            result.Data.Price.Should().Be(150.50m);
+            
+            // Verify cache was checked
+            _mockRepository.Verify(x => x.GetCachedStockDataAsync("AAPL"), Times.Once);
+            // Verify no data was saved (since it was a cache hit)
+            _mockRepository.Verify(x => x.SaveStockDataAsync(It.IsAny<StockData>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetStockQuoteAsync_CacheMiss_ShouldFetchAndCache()
+        {
+            // Arrange
+            _mockRepository.Setup(x => x.GetCachedStockDataAsync("AAPL"))
+                          .ReturnsAsync((StockData?)null);
+
+            _mockRepository.Setup(x => x.SaveStockDataAsync(It.IsAny<StockData>()))
+                          .ReturnsAsync((StockData data) => data);
+
+            var service = CreateService();
+
+            // Act
+            var result = await service.GetStockQuoteAsync("AAPL");
+
+            // Assert
+            result.Should().NotBeNull();
+            
+            // Verify cache was checked
+            _mockRepository.Verify(x => x.GetCachedStockDataAsync("AAPL"), Times.Once);
+            
+            // If successful, verify data was cached
+            if (result.Success && result.Data != null)
+            {
+                _mockRepository.Verify(x => x.SaveStockDataAsync(It.IsAny<StockData>()), Times.Once);
+            }
         }
     }
 }

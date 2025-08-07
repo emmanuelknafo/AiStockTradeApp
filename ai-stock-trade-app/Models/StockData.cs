@@ -1,15 +1,29 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 
 namespace ai_stock_trade_app.Models
 {
     public class StockData
     {
+        [Key]
+        public int Id { get; set; }
+        
+        [Required]
+        [StringLength(10)]
         public string Symbol { get; set; } = string.Empty;
+        
+        [Column(TypeName = "decimal(18,4)")]
         public decimal Price { get; set; }
+        
+        [Column(TypeName = "decimal(18,4)")]
         public decimal Change { get; set; }
+        
         public string PercentChange { get; set; } = string.Empty;
         public string CompanyName { get; set; } = string.Empty;
         public DateTime LastUpdated { get; set; }
+        
+        [StringLength(3)]
         public string Currency { get; set; } = "USD";
         
         // AI-generated data
@@ -17,13 +31,35 @@ namespace ai_stock_trade_app.Models
         public string? Recommendation { get; set; }
         public string? RecommendationReason { get; set; }
         
-        // Chart data
-        public List<ChartDataPoint>? ChartData { get; set; }
+        // Chart data stored as JSON
+        [Column(TypeName = "nvarchar(max)")]
+        public string? ChartDataJson { get; set; }
+        
+        // Cache metadata
+        public DateTime CachedAt { get; set; }
+        public TimeSpan CacheDuration { get; set; } = TimeSpan.FromMinutes(15); // Default 15 minutes
+        
+        // Navigation property (not mapped to avoid circular serialization)
+        [NotMapped]
+        public List<ChartDataPoint>? ChartData 
+        { 
+            get => string.IsNullOrEmpty(ChartDataJson) ? null : JsonSerializer.Deserialize<List<ChartDataPoint>>(ChartDataJson);
+            set => ChartDataJson = value == null ? null : JsonSerializer.Serialize(value);
+        }
         
         // Calculated properties
+        [NotMapped]
         public bool IsPositive => Change >= 0;
+        
+        [NotMapped]
         public string ChangeClass => IsPositive ? "positive" : "negative";
+        
+        [NotMapped]
         public string ChangePrefix => IsPositive ? "+" : "";
+        
+        // Cache validation
+        [NotMapped]
+        public bool IsCacheValid => DateTime.UtcNow - CachedAt < CacheDuration;
     }
 
     public class ChartDataPoint

@@ -1,3 +1,10 @@
+@description('SQL Server admin username')
+param sqlAdminUsername string = 'sqladmin'
+
+@description('SQL Server admin password')
+@secure()
+param sqlAdminPassword string
+
 @description('The location for all resources')
 param location string = resourceGroup().location
 
@@ -39,6 +46,8 @@ var containerRegistryResourceName = 'cr${toLower(replace(containerRegistryName, 
 var keyVaultName = 'kv-${resourceNamePrefix}-${instanceNumber}'
 var applicationInsightsName = 'appi-${resourceNamePrefix}-${instanceNumber}'
 var logAnalyticsWorkspaceName = 'log-${resourceNamePrefix}-${instanceNumber}'
+var sqlServerName = 'sql-${resourceNamePrefix}-${instanceNumber}'
+var sqlDatabaseName = 'sqldb-${resourceNamePrefix}-${instanceNumber}'
 
 // Log Analytics Workspace
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
@@ -87,6 +96,53 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
     tenantId: subscription().tenantId
     enabledForTemplateDeployment: true
     enableRbacAuthorization: true
+  }
+}
+
+// SQL Server
+resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
+  name: sqlServerName
+  location: location
+  properties: {
+    administratorLogin: sqlAdminUsername
+    administratorLoginPassword: sqlAdminPassword
+    version: '12.0'
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+// SQL Database
+resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
+  parent: sqlServer
+  name: sqlDatabaseName
+  location: location
+  sku: {
+    name: 'Basic'
+    tier: 'Basic'
+    capacity: 5
+  }
+  properties: {
+    collation: 'SQL_Latin1_General_CP1_CI_AS'
+    maxSizeBytes: 2147483648 // 2GB
+  }
+}
+
+// SQL Server Firewall Rule for Azure Services
+resource sqlServerFirewallRuleAzure 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = {
+  parent: sqlServer
+  name: 'AllowAzureServices'
+  properties: {
+    startIpAddress: '0.0.0.0'
+    endIpAddress: '0.0.0.0'
+  }
+}
+
+// Store SQL connection info in Key Vault
+resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = {
+  parent: keyVault
+  name: 'SqlConnectionString'
+  properties: {
+    value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;'
   }
 }
 
@@ -167,6 +223,17 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
         {
           name: 'TwelveData__ApiKey'
           value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
+        }
+        {
+          name: 'ConnectionStrings__DefaultConnection'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=SqlConnectionString)'
+        }
+      ]
+      connectionStrings: [
+        {
+          name: 'DefaultConnection'
+          connectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;'
+          type: 'SQLAzure'
         }
       ]
       healthCheckPath: '/health'

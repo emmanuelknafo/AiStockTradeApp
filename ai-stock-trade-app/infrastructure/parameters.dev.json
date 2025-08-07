@@ -16,6 +16,9 @@
     },
     "containerImage": {
       "value": "ai-stock-trade-app:latest"
+    },
+    "sqlAdminUsername": {
+      "value": "sqladmin"
     }
   }
 }

@@ -1,4 +1,6 @@
 using ai_stock_trade_app.Services;
+using ai_stock_trade_app.Data;
+using Microsoft.EntityFrameworkCore;
 
 public class Program
 {
@@ -10,7 +12,20 @@ public class Program
         builder.Services.AddControllersWithViews();
 
         // Add health checks
-        builder.Services.AddHealthChecks();
+        builder.Services.AddHealthChecks()
+            .AddDbContextCheck<StockDataContext>("database");
+
+        // Add Entity Framework
+        builder.Services.AddDbContext<StockDataContext>(options =>
+        {
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                // Fallback for development - using local default instance
+                connectionString = "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+            }
+            options.UseSqlServer(connectionString);
+        });
 
         // Add HttpClient for external API calls
         builder.Services.AddHttpClient<IStockDataService, StockDataService>();
@@ -18,7 +33,11 @@ public class Program
         // Register custom services
         builder.Services.AddScoped<IStockDataService, StockDataService>();
         builder.Services.AddScoped<IAIAnalysisService, AIAnalysisService>();
+        builder.Services.AddScoped<IStockDataRepository, StockDataRepository>();
         builder.Services.AddSingleton<IWatchlistService, WatchlistService>();
+
+        // Add background services
+        builder.Services.AddHostedService<CacheCleanupService>();
 
         // Add session services for user state
         builder.Services.AddDistributedMemoryCache();
@@ -30,6 +49,34 @@ public class Program
         });
 
         var app = builder.Build();
+
+        // Ensure database is created and migrated
+        using (var scope = app.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<StockDataContext>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            
+            try
+            {
+                logger.LogInformation("Applying database migrations...");
+                context.Database.Migrate();
+                logger.LogInformation("Database migrations applied successfully");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error applying database migrations");
+                // In development, create the database if it doesn't exist
+                if (app.Environment.IsDevelopment())
+                {
+                    logger.LogInformation("Creating database for development environment...");
+                    context.Database.EnsureCreated();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+        }
 
         // Configure the HTTP request pipeline.
         if (!app.Environment.IsDevelopment())
