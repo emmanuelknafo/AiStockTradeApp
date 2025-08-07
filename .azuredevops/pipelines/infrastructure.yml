@@ -1,236 +1,238 @@
 # Azure DevOps Pipeline for Infrastructure Deployment
 # Converted from GitHub Actions workflow
 
-trigger: none  # Manual trigger only
+trigger: none # Manual trigger only
 
 parameters:
-- name: environment
-  displayName: 'Environment to deploy infrastructure'
-  type: string
-  default: 'dev'
-  values:
-  - dev
-  - prod
+  - name: environment
+    displayName: "Environment to deploy infrastructure"
+    type: string
+    default: "dev"
+    values:
+      - dev
+      - prod
 
-- name: location
-  displayName: 'Azure region for deployment'
-  type: string
-  default: 'Canada Central'
+  - name: location
+    displayName: "Azure region for deployment"
+    type: string
+    default: "Canada Central"
 
-- name: instanceNumber
-  displayName: 'Instance number for resource differentiation'
-  type: string
-  default: '003'
+  - name: instanceNumber
+    displayName: "Instance number for resource differentiation"
+    type: string
+    default: "003"
 
-- name: destroy
-  displayName: 'Destroy infrastructure instead of deploy'
-  type: boolean
-  default: false
+  - name: destroy
+    displayName: "Destroy infrastructure instead of deploy"
+    type: boolean
+    default: false
 
 variables:
-- name: azureResourceGroupDev
-  value: 'rg-aistock-dev-${{ parameters.instanceNumber }}'
-- name: azureResourceGroupProd
-  value: 'rg-aistock-prod-${{ parameters.instanceNumber }}'
+  - name: AZURE_SERVICE_CONNECTION
+    value: "svc_CSA_sub" # Replace with your Azure service connection name
+  - name: azureResourceGroupDev
+    value: "rg-aistock-dev-${{ parameters.instanceNumber }}"
+  - name: azureResourceGroupProd
+    value: "rg-aistock-prod-${{ parameters.instanceNumber }}"
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: "ubuntu-latest"
 
 stages:
-- stage: DeployDev
-  displayName: 'Deploy Development Infrastructure'
-  condition: or(eq('${{ parameters.environment }}', 'dev'), eq('${{ parameters.environment }}', 'prod'))
-  jobs:
-  - deployment: DeployDevInfrastructure
-    displayName: 'Deploy Dev Infrastructure'
-    environment: 'development-${{ parameters.instanceNumber }}'
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - checkout: self
-            displayName: 'Checkout code'
+  - stage: DeployDev
+    displayName: "Deploy Development Infrastructure"
+    condition: or(eq('${{ parameters.environment }}', 'dev'), eq('${{ parameters.environment }}', 'prod'))
+    jobs:
+      - deployment: DeployDevInfrastructure
+        displayName: "Deploy Dev Infrastructure"
+        environment: "development-${{ parameters.instanceNumber }}"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  displayName: "Checkout code"
 
-          - task: AzureCLI@2
-            displayName: 'Azure Login and Create Dev Resource Group'
-            condition: ne('${{ parameters.destroy }}', true)
+                - task: AzureCLI@2
+                  displayName: "Azure Login and Create Dev Resource Group"
+                  condition: ne('${{ parameters.destroy }}', true)
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      RG_NAME="$(azureResourceGroupDev)"
+                      echo "Creating dev resource group: $RG_NAME"
+                      az group create --name "$RG_NAME" --location "${{ parameters.location }}"
+
+                - task: AzureCLI@2
+                  displayName: "Validate Dev Bicep Template"
+                  condition: ne('${{ parameters.destroy }}', true)
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      az deployment group validate \
+                        --resource-group $(azureResourceGroupDev) \
+                        --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+                        --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
+                        --parameters location="${{ parameters.location }}" \
+                        --parameters instanceNumber="${{ parameters.instanceNumber }}" \
+                        --parameters containerImage="ai-stock-trade-app:latest" \
+                        --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
+                        --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)"
+
+                - task: AzureCLI@2
+                  displayName: "Deploy Dev Infrastructure"
+                  condition: ne('${{ parameters.destroy }}', true)
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      echo "Deploying dev infrastructure with container registry..."
+                      az deployment group create \
+                        --resource-group $(azureResourceGroupDev) \
+                        --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+                        --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
+                        --parameters location="${{ parameters.location }}" \
+                        --parameters instanceNumber="${{ parameters.instanceNumber }}" \
+                        --parameters containerImage="ai-stock-trade-app:latest" \
+                        --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
+                        --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)"
+
+                - task: AzureCLI@2
+                  displayName: "Destroy Dev Infrastructure"
+                  condition: eq('${{ parameters.destroy }}', true)
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      RG_NAME="$(azureResourceGroupDev)"
+                      echo "Destroying dev resource group: $RG_NAME"
+                      az group delete --name "$RG_NAME" --yes --no-wait
+
+  - stage: DeployProd
+    displayName: "Deploy Production Infrastructure"
+    dependsOn: DeployDev
+    condition: and(eq('${{ parameters.environment }}', 'prod'), succeeded('DeployDev'))
+    jobs:
+      - deployment: DeployProdInfrastructure
+        displayName: "Deploy Prod Infrastructure"
+        environment: "production-${{ parameters.instanceNumber }}"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  displayName: "Checkout code"
+
+                - task: AzureCLI@2
+                  displayName: "Create Prod Resource Group"
+                  condition: ne('${{ parameters.destroy }}', true)
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      RG_NAME="$(azureResourceGroupProd)"
+                      echo "Creating prod resource group: $RG_NAME"
+                      az group create --name "$RG_NAME" --location "${{ parameters.location }}"
+
+                - task: AzureCLI@2
+                  displayName: "Validate Prod Bicep Template"
+                  condition: ne('${{ parameters.destroy }}', true)
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      az deployment group validate \
+                        --resource-group $(azureResourceGroupProd) \
+                        --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+                        --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+                        --parameters location="${{ parameters.location }}" \
+                        --parameters instanceNumber="${{ parameters.instanceNumber }}" \
+                        --parameters containerImage="ai-stock-trade-app:latest" \
+                        --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
+                        --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
+                        --parameters deployContainerRegistry=false
+
+                - task: AzureCLI@2
+                  displayName: "Deploy Prod Infrastructure"
+                  condition: ne('${{ parameters.destroy }}', true)
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      echo "Deploying prod infrastructure WITHOUT container registry..."
+                      az deployment group create \
+                        --resource-group $(azureResourceGroupProd) \
+                        --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+                        --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+                        --parameters location="${{ parameters.location }}" \
+                        --parameters instanceNumber="${{ parameters.instanceNumber }}" \
+                        --parameters containerImage="ai-stock-trade-app:latest" \
+                        --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
+                        --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
+                        --parameters deployContainerRegistry=false
+
+                - task: AzureCLI@2
+                  displayName: "Destroy Prod Infrastructure"
+                  condition: eq('${{ parameters.destroy }}', true)
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      RG_NAME="$(azureResourceGroupProd)"
+                      echo "Destroying prod resource group: $RG_NAME"
+                      az group delete --name "$RG_NAME" --yes --no-wait
+
+  - stage: DeploymentSummary
+    displayName: "Deployment Summary"
+    dependsOn:
+      - DeployDev
+      - DeployProd
+    condition: and(always(), ne('${{ parameters.destroy }}', true))
+    jobs:
+      - job: GenerateSummary
+        displayName: "Generate Deployment Summary"
+        steps:
+          - task: PowerShell@2
+            displayName: "Generate Summary"
             inputs:
-              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                RG_NAME="$(azureResourceGroupDev)"
-                echo "Creating dev resource group: $RG_NAME"
-                az group create --name "$RG_NAME" --location "${{ parameters.location }}"
+              targetType: "inline"
+              script: |
+                Write-Host "## Infrastructure Deployment Summary"
+                Write-Host "- **Environment Requested**: ${{ parameters.environment }}"
+                Write-Host "- **Instance Number**: ${{ parameters.instanceNumber }}"
+                Write-Host "- **Location**: ${{ parameters.location }}"
+                Write-Host ""
 
-          - task: AzureCLI@2
-            displayName: 'Validate Dev Bicep Template'
-            condition: ne('${{ parameters.destroy }}', true)
-            inputs:
-              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                az deployment group validate \
-                  --resource-group $(azureResourceGroupDev) \
-                  --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-                  --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
-                  --parameters location="${{ parameters.location }}" \
-                  --parameters instanceNumber="${{ parameters.instanceNumber }}" \
-                  --parameters containerImage="ai-stock-trade-app:latest" \
-                  --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
-                  --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)"
+                # Check Dev deployment status
+                $devStatus = "$(Agent.JobStatus)"
+                if ($devStatus -eq "Succeeded") {
+                    Write-Host "✅ **Dev Infrastructure**: Deployed successfully"
+                    Write-Host "- **Dev Resource Group**: $(azureResourceGroupDev)"
+                    Write-Host "- **Dev Web App**: https://app-aistock-dev-${{ parameters.instanceNumber }}.azurewebsites.net"
+                    Write-Host "- **Container Registry**: Deployed in dev environment (shared with prod)"
+                } else {
+                    Write-Host "❌ **Dev Infrastructure**: $devStatus"
+                }
 
-          - task: AzureCLI@2
-            displayName: 'Deploy Dev Infrastructure'
-            condition: ne('${{ parameters.destroy }}', true)
-            inputs:
-              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                echo "Deploying dev infrastructure with container registry..."
-                az deployment group create \
-                  --resource-group $(azureResourceGroupDev) \
-                  --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-                  --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
-                  --parameters location="${{ parameters.location }}" \
-                  --parameters instanceNumber="${{ parameters.instanceNumber }}" \
-                  --parameters containerImage="ai-stock-trade-app:latest" \
-                  --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
-                  --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)"
-
-          - task: AzureCLI@2
-            displayName: 'Destroy Dev Infrastructure'
-            condition: eq('${{ parameters.destroy }}', true)
-            inputs:
-              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                RG_NAME="$(azureResourceGroupDev)"
-                echo "Destroying dev resource group: $RG_NAME"
-                az group delete --name "$RG_NAME" --yes --no-wait
-
-- stage: DeployProd
-  displayName: 'Deploy Production Infrastructure'
-  dependsOn: DeployDev
-  condition: and(eq('${{ parameters.environment }}', 'prod'), succeeded('DeployDev'))
-  jobs:
-  - deployment: DeployProdInfrastructure
-    displayName: 'Deploy Prod Infrastructure'
-    environment: 'production-${{ parameters.instanceNumber }}'
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - checkout: self
-            displayName: 'Checkout code'
-
-          - task: AzureCLI@2
-            displayName: 'Create Prod Resource Group'
-            condition: ne('${{ parameters.destroy }}', true)
-            inputs:
-              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                RG_NAME="$(azureResourceGroupProd)"
-                echo "Creating prod resource group: $RG_NAME"
-                az group create --name "$RG_NAME" --location "${{ parameters.location }}"
-
-          - task: AzureCLI@2
-            displayName: 'Validate Prod Bicep Template'
-            condition: ne('${{ parameters.destroy }}', true)
-            inputs:
-              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                az deployment group validate \
-                  --resource-group $(azureResourceGroupProd) \
-                  --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-                  --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
-                  --parameters location="${{ parameters.location }}" \
-                  --parameters instanceNumber="${{ parameters.instanceNumber }}" \
-                  --parameters containerImage="ai-stock-trade-app:latest" \
-                  --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
-                  --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
-                  --parameters deployContainerRegistry=false
-
-          - task: AzureCLI@2
-            displayName: 'Deploy Prod Infrastructure'
-            condition: ne('${{ parameters.destroy }}', true)
-            inputs:
-              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                echo "Deploying prod infrastructure WITHOUT container registry..."
-                az deployment group create \
-                  --resource-group $(azureResourceGroupProd) \
-                  --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-                  --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
-                  --parameters location="${{ parameters.location }}" \
-                  --parameters instanceNumber="${{ parameters.instanceNumber }}" \
-                  --parameters containerImage="ai-stock-trade-app:latest" \
-                  --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
-                  --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
-                  --parameters deployContainerRegistry=false
-
-          - task: AzureCLI@2
-            displayName: 'Destroy Prod Infrastructure'
-            condition: eq('${{ parameters.destroy }}', true)
-            inputs:
-              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                RG_NAME="$(azureResourceGroupProd)"
-                echo "Destroying prod resource group: $RG_NAME"
-                az group delete --name "$RG_NAME" --yes --no-wait
-
-- stage: DeploymentSummary
-  displayName: 'Deployment Summary'
-  dependsOn: 
-  - DeployDev
-  - DeployProd
-  condition: and(always(), ne('${{ parameters.destroy }}', true))
-  jobs:
-  - job: GenerateSummary
-    displayName: 'Generate Deployment Summary'
-    steps:
-    - task: PowerShell@2
-      displayName: 'Generate Summary'
-      inputs:
-        targetType: 'inline'
-        script: |
-          Write-Host "## Infrastructure Deployment Summary"
-          Write-Host "- **Environment Requested**: ${{ parameters.environment }}"
-          Write-Host "- **Instance Number**: ${{ parameters.instanceNumber }}"
-          Write-Host "- **Location**: ${{ parameters.location }}"
-          Write-Host ""
-          
-          # Check Dev deployment status
-          $devStatus = "$(Agent.JobStatus)"
-          if ($devStatus -eq "Succeeded") {
-              Write-Host "✅ **Dev Infrastructure**: Deployed successfully"
-              Write-Host "- **Dev Resource Group**: $(azureResourceGroupDev)"
-              Write-Host "- **Dev Web App**: https://app-aistock-dev-${{ parameters.instanceNumber }}.azurewebsites.net"
-              Write-Host "- **Container Registry**: Deployed in dev environment (shared with prod)"
-          } else {
-              Write-Host "❌ **Dev Infrastructure**: $devStatus"
-          }
-          
-          # Check Prod deployment status if prod environment was requested
-          if ("${{ parameters.environment }}" -eq "prod") {
-              $prodStatus = "$(Agent.JobStatus)"
-              if ($prodStatus -eq "Succeeded") {
-                  Write-Host "✅ **Prod Infrastructure**: Deployed successfully"
-                  Write-Host "- **Prod Resource Group**: $(azureResourceGroupProd)"
-                  Write-Host "- **Prod Web App**: https://app-aistock-prod-${{ parameters.instanceNumber }}.azurewebsites.net"
-                  Write-Host "- **Container Registry**: Uses shared registry from dev environment"
-              } else {
-                  Write-Host "❌ **Prod Infrastructure**: $prodStatus"
-              }
-          }
+                # Check Prod deployment status if prod environment was requested
+                if ("${{ parameters.environment }}" -eq "prod") {
+                    $prodStatus = "$(Agent.JobStatus)"
+                    if ($prodStatus -eq "Succeeded") {
+                        Write-Host "✅ **Prod Infrastructure**: Deployed successfully"
+                        Write-Host "- **Prod Resource Group**: $(azureResourceGroupProd)"
+                        Write-Host "- **Prod Web App**: https://app-aistock-prod-${{ parameters.instanceNumber }}.azurewebsites.net"
+                        Write-Host "- **Container Registry**: Uses shared registry from dev environment"
+                    } else {
+                        Write-Host "❌ **Prod Infrastructure**: $prodStatus"
+                    }
+                }
