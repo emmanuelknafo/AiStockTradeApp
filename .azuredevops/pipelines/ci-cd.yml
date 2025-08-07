@@ -122,12 +122,6 @@ stages:
           - checkout: self
             displayName: "Checkout code"
 
-          - task: Docker@2
-            displayName: "Set up Docker Buildx"
-            inputs:
-              command: "login"
-              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
-
           - task: AzureCLI@2
             displayName: "Get Container Registry Information"
             inputs:
