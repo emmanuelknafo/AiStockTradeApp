@@ -1,0 +1,570 @@
+# Azure DevOps CI/CD Pipeline
+# Converted from GitHub Actions workflow
+
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    exclude:
+    - '**.md'
+    - '**/README.md'
+    - 'docs/**'
+    - '*.txt'
+    - '.gitignore'
+    - '.vscode/**'
+    - '.vs/**'
+    - 'AGENTS.md'
+    - 'LICENSE'
+
+pr:
+  branches:
+    include:
+    - main
+  paths:
+    exclude:
+    - '**.md'
+    - '**/README.md'
+    - 'docs/**'
+    - '*.txt'
+    - '.gitignore'
+    - '.vscode/**'
+    - '.vs/**'
+    - 'AGENTS.md'
+    - 'LICENSE'
+
+parameters:
+- name: environment
+  displayName: 'Environment to deploy to'
+  type: string
+  default: 'dev'
+  values:
+  - dev
+  - prod
+
+- name: instanceNumber
+  displayName: 'Instance number for resource differentiation'
+  type: string
+  default: '002'
+
+variables:
+- name: AZURE_WEBAPP_PACKAGE_PATH
+  value: '.'
+- name: DOTNET_VERSION
+  value: '9.0.x'
+- name: vmImageName
+  value: 'ubuntu-latest'
+
+pool:
+  vmImage: $(vmImageName)
+
+stages:
+- stage: Test
+  displayName: 'Test Application'
+  jobs:
+  - job: TestJob
+    displayName: 'Test Application'
+    steps:
+    - checkout: self
+      displayName: 'Checkout code'
+
+    - task: UseDotNet@2
+      displayName: 'Setup .NET'
+      inputs:
+        packageType: 'sdk'
+        version: $(DOTNET_VERSION)
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore dependencies'
+      inputs:
+        command: 'restore'
+        projects: '**/*.csproj'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Build application'
+      inputs:
+        command: 'build'
+        projects: '**/*.csproj'
+        arguments: '--no-restore --configuration Release'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Run tests'
+      inputs:
+        command: 'test'
+        projects: '**/*.csproj'
+        arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests"'
+
+- stage: Build
+  displayName: 'Build and Push Container'
+  dependsOn: Test
+  condition: succeeded()
+  jobs:
+  - job: BuildJob
+    displayName: 'Build and Push Container'
+    variables:
+    - name: containerImage
+      value: ''
+    - name: registryName
+      value: ''
+    - name: resourceGroup
+      value: ''
+    - name: instanceNum
+      value: ''
+    
+    steps:
+    - checkout: self
+      displayName: 'Checkout code'
+
+    - task: Docker@2
+      displayName: 'Set up Docker Buildx'
+      inputs:
+        command: 'login'
+        containerRegistry: '$(DOCKER_SERVICE_CONNECTION)'
+
+    - task: AzureCLI@2
+      displayName: 'Get Container Registry Information'
+      inputs:
+        azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Always use dev environment container registry (shared across all environments)
+          if [[ "$(Build.Reason)" == "Manual" ]]; then
+            INSTANCE_NUM="${{ parameters.instanceNumber }}"
+            echo "Manual trigger detected - Instance: ${INSTANCE_NUM}"
+          else
+            INSTANCE_NUM="002"
+            echo "Branch push detected - Using default instance: ${INSTANCE_NUM}"
+          fi
+          
+          # Always target dev resource group for container registry
+          ENV="dev"
+          RG_NAME="rg-aistock-${ENV}-${INSTANCE_NUM}"
+          
+          echo "=== BUILD ENVIRONMENT INFO ==="
+          echo "Container Registry Environment: ${ENV} (shared registry)"
+          echo "Instance Number: ${INSTANCE_NUM}"
+          echo "Registry Resource Group: ${RG_NAME}"
+          echo "Build Source Branch: $(Build.SourceBranch)"
+          echo "Build Reason: $(Build.Reason)"
+          
+          # Get container registry name from dev resource group
+          REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+          
+          if [ -z "${REGISTRY_NAME}" ] || [ "${REGISTRY_NAME}" == "null" ]; then
+            echo "ERROR: No container registry found in resource group ${RG_NAME}"
+            echo "Available resource groups:"
+            az group list --query '[].name' --output table
+            echo "This might mean the dev infrastructure hasn't been deployed yet for instance ${INSTANCE_NUM}"
+            echo "Please deploy dev environment first to create the shared container registry."
+            exit 1
+          fi
+          
+          echo "Found shared registry: ${REGISTRY_NAME}"
+          echo "##vso[task.setvariable variable=registryName]${REGISTRY_NAME}"
+          echo "##vso[task.setvariable variable=resourceGroup]${RG_NAME}"
+          echo "##vso[task.setvariable variable=instanceNum]${INSTANCE_NUM}"
+
+    - task: AzureCLI@2
+      displayName: 'Get Container Registry Credentials'
+      inputs:
+        azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Get admin credentials
+          REGISTRY_USERNAME=$(az acr credential show --name "$(registryName)" --query 'username' --output tsv)
+          REGISTRY_PASSWORD=$(az acr credential show --name "$(registryName)" --query 'passwords[0].value' --output tsv)
+          
+          echo "Registry Username: ${REGISTRY_USERNAME}"
+          echo "Password length: ${#REGISTRY_PASSWORD}"
+          
+          echo "##vso[task.setvariable variable=registryUsername;issecret=true]${REGISTRY_USERNAME}"
+          echo "##vso[task.setvariable variable=registryPassword;issecret=true]${REGISTRY_PASSWORD}"
+
+    - task: Bash@3
+      displayName: 'Debug Registry Information'
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "=== REGISTRY DEBUG INFO ==="
+          echo "Instance Number: $(instanceNum)"
+          echo "Registry name: $(registryName)"
+          echo "Resource group: $(resourceGroup)"
+          echo "Registry URL: $(registryName).azurecr.io"
+          echo "=== TRIGGER INFO ==="
+          echo "Build Source Branch: $(Build.SourceBranch)"
+          echo "Build Reason: $(Build.Reason)"
+
+    - task: Docker@2
+      displayName: 'Login to Azure Container Registry'
+      inputs:
+        command: 'login'
+        containerRegistry: '$(registryName).azurecr.io'
+        
+    - task: Bash@3
+      displayName: 'Generate Container Tags'
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Generate tags similar to docker/metadata-action
+          REGISTRY_URL="$(registryName).azurecr.io"
+          IMAGE_NAME="${REGISTRY_URL}/ai-stock-trade-app"
+          
+          # Branch-based tag
+          BRANCH_NAME=$(echo "$(Build.SourceBranchName)" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          BRANCH_TAG="${IMAGE_NAME}:${BRANCH_NAME}"
+          
+          # SHA-based tag
+          SHORT_SHA=$(echo "$(Build.SourceVersion)" | cut -c1-7)
+          SHA_TAG="${IMAGE_NAME}:sha-${SHORT_SHA}"
+          
+          # Latest tag for main/master branch
+          if [[ "$(Build.SourceBranchName)" == "main" || "$(Build.SourceBranchName)" == "master" ]]; then
+            LATEST_TAG="${IMAGE_NAME}:latest"
+            TAGS="${BRANCH_TAG},${SHA_TAG},${LATEST_TAG}"
+          else
+            TAGS="${BRANCH_TAG},${SHA_TAG}"
+          fi
+          
+          echo "Generated tags: ${TAGS}"
+          echo "##vso[task.setvariable variable=containerTags]${TAGS}"
+          echo "##vso[task.setvariable variable=deployTag]${SHA_TAG}"
+
+    - task: Docker@2
+      displayName: 'Build and push Docker image'
+      inputs:
+        command: 'buildAndPush'
+        repository: 'ai-stock-trade-app'
+        dockerfile: './ai-stock-trade-app/Dockerfile'
+        buildContext: './ai-stock-trade-app'
+        containerRegistry: '$(registryName).azurecr.io'
+        tags: |
+          $(containerTags)
+
+    - task: Bash@3
+      displayName: 'Extract and set container image for deployment'
+      inputs:
+        targetType: 'inline'
+        script: |
+          set -e  # Exit on any error
+          echo "=== SETTING DEPLOYMENT IMAGE ==="
+          
+          DEPLOY_IMAGE="$(deployTag)"
+          echo "Final deployment image: '${DEPLOY_IMAGE}'"
+          
+          # Check if DEPLOY_IMAGE is empty
+          if [ -z "${DEPLOY_IMAGE}" ]; then
+            echo "ERROR: DEPLOY_IMAGE is empty after processing!"
+            exit 1
+          fi
+          
+          # Write to artifact file for reliable transfer
+          echo "=== CREATING ARTIFACT ==="
+          mkdir -p $(Pipeline.Workspace)/build-outputs
+          echo "${DEPLOY_IMAGE}" > $(Pipeline.Workspace)/build-outputs/container-image.txt
+          echo "hello-from-build-stage" > $(Pipeline.Workspace)/build-outputs/test-output.txt
+          
+          echo "Artifact files created:"
+          ls -la $(Pipeline.Workspace)/build-outputs/
+          echo "Container image file contents:"
+          cat $(Pipeline.Workspace)/build-outputs/container-image.txt
+          
+          echo "##vso[task.setvariable variable=containerImage;isOutput=true]${DEPLOY_IMAGE}"
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Upload build outputs as artifact'
+      inputs:
+        targetPath: '$(Pipeline.Workspace)/build-outputs'
+        artifactName: 'build-outputs'
+
+- stage: DeployDev
+  displayName: 'Deploy to Development'
+  dependsOn: Build
+  condition: |
+    and(
+      succeeded(),
+      or(
+        eq(variables['Build.SourceBranch'], 'refs/heads/develop'),
+        and(
+          eq(variables['Build.Reason'], 'Manual'),
+          eq('${{ parameters.environment }}', 'dev')
+        )
+      )
+    )
+  jobs:
+  - deployment: DeployDevJob
+    displayName: 'Deploy to Development'
+    environment: ${{ format('development-{0}', parameters.instanceNumber) }}
+    variables:
+    - name: instanceNum
+      value: ${{ format('{0}', parameters.instanceNumber) }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+            displayName: 'Checkout code'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download build outputs'
+            inputs:
+              artifactName: 'build-outputs'
+              downloadPath: '$(Pipeline.Workspace)/build-outputs'
+
+          - task: Bash@3
+            displayName: 'Load container image from artifact'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "=== LOADING CONTAINER IMAGE FROM ARTIFACT ==="
+                if [ -f "$(Pipeline.Workspace)/build-outputs/container-image.txt" ]; then
+                  CONTAINER_IMAGE=$(cat $(Pipeline.Workspace)/build-outputs/container-image.txt)
+                  echo "Container image from artifact: '${CONTAINER_IMAGE}'"
+                  echo "##vso[task.setvariable variable=containerImage]${CONTAINER_IMAGE}"
+                else
+                  echo "ERROR: container-image.txt not found in artifacts!"
+                  ls -la $(Pipeline.Workspace)/build-outputs/
+                  exit 1
+                fi
+
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: 'Deploy Bicep template'
+            inputs:
+              deploymentScope: 'Resource Group'
+              azureResourceManagerConnection: '$(AZURE_SERVICE_CONNECTION)'
+              subscriptionId: '$(AZURE_SUBSCRIPTION_ID)'
+              action: 'Create Or Update Resource Group'
+              resourceGroupName: 'rg-aistock-dev-$(instanceNum)'
+              location: 'Canada Central'
+              templateLocation: 'Linked artifact'
+              csmFile: './ai-stock-trade-app/infrastructure/main.bicep'
+              csmParametersFile: './ai-stock-trade-app/infrastructure/parameters.dev.json'
+              overrideParameters: '-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY)'
+              deploymentMode: 'Incremental'
+
+          - task: AzureCLI@2
+            displayName: 'Update Web App Container'
+            inputs:
+              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                WEBAPP_NAME="app-aistock-dev-$(instanceNum)"
+                RG_NAME="rg-aistock-dev-$(instanceNum)"
+                
+                # Get registry information from the same resource group
+                REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+                REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+                REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+                
+                echo "Container Image: $(containerImage)"
+                echo "Web App Name: ${WEBAPP_NAME}"
+                echo "Resource Group: ${RG_NAME}"
+                echo "Registry Name: ${REGISTRY_NAME}"
+                
+                if [ -z "$(containerImage)" ]; then
+                  echo "ERROR: Container image is empty!"
+                  exit 1
+                fi
+                
+                az webapp config container set \
+                  --name "${WEBAPP_NAME}" \
+                  --resource-group "${RG_NAME}" \
+                  --container-image-name "$(containerImage)" \
+                  --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+                  --container-registry-user "${REGISTRY_USERNAME}" \
+                  --container-registry-password "${REGISTRY_PASSWORD}"
+
+          - task: Bash@3
+            displayName: 'Run Health Check'
+            inputs:
+              targetType: 'inline'
+              script: |
+                WEBAPP_NAME="app-aistock-dev-$(instanceNum)"
+                HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+                echo "Waiting for deployment to be ready..."
+                echo "Health check URL: ${HEALTH_URL}"
+                sleep 30
+                curl -f "${HEALTH_URL}" || exit 1
+                echo "Health check passed!"
+
+- stage: DeployProd
+  displayName: 'Deploy to Production'
+  dependsOn: 
+  - Build
+  - DeployDev
+  condition: |
+    and(
+      succeeded(),
+      in(dependencies.Build.result, 'Succeeded'),
+      in(dependencies.DeployDev.result, 'Succeeded', 'Skipped'),
+      or(
+        eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+        and(
+          eq(variables['Build.Reason'], 'Manual'),
+          eq('${{ parameters.environment }}', 'prod')
+        )
+      )
+    )
+  jobs:
+  - deployment: DeployProdJob
+    displayName: 'Deploy to Production'
+    environment: ${{ format('production-{0}', parameters.instanceNumber) }}
+    variables:
+    - name: instanceNum
+      value: ${{ format('{0}', parameters.instanceNumber) }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+            displayName: 'Checkout code'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download build outputs'
+            inputs:
+              artifactName: 'build-outputs'
+              downloadPath: '$(Pipeline.Workspace)/build-outputs'
+
+          - task: Bash@3
+            displayName: 'Load container image from artifact'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "=== LOADING CONTAINER IMAGE FROM ARTIFACT ==="
+                if [ -f "$(Pipeline.Workspace)/build-outputs/container-image.txt" ]; then
+                  CONTAINER_IMAGE=$(cat $(Pipeline.Workspace)/build-outputs/container-image.txt)
+                  echo "Container image from artifact: '${CONTAINER_IMAGE}'"
+                  echo "##vso[task.setvariable variable=containerImage]${CONTAINER_IMAGE}"
+                else
+                  echo "ERROR: container-image.txt not found in artifacts!"
+                  ls -la $(Pipeline.Workspace)/build-outputs/
+                  exit 1
+                fi
+
+          - task: Bash@3
+            displayName: 'Debug Variables'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "=== DEPLOYMENT DEBUG INFO ==="
+                echo "Stage name: DeployProd"
+                echo "Build Source Branch: $(Build.SourceBranch)"
+                echo "Build Reason: $(Build.Reason)"
+                echo "Environment parameter: ${{ parameters.environment }}"
+                echo "Instance Number: $(instanceNum)"
+                echo "Resource Group: rg-aistock-prod-$(instanceNum)"
+                echo "Web App Name: app-aistock-prod-$(instanceNum)"
+                echo "Container image from artifact: $(containerImage)"
+
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: 'Deploy Bicep template'
+            inputs:
+              deploymentScope: 'Resource Group'
+              azureResourceManagerConnection: '$(AZURE_SERVICE_CONNECTION)'
+              subscriptionId: '$(AZURE_SUBSCRIPTION_ID)'
+              action: 'Create Or Update Resource Group'
+              resourceGroupName: 'rg-aistock-prod-$(instanceNum)'
+              location: 'Canada Central'
+              templateLocation: 'Linked artifact'
+              csmFile: './ai-stock-trade-app/infrastructure/main.bicep'
+              csmParametersFile: './ai-stock-trade-app/infrastructure/parameters.prod.json'
+              overrideParameters: '-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY)'
+              deploymentMode: 'Incremental'
+
+          - task: AzureCLI@2
+            displayName: 'Update Web App Container'
+            inputs:
+              azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                RG_NAME="rg-aistock-prod-$(instanceNum)"
+                
+                # Get registry information from DEV resource group (shared registry)
+                DEV_RG_NAME="rg-aistock-dev-$(instanceNum)"
+                REGISTRY_NAME=$(az acr list --resource-group "${DEV_RG_NAME}" --query '[0].name' --output tsv)
+                REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+                REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+                
+                echo "Container Image: $(containerImage)"
+                echo "Web App Name: ${WEBAPP_NAME}"
+                echo "Prod Resource Group: ${RG_NAME}"
+                echo "Dev Registry Resource Group: ${DEV_RG_NAME}"
+                echo "Shared Registry Name: ${REGISTRY_NAME}"
+                
+                if [ -z "$(containerImage)" ]; then
+                  echo "ERROR: Container image is empty!"
+                  exit 1
+                fi
+                
+                az webapp config container set \
+                  --name "${WEBAPP_NAME}" \
+                  --resource-group "${RG_NAME}" \
+                  --container-image-name "$(containerImage)" \
+                  --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+                  --container-registry-user "${REGISTRY_USERNAME}" \
+                  --container-registry-password "${REGISTRY_PASSWORD}"
+
+          - task: Bash@3
+            displayName: 'Run Health Check'
+            inputs:
+              targetType: 'inline'
+              script: |
+                WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+                echo "Waiting for deployment to be ready..."
+                echo "Health check URL: ${HEALTH_URL}"
+                sleep 30
+                curl -f "${HEALTH_URL}" || exit 1
+                echo "Health check passed!"
+
+- stage: SecurityScan
+  displayName: 'Security Scan'
+  dependsOn: Build
+  condition: |
+    and(
+      succeeded(),
+      eq(variables['Build.Reason'], 'PullRequest')
+    )
+  jobs:
+  - job: SecurityScanJob
+    displayName: 'Security Scan'
+    steps:
+    - checkout: self
+      displayName: 'Checkout code'
+
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download build outputs'
+      inputs:
+        artifactName: 'build-outputs'
+        downloadPath: '$(Pipeline.Workspace)/build-outputs'
+
+    - task: Bash@3
+      displayName: 'Load container image from artifact'
+      inputs:
+        targetType: 'inline'
+        script: |
+          if [ -f "$(Pipeline.Workspace)/build-outputs/container-image.txt" ]; then
+            CONTAINER_IMAGE=$(cat $(Pipeline.Workspace)/build-outputs/container-image.txt)
+            echo "Container image from artifact: '${CONTAINER_IMAGE}'"
+            echo "##vso[task.setvariable variable=containerImage]${CONTAINER_IMAGE}"
+          else
+            echo "ERROR: container-image.txt not found in artifacts!"
+            exit 1
+          fi
+
+    # Note: For Trivy scanning in Azure DevOps, you would need to install Trivy
+    # or use a marketplace extension. This is a placeholder for the security scan.
+    - task: Bash@3
+      displayName: 'Run Security Scan (Placeholder)'
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "=== SECURITY SCAN ==="
+          echo "Container image to scan: $(containerImage)"
+          echo "In a real implementation, this would run Trivy or similar security scanner"
+          echo "Results would be published to Azure DevOps security dashboard"
