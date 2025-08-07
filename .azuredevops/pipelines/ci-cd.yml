@@ -46,7 +46,7 @@ parameters:
 - name: instanceNumber
   displayName: 'Instance number for resource differentiation'
   type: string
-  default: '002'
+  default: '003'
 
 variables:
 - name: AZURE_WEBAPP_PACKAGE_PATH
@@ -134,7 +134,7 @@ stages:
             INSTANCE_NUM="${{ parameters.instanceNumber }}"
             echo "Manual trigger detected - Instance: ${INSTANCE_NUM}"
           else
-            INSTANCE_NUM="002"
+            INSTANCE_NUM="003"
             echo "Branch push detected - Using default instance: ${INSTANCE_NUM}"
           fi
           

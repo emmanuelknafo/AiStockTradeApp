@@ -20,7 +20,7 @@ parameters:
 - name: instanceNumber
   displayName: 'Instance number for resource differentiation'
   type: string
-  default: '002'
+  default: '003'
 
 - name: destroy
   displayName: 'Destroy infrastructure instead of deploy'
