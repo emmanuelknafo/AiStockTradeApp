@@ -7,7 +7,7 @@ public class StockDashboardPage
     private readonly IPage _page;
     private readonly string _baseUrl;
 
-    public StockDashboardPage(IPage page, string baseUrl = "https://localhost:7043")
+    public StockDashboardPage(IPage page, string baseUrl = "http://localhost:5259")
     {
         _page = page;
         _baseUrl = baseUrl;

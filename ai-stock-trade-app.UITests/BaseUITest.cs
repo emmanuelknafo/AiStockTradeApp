@@ -8,7 +8,7 @@ namespace ai_stock_trade_app.UITests;
 [TestFixture]
 public class BaseUITest : PageTest
 {
-    protected string BaseUrl = "https://localhost:7043"; // Updated to match launchSettings.json
+    protected string BaseUrl = "http://localhost:5259"; // Updated to match launchSettings.json
     
     [OneTimeSetUp]
     public void GlobalSetup()
