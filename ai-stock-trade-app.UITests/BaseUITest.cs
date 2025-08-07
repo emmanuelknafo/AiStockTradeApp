@@ -8,13 +8,27 @@ namespace ai_stock_trade_app.UITests;
 [TestFixture]
 public class BaseUITest : PageTest
 {
-    protected string BaseUrl = "http://localhost:5259"; // Updated to match launchSettings.json
+    protected string BaseUrl = "https://localhost:7043"; // Updated to match launchSettings.json HTTPS profile
+    
+    public override BrowserNewContextOptions ContextOptions()
+    {
+        return new BrowserNewContextOptions()
+        {
+            // Ignore SSL certificate errors for localhost development
+            IgnoreHTTPSErrors = true,
+            // Set viewport size
+            ViewportSize = new ViewportSize { Width = 1280, Height = 720 },
+            // Additional options for better test stability
+            Locale = "en-US",
+            TimezoneId = "America/New_York"
+        };
+    }
     
     [OneTimeSetUp]
-    public void GlobalSetup()
+    public async Task GlobalSetup()
     {
-        // Note: Run 'playwright install' as a separate step in CI/CD or locally
-        // Program.Main(new[] { "install" }); // This line is not needed
+        // Check if the application is running before starting tests
+        await TestSetupHelper.WaitForApplicationStartup(BaseUrl, timeoutSeconds: 10);
     }
 
     [SetUp]
@@ -59,16 +73,34 @@ public class BaseUITest : PageTest
 
     protected async Task NavigateToHomePage()
     {
-        await Page.GotoAsync(BaseUrl);
+        try
+        {
+            await Page.GotoAsync(BaseUrl, new PageGotoOptions { Timeout = 10000 });
+        }
+        catch (PlaywrightException ex) when (ex.Message.Contains("ERR_CONNECTION_REFUSED"))
+        {
+            Assert.Fail($"Cannot connect to application at {BaseUrl}. Please ensure the application is running.\n" +
+                       "Start the application with: cd ai-stock-trade-app && dotnet run\n" +
+                       "Then run the tests again.");
+        }
     }
 
     protected async Task NavigateToStockDashboard()
     {
-        await Page.GotoAsync($"{BaseUrl}/Stock/Dashboard");
+        try
+        {
+            await Page.GotoAsync($"{BaseUrl}/Stock/Dashboard", new PageGotoOptions { Timeout = 10000 });
+        }
+        catch (PlaywrightException ex) when (ex.Message.Contains("ERR_CONNECTION_REFUSED"))
+        {
+            Assert.Fail($"Cannot connect to application at {BaseUrl}/Stock/Dashboard. Please ensure the application is running.\n" +
+                       "Start the application with: cd ai-stock-trade-app && dotnet run\n" +
+                       "Then run the tests again.");
+        }
     }
 
     protected async Task WaitForPageLoad()
     {
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 15000 });
     }
 }
