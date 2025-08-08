@@ -6,6 +6,7 @@ namespace ai_stock_trade_app.UITests;
 
 [Parallelizable(ParallelScope.None)] // Disable parallelization to prevent Playwright concurrency issues
 [TestFixture]
+[CancelAfter(120000)] // Set 2-minute default timeout for all UI tests
 public class BaseUITest : PageTest
 {
     protected string BaseUrl;

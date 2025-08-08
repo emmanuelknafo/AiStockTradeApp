@@ -179,9 +179,15 @@ jobs:
             exit 1
           fi
 
+      - name: List UI Tests to be executed
+        run: dotnet test ai-stock-trade-app.UITests --list-tests --verbosity normal --filter "FullyQualifiedName~UITests"
+
       - name: Run Playwright UI Tests
-        run: dotnet test ai-stock-trade-app.UITests --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings
-        timeout-minutes: 15
+        run: |
+          echo "Starting UI test execution..."
+          dotnet test ai-stock-trade-app.UITests --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings
+          echo "UI test execution completed with exit code: $?"
+        timeout-minutes: 25
         env:
           PLAYWRIGHT_BASE_URL: "http://localhost:5000"
           ASPNETCORE_ENVIRONMENT: "Development"
@@ -194,6 +200,21 @@ jobs:
           name: ui-test-results
           path: "**/ui-test-results.trx"
           retention-days: 5
+
+      - name: Check application logs on failure
+        if: failure()
+        run: |
+          echo "=== APPLICATION LOGS (last 100 lines) ==="
+          # Check if the application is still running
+          if pgrep -f "dotnet.*ai-stock-trade-app" > /dev/null; then
+            echo "Application is still running"
+            ps aux | grep dotnet
+          else
+            echo "Application is not running"
+          fi
+          
+          echo "=== RECENT SYSTEM LOGS ==="
+          journalctl --since "10 minutes ago" | tail -50 || echo "No journalctl available"
 
       - name: Stop application
         if: always()

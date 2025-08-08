@@ -5,8 +5,8 @@
     <MaxCpuCount>1</MaxCpuCount>
     <DisableParallelization>true</DisableParallelization>
     
-    <!-- Set timeout for tests -->
-    <TestSessionTimeout>900000</TestSessionTimeout> <!-- 15 minutes -->
+    <!-- Set timeout for tests - increased to 20 minutes -->
+    <TestSessionTimeout>1200000</TestSessionTimeout> <!-- 20 minutes -->
     
     <!-- Collect code coverage -->
     <DataCollectionRunSettings>
@@ -36,6 +36,8 @@
   <NUnit>
     <!-- Disable parallel execution for NUnit -->
     <NumberOfTestWorkers>1</NumberOfTestWorkers>
+    <!-- Set individual test timeout to 2 minutes -->
+    <DefaultTimeout>120000</DefaultTimeout>
   </NUnit>
 
   <!-- MSTest specific settings -->

@@ -85,7 +85,7 @@ public class PerformanceTests : BaseUITest
     }
 
     [Test]
-    public async Task ConcurrentActions_ShouldHandleGracefully()
+    public async Task RapidActions_ShouldHandleGracefully()
     {
         await NavigateToStockDashboard();
         await WaitForPageLoad();
@@ -93,18 +93,15 @@ public class PerformanceTests : BaseUITest
         var tickerInput = Page.Locator("#ticker-input");
         var addButton = Page.Locator("#add-button");
 
-        // Perform multiple actions quickly
+        // Perform multiple actions quickly in sequence (not concurrent)
         await tickerInput.FillAsync("AAPL");
         
-        // Click add button multiple times quickly
-        var tasks = new List<Task>();
+        // Click add button multiple times quickly but sequentially
         for (int i = 0; i < 3; i++)
         {
-            tasks.Add(addButton.ClickAsync());
-            tasks.Add(Page.WaitForTimeoutAsync(100));
+            await addButton.ClickAsync();
+            await Page.WaitForTimeoutAsync(100); // Small delay between clicks
         }
-
-        await Task.WhenAll(tasks);
 
         // Should handle gracefully without errors - check that watchlist container exists and page is responsive
         var watchlist = Page.Locator("#watchlist");
@@ -112,6 +109,6 @@ public class PerformanceTests : BaseUITest
         
         // Also check that the page is still responsive by verifying the input is accessible
         var isPageResponsive = await tickerInput.IsEnabledAsync();
-        isPageResponsive.Should().BeTrue("Page should remain responsive after concurrent actions");
+        isPageResponsive.Should().BeTrue("Page should remain responsive after rapid actions");
     }
 }

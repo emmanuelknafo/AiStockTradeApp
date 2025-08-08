@@ -169,11 +169,27 @@ public class StockDashboardPage
         var stockCard = GetStockCard(symbol);
         var priceElement = stockCard.Locator(".price span");
         
-        await _page.WaitForFunctionAsync(
-            "element => element.textContent && !element.textContent.includes('Loading')",
-            priceElement,
-            new() { Timeout = timeoutMs }
-        );
+        // Use simple wait with retry pattern instead of WaitForFunctionAsync
+        var endTime = DateTime.Now.AddMilliseconds(timeoutMs);
+        while (DateTime.Now < endTime)
+        {
+            try
+            {
+                var text = await priceElement.TextContentAsync();
+                if (!string.IsNullOrEmpty(text) && !text.Contains("Loading"))
+                {
+                    return; // Stock has loaded successfully
+                }
+            }
+            catch
+            {
+                // Element might not be ready yet, continue waiting
+            }
+            
+            await Task.Delay(500); // Wait 500ms before checking again
+        }
+        
+        throw new TimeoutException($"Stock {symbol} did not load within {timeoutMs}ms");
     }
 
     public async Task WaitForNotification(int timeoutMs = 5000)
