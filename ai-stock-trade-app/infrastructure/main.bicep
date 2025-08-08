@@ -5,6 +5,9 @@ param sqlAdminUsername string = 'sqladmin'
 @secure()
 param sqlAdminPassword string
 
+@description('GitHub Actions Service Principal Object ID for Key Vault access')
+param githubActionsServicePrincipalId string = ''
+
 @description('The location for all resources')
 param location string = resourceGroup().location
 
