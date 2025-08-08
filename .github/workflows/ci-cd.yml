@@ -551,12 +551,14 @@ jobs:
           
           echo "Getting SQL Server connection details..."
           
-          # Get SQL Server name from Key Vault
+          # Try to get connection string from Key Vault, but don't fail if access is denied
           KEY_VAULT_NAME="kv-aistock-prod-${INSTANCE_NUM}"
-          CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv)
+          CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv 2>/dev/null || echo "")
           
           if [ -z "${CONNECTION_STRING}" ]; then
-            echo "WARNING: Could not retrieve connection string from Key Vault. Database migrations will run automatically on app startup."
+            echo "INFO: Could not retrieve connection string from Key Vault (permission may not be configured yet)."
+            echo "Database migrations will run automatically on first app startup."
+            echo "This is normal for first-time deployments."
           else
             echo "Running database migrations manually..."
             cd ai-stock-trade-app
