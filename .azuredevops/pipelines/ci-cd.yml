@@ -131,6 +131,56 @@ stages:
               projects: "**/*.csproj"
               arguments: "--no-restore --configuration Release"
 
+          - task: DotNetCoreCLI@2
+            displayName: "Install Entity Framework tools"
+            inputs:
+              command: "custom"
+              custom: "tool"
+              arguments: "install --global dotnet-ef"
+
+          - task: SqlServerDeploy@0
+            displayName: "Setup SQL Server for UI testing"
+            inputs:
+              ConnectionType: "connectionString"
+              ConnectionString: "Server=localhost;Database=master;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+              DeployType: "SqlTask"
+              SqlFile: |
+                -- This will be handled by the next step
+              ContinueOnError: true
+            condition: succeededOrFailed()
+
+          - script: |
+              # Start SQL Server container for testing
+              docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=YourStrong@Passw0rd" \
+                -p 1433:1433 --name sqlserver-ui-test \
+                -d mcr.microsoft.com/mssql/server:2022-latest
+              
+              # Wait for SQL Server to start
+              echo "Waiting for SQL Server to start..."
+              sleep 30
+              
+              # Test connection
+              timeout=60
+              while [ $timeout -gt 0 ]; do
+                if docker exec sqlserver-ui-test /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -Q 'SELECT 1' >/dev/null 2>&1; then
+                  echo "SQL Server is ready!"
+                  break
+                fi
+                echo "Waiting for SQL Server... ($timeout seconds remaining)"
+                sleep 2
+                timeout=$((timeout-2))
+              done
+            displayName: "Setup SQL Server for UI testing"
+
+          - task: DotNetCoreCLI@2
+            displayName: "Run database migrations for UI testing"
+            inputs:
+              command: "custom"
+              custom: "ef"
+              arguments: "database update --project ai-stock-trade-app/ai-stock-trade-app.csproj"
+            env:
+              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+
           - task: NodeTool@0
             displayName: "Setup Node.js"
             inputs:
@@ -150,7 +200,7 @@ stages:
             env:
               ASPNETCORE_ENVIRONMENT: "Development"
               ASPNETCORE_URLS: "http://localhost:5000"
-              ConnectionStrings__DefaultConnection: "Server=.;Database=StockTraderTestUI;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true"
+              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
             condition: succeededOrFailed()
             timeoutInMinutes: 2
             continueOnError: true
@@ -199,6 +249,13 @@ stages:
               pkill -f "dotnet.*ai-stock-trade-app" || true
               sleep 5
             displayName: "Stop application"
+            condition: always()
+
+          - script: |
+              echo "Cleaning up SQL Server container..."
+              docker stop sqlserver-ui-test || true
+              docker rm sqlserver-ui-test || true
+            displayName: "Cleanup SQL Server"
             condition: always()
 
   - stage: Build
