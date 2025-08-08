@@ -138,17 +138,6 @@ stages:
               custom: "tool"
               arguments: "install --global dotnet-ef"
 
-          - task: SqlServerDeploy@0
-            displayName: "Setup SQL Server for UI testing"
-            inputs:
-              ConnectionType: "connectionString"
-              ConnectionString: "Server=localhost;Database=master;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
-              DeployType: "SqlTask"
-              SqlFile: |
-                -- This will be handled by the next step
-              ContinueOnError: true
-            condition: succeededOrFailed()
-
           - script: |
               # Start SQL Server container for testing
               docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=YourStrong@Passw0rd" \
@@ -159,7 +148,7 @@ stages:
               echo "Waiting for SQL Server to start..."
               sleep 30
               
-              # Test connection
+              # Test connection and wait for readiness
               timeout=60
               while [ $timeout -gt 0 ]; do
                 if docker exec sqlserver-ui-test /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -Q 'SELECT 1' >/dev/null 2>&1; then
@@ -170,6 +159,11 @@ stages:
                 sleep 2
                 timeout=$((timeout-2))
               done
+              
+              if [ $timeout -le 0 ]; then
+                echo "SQL Server failed to start within timeout"
+                exit 1
+              fi
             displayName: "Setup SQL Server for UI testing"
 
           - task: DotNetCoreCLI@2
