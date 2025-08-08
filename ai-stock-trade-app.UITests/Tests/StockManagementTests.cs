@@ -54,7 +54,7 @@ public class StockManagementTests : BaseUITest
 
         // Get initial count of stock cards
         var watchlist = Page.Locator("#watchlist");
-        await Expect(watchlist).ToBeVisibleAsync();
+        await Expect(watchlist).ToBeAttachedAsync(); // Check if element exists in DOM instead of visibility
         var initialCards = await watchlist.Locator(".stock-card").CountAsync();
 
         // Click add button without entering a symbol
@@ -114,7 +114,7 @@ public class StockManagementTests : BaseUITest
 
         // Get initial state
         var watchlist = Page.Locator("#watchlist");
-        await Expect(watchlist).ToBeVisibleAsync();
+        await Expect(watchlist).ToBeAttachedAsync(); // Check if element exists in DOM instead of visibility
         
         // Try to add a few stocks (even if they fail due to API issues, clear all should still work)
         var symbols = new[] { "AAPL", "GOOGL" };

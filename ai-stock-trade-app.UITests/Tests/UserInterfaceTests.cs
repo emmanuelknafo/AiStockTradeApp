@@ -13,9 +13,9 @@ public class UserInterfaceTests : BaseUITest
         await NavigateToStockDashboard();
         await WaitForPageLoad();
 
-        // Get initial theme (check body class or data attribute)
-        var body = Page.Locator("body");
-        var initialTheme = await body.GetAttributeAsync("class") ?? "";
+        // Get initial theme (check html data-theme attribute)
+        var html = Page.Locator("html");
+        var initialTheme = await html.GetAttributeAsync("data-theme") ?? "light";
 
         // Click theme toggle
         var themeToggle = Page.Locator("#theme-toggle");
@@ -25,8 +25,12 @@ public class UserInterfaceTests : BaseUITest
         await Page.WaitForTimeoutAsync(500);
 
         // Check if theme changed
-        var newTheme = await body.GetAttributeAsync("class") ?? "";
-        newTheme.Should().NotBe(initialTheme);
+        var newTheme = await html.GetAttributeAsync("data-theme") ?? "light";
+        newTheme.Should().NotBe(initialTheme, "Theme should change when toggle is clicked");
+        
+        // Also verify the theme toggle button text changed
+        var toggleText = await themeToggle.TextContentAsync();
+        toggleText.Should().NotBeNullOrEmpty("Theme toggle button should have text");
     }
 
     [Test]

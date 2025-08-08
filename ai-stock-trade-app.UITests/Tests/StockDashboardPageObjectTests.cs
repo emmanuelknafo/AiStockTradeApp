@@ -12,7 +12,7 @@ public class StockDashboardPageObjectTests : BaseUITest
     [SetUp]
     public async Task SetUpPage()
     {
-        await base.Setup();
+        // Don't call base.Setup() to avoid tracing conflicts - base class already handles setup
         _dashboardPage = new StockDashboardPage(Page, BaseUrl);
         await _dashboardPage.NavigateTo();
     }
