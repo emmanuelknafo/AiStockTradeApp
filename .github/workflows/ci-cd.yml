@@ -83,11 +83,6 @@ jobs:
       - name: Wait for SQL Server to start
         run: sleep 30
 
-      - name: Verify SQL Server is running
-        run: |
-          echo "Checking SQL Server status..."
-          sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -Q "SELECT @@VERSION" -C
-
       - name: Run database migrations for testing
         run: |
           cd ai-stock-trade-app
