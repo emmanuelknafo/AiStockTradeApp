@@ -146,7 +146,7 @@ stages:
             inputs:
               command: "run"
               projects: "ai-stock-trade-app/ai-stock-trade-app.csproj"
-              arguments: "--no-build --configuration Release"
+              arguments: "--no-build --configuration Release --no-launch-profile"
             env:
               ASPNETCORE_ENVIRONMENT: "Development"
               ASPNETCORE_URLS: "http://localhost:5000"
