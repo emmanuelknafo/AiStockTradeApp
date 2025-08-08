@@ -8,13 +8,19 @@ namespace ai_stock_trade_app.UITests;
 [TestFixture]
 public class BaseUITest : PageTest
 {
-    protected string BaseUrl = "https://localhost:7043"; // Updated to match launchSettings.json HTTPS profile
+    protected string BaseUrl;
+    
+    public BaseUITest()
+    {
+        // Use environment variable for base URL, fallback to local HTTPS development URL
+        BaseUrl = Environment.GetEnvironmentVariable("PLAYWRIGHT_BASE_URL") ?? "https://localhost:7043";
+    }
     
     public override BrowserNewContextOptions ContextOptions()
     {
         return new BrowserNewContextOptions()
         {
-            // Ignore SSL certificate errors for localhost development
+            // Ignore SSL certificate errors for localhost development (both HTTP and HTTPS)
             IgnoreHTTPSErrors = true,
             // Set viewport size
             ViewportSize = new ViewportSize { Width = 1280, Height = 720 },

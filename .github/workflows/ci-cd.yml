@@ -151,7 +151,7 @@ jobs:
       - name: Start application in background
         run: |
           cd ai-stock-trade-app
-          dotnet run --no-build --configuration Release &
+          dotnet run --no-build --configuration Release --no-launch-profile &
           APP_PID=$!
           echo "APP_PID=${APP_PID}" >> $GITHUB_ENV
           echo "Started application with PID: ${APP_PID}"
