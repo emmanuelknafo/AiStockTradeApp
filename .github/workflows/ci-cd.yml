@@ -180,7 +180,8 @@ jobs:
           fi
 
       - name: Run Playwright UI Tests
-        run: dotnet test --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx"
+        run: dotnet test ai-stock-trade-app.UITests --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings
+        timeout-minutes: 15
         env:
           PLAYWRIGHT_BASE_URL: "http://localhost:5000"
           ASPNETCORE_ENVIRONMENT: "Development"

@@ -4,7 +4,7 @@ using NUnit.Framework;
 
 namespace ai_stock_trade_app.UITests;
 
-[Parallelizable(ParallelScope.Self)]
+[Parallelizable(ParallelScope.None)] // Disable parallelization to prevent Playwright concurrency issues
 [TestFixture]
 public class BaseUITest : PageTest
 {

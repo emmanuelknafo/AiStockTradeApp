@@ -140,38 +140,79 @@ stages:
 
           - script: |
               # Start SQL Server container for testing
+              echo "Starting SQL Server container..."
               docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=YourStrong@Passw0rd" \
+                -e "MSSQL_PID=Express" \
                 -p 1433:1433 --name sqlserver-ui-test \
                 -d mcr.microsoft.com/mssql/server:2022-latest
               
-              # Wait for SQL Server to start
-              echo "Waiting for SQL Server to start..."
-              sleep 30
+              # Wait for SQL Server to start - give it more time
+              echo "Waiting for SQL Server to initialize..."
+              sleep 60
               
-              # Test connection and wait for readiness
-              timeout=60
+              # Check if container is running and port is available
+              echo "Checking SQL Server status..."
+              timeout=90
               while [ $timeout -gt 0 ]; do
-                if docker exec sqlserver-ui-test /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'YourStrong@Passw0rd' -Q 'SELECT 1' >/dev/null 2>&1; then
+                # Check if container is running
+                if ! docker ps --filter "name=sqlserver-ui-test" --filter "status=running" | grep -q sqlserver-ui-test; then
+                  echo "Container is not running. Checking logs..."
+                  docker logs sqlserver-ui-test
+                  exit 1
+                fi
+                
+                # Check if port 1433 is responding
+                if nc -z localhost 1433 2>/dev/null; then
+                  echo "SQL Server port 1433 is responding!"
+                  # Give it a bit more time to fully initialize
+                  sleep 10
                   echo "SQL Server is ready!"
                   break
                 fi
-                echo "Waiting for SQL Server... ($timeout seconds remaining)"
-                sleep 2
-                timeout=$((timeout-2))
+                
+                echo "Waiting for SQL Server port 1433... ($timeout seconds remaining)"
+                sleep 5
+                timeout=$((timeout-5))
               done
               
               if [ $timeout -le 0 ]; then
                 echo "SQL Server failed to start within timeout"
+                echo "Container status:"
+                docker ps -a --filter "name=sqlserver-ui-test"
+                echo "Container logs:"
+                docker logs sqlserver-ui-test
                 exit 1
               fi
             displayName: "Setup SQL Server for UI testing"
 
-          - task: DotNetCoreCLI@2
+          - script: |
+              # Run database migrations with retry logic
+              echo "Running database migrations..."
+              
+              export ConnectionStrings__DefaultConnection="Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+              
+              # Retry migration up to 3 times
+              retry_count=0
+              max_retries=3
+              
+              while [ $retry_count -lt $max_retries ]; do
+                echo "Migration attempt $((retry_count + 1)) of $max_retries..."
+                
+                if dotnet ef database update --project ai-stock-trade-app/ai-stock-trade-app.csproj --verbose; then
+                  echo "Database migration completed successfully!"
+                  break
+                fi
+                
+                retry_count=$((retry_count + 1))
+                if [ $retry_count -lt $max_retries ]; then
+                  echo "Migration failed, waiting 10 seconds before retry..."
+                  sleep 10
+                else
+                  echo "Migration failed after $max_retries attempts"
+                  exit 1
+                fi
+              done
             displayName: "Run database migrations for UI testing"
-            inputs:
-              command: "custom"
-              custom: "ef"
-              arguments: "database update --project ai-stock-trade-app/ai-stock-trade-app.csproj"
             env:
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 

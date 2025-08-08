@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <!-- Disable parallel execution to prevent Playwright concurrency issues -->
+    <MaxCpuCount>1</MaxCpuCount>
+    <DisableParallelization>true</DisableParallelization>
+    
+    <!-- Set timeout for tests -->
+    <TestSessionTimeout>900000</TestSessionTimeout> <!-- 15 minutes -->
+    
+    <!-- Collect code coverage -->
+    <DataCollectionRunSettings>
+      <DataCollectors>
+        <DataCollector friendlyName="Code Coverage" uri="datacollector://Microsoft/CodeCoverage/2.0" assemblyQualifiedName="Microsoft.VisualStudio.Coverage.DynamicCoverageDataCollector, Microsoft.VisualStudio.TraceCollector, Version=11.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+          <Configuration>
+            <CodeCoverage>
+              <!-- Match the test assembly names -->
+              <ModulePaths>
+                <Include>
+                  <ModulePath>.*ai-stock-trade-app\.dll$</ModulePath>
+                </Include>
+                <Exclude>
+                  <ModulePath>.*test.*\.dll$</ModulePath>
+                  <ModulePath>.*\.UITests\.dll$</ModulePath>
+                  <ModulePath>.*\.Tests\.dll$</ModulePath>
+                </Exclude>
+              </ModulePaths>
+            </CodeCoverage>
+          </Configuration>
+        </DataCollector>
+      </DataCollectors>
+    </DataCollectionRunSettings>
+  </RunConfiguration>
+
+  <!-- NUnit specific settings -->
+  <NUnit>
+    <!-- Disable parallel execution for NUnit -->
+    <NumberOfTestWorkers>1</NumberOfTestWorkers>
+  </NUnit>
+
+  <!-- MSTest specific settings -->
+  <MSTest>
+    <Parallelize>
+      <Workers>1</Workers>
+      <Scope>method</Scope>
+    </Parallelize>
+  </MSTest>
+</RunSettings>
