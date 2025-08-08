@@ -55,20 +55,31 @@ public class Program
         {
             var context = scope.ServiceProvider.GetRequiredService<StockDataContext>();
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+            
+            // Get connection string and extract server information
+            var connectionString = configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                connectionString = "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+            }
+            
+            // Extract server name from connection string
+            var serverName = ExtractServerNameFromConnectionString(connectionString);
             
             try
             {
-                logger.LogInformation("Applying database migrations...");
+                logger.LogInformation("Applying database migrations to server: {ServerName}...", serverName);
                 context.Database.Migrate();
-                logger.LogInformation("Database migrations applied successfully");
+                logger.LogInformation("Database migrations applied successfully to server: {ServerName}", serverName);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error applying database migrations");
+                logger.LogError(ex, "Error applying database migrations to server: {ServerName}", serverName);
                 // In development, create the database if it doesn't exist
                 if (app.Environment.IsDevelopment())
                 {
-                    logger.LogInformation("Creating database for development environment...");
+                    logger.LogInformation("Creating database for development environment on server: {ServerName}...", serverName);
                     context.Database.EnsureCreated();
                 }
                 else
@@ -103,5 +114,55 @@ public class Program
             .WithStaticAssets();
 
         app.Run();
+    }
+
+    /// <summary>
+    /// Extracts the server name from a SQL Server connection string
+    /// </summary>
+    /// <param name="connectionString">The connection string to parse</param>
+    /// <returns>The server name or "Unknown" if not found</returns>
+    private static string ExtractServerNameFromConnectionString(string connectionString)
+    {
+        if (string.IsNullOrEmpty(connectionString))
+            return "Unknown";
+
+        try
+        {
+            // Parse common server name patterns in SQL Server connection strings
+            var lowerConnectionString = connectionString.ToLowerInvariant();
+            
+            // Look for Server=, Data Source=, or Address= parameters
+            var serverPatterns = new[] { "server=", "data source=", "address=" };
+            
+            foreach (var pattern in serverPatterns)
+            {
+                var startIndex = lowerConnectionString.IndexOf(pattern);
+                if (startIndex >= 0)
+                {
+                    startIndex += pattern.Length;
+                    var endIndex = lowerConnectionString.IndexOf(';', startIndex);
+                    if (endIndex == -1)
+                        endIndex = connectionString.Length;
+                    
+                    var serverValue = connectionString.Substring(startIndex, endIndex - startIndex).Trim();
+                    
+                    // Handle special cases
+                    if (serverValue == "." || serverValue == "(local)")
+                        return "Local Default Instance";
+                    if (serverValue.StartsWith("(localdb)", StringComparison.OrdinalIgnoreCase))
+                        return $"LocalDB ({serverValue})";
+                    if (serverValue.StartsWith(".\\", StringComparison.OrdinalIgnoreCase))
+                        return $"Local Named Instance ({serverValue})";
+                    
+                    return serverValue;
+                }
+            }
+            
+            return "Unknown";
+        }
+        catch
+        {
+            return "Unknown";
+        }
     }
 }
