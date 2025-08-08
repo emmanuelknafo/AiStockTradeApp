@@ -96,9 +96,118 @@ jobs:
         env:
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
-  build:
+  ui-test:
     runs-on: ubuntu-latest
     needs: test
+    name: UI Tests with Playwright
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install Entity Framework tools
+        run: dotnet tool install --global dotnet-ef
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build application
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Setup SQL Server for UI testing
+        uses: potatoqualitee/mssqlsuite@v1.7
+        with:
+          install: sqlengine, sqlclient
+          version: 2022
+          sa-password: "YourStrong@Passw0rd"
+          show-log: true
+
+      - name: Wait for SQL Server to start
+        run: sleep 30
+
+      - name: Run database migrations for UI testing
+        run: |
+          cd ai-stock-trade-app
+          export ConnectionStrings__DefaultConnection="Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          dotnet ef database update
+        env:
+          ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Playwright browsers
+        run: |
+          npx playwright install
+          npx playwright install-deps
+
+      - name: Start application in background
+        run: |
+          cd ai-stock-trade-app
+          dotnet run --no-build --configuration Release &
+          APP_PID=$!
+          echo "APP_PID=${APP_PID}" >> $GITHUB_ENV
+          echo "Started application with PID: ${APP_PID}"
+        env:
+          ASPNETCORE_ENVIRONMENT: "Development"
+          ASPNETCORE_URLS: "http://localhost:5000"
+          ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+
+      - name: Wait for application to be ready
+        run: |
+          echo "Waiting for application to start..."
+          timeout=60
+          while [ $timeout -gt 0 ]; do
+            if curl -f http://localhost:5000 >/dev/null 2>&1; then
+              echo "Application is ready!"
+              break
+            fi
+            echo "Waiting for application... ($timeout seconds remaining)"
+            sleep 2
+            timeout=$((timeout-2))
+          done
+          
+          if [ $timeout -le 0 ]; then
+            echo "Application failed to start within timeout"
+            exit 1
+          fi
+
+      - name: Run Playwright UI Tests
+        run: dotnet test --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx"
+        env:
+          PLAYWRIGHT_BASE_URL: "http://localhost:5000"
+          ASPNETCORE_ENVIRONMENT: "Development"
+          ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+
+      - name: Upload UI Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-test-results
+          path: "**/ui-test-results.trx"
+          retention-days: 5
+
+      - name: Stop application
+        if: always()
+        run: |
+          if [ ! -z "$APP_PID" ]; then
+            echo "Stopping application with PID: $APP_PID"
+            kill $APP_PID || true
+            sleep 5
+          fi
+          # Cleanup any remaining dotnet processes
+          pkill -f "dotnet.*ai-stock-trade-app" || true
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, ui-test]
     name: Build and Push Container
     outputs:
       image: ${{ steps.final-output.outputs.image }}

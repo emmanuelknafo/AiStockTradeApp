@@ -104,6 +104,103 @@ stages:
               projects: "**/*.csproj"
               arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests"'
 
+      - job: UITestJob
+        displayName: "UI Tests with Playwright"
+        dependsOn: TestJob
+        condition: succeeded()
+        steps:
+          - checkout: self
+            displayName: "Checkout code"
+
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: "sdk"
+              version: $(DOTNET_VERSION)
+
+          - task: DotNetCoreCLI@2
+            displayName: "Restore dependencies"
+            inputs:
+              command: "restore"
+              projects: "**/*.csproj"
+
+          - task: DotNetCoreCLI@2
+            displayName: "Build application"
+            inputs:
+              command: "build"
+              projects: "**/*.csproj"
+              arguments: "--no-restore --configuration Release"
+
+          - task: NodeTool@0
+            displayName: "Setup Node.js"
+            inputs:
+              versionSpec: "18.x"
+
+          - script: |
+              npx playwright install
+              npx playwright install-deps
+            displayName: "Install Playwright browsers"
+
+          - task: DotNetCoreCLI@2
+            displayName: "Start application in background"
+            inputs:
+              command: "run"
+              projects: "ai-stock-trade-app/ai-stock-trade-app.csproj"
+              arguments: "--no-build --configuration Release"
+            env:
+              ASPNETCORE_ENVIRONMENT: "Development"
+              ASPNETCORE_URLS: "http://localhost:5000"
+              ConnectionStrings__DefaultConnection: "Server=.;Database=StockTraderTestUI;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true"
+            condition: succeededOrFailed()
+            timeoutInMinutes: 2
+            continueOnError: true
+
+          - script: |
+              echo "Waiting for application to start..."
+              timeout=60
+              while [ $timeout -gt 0 ]; do
+                if curl -f http://localhost:5000 >/dev/null 2>&1; then
+                  echo "Application is ready!"
+                  break
+                fi
+                echo "Waiting for application... ($timeout seconds remaining)"
+                sleep 2
+                timeout=$((timeout-2))
+              done
+              
+              if [ $timeout -le 0 ]; then
+                echo "Application failed to start within timeout"
+                exit 1
+              fi
+            displayName: "Wait for application to be ready"
+
+          - task: DotNetCoreCLI@2
+            displayName: "Run Playwright UI Tests"
+            inputs:
+              command: "test"
+              projects: "**/*.csproj"
+              arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx"'
+            env:
+              PLAYWRIGHT_BASE_URL: "http://localhost:5000"
+              ASPNETCORE_ENVIRONMENT: "Development"
+            condition: succeededOrFailed()
+
+          - task: PublishTestResults@2
+            displayName: "Publish UI Test Results"
+            inputs:
+              testResultsFormat: "VSTest"
+              testResultsFiles: "**/*ui-test-results.trx"
+              testRunTitle: "Playwright UI Tests"
+              mergeTestResults: true
+            condition: succeededOrFailed()
+
+          - script: |
+              echo "Stopping application..."
+              pkill -f "dotnet.*ai-stock-trade-app" || true
+              sleep 5
+            displayName: "Stop application"
+            condition: always()
+
   - stage: Build
     displayName: "Build and Push Container"
     dependsOn: Test
