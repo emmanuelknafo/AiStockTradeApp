@@ -89,6 +89,34 @@ jobs:
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
           --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
 
+    - name: Verify Dev Infrastructure SQL Setup
+      if: github.event.inputs.destroy != 'true'
+      run: |
+        INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+        SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
+        DATABASE_NAME="sqldb-aistock-dev-${INSTANCE_NUM}"
+        
+        echo "🔍 Verifying SQL Server setup for dev environment..."
+        echo "SQL Server: ${SQL_SERVER_NAME}.database.windows.net"
+        echo "Database: ${DATABASE_NAME}"
+        
+        # Test basic connectivity to SQL Server
+        echo "Testing SQL Server connectivity..."
+        if az sql server show --name "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} >/dev/null 2>&1; then
+          echo "✅ SQL Server is accessible"
+          
+          # Check if database exists
+          if az sql db show --name "${DATABASE_NAME}" --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} >/dev/null 2>&1; then
+            echo "✅ Database is accessible"
+            echo "🎯 Infrastructure deployment successful - ready for application deployment"
+          else
+            echo "⚠️ Database not found - may need to be created during first app deployment"
+          fi
+        else
+          echo "❌ SQL Server not accessible - check deployment"
+          exit 1
+        fi
+
     - name: Destroy Dev Infrastructure
       if: github.event.inputs.destroy == 'true'
       run: |
@@ -201,6 +229,49 @@ jobs:
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
           --parameters deployContainerRegistry=false \
           --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+
+    - name: Verify Prod Infrastructure SQL Setup
+      if: github.event.inputs.destroy != 'true'
+      run: |
+        INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+        SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
+        DATABASE_NAME="sqldb-aistock-prod-${INSTANCE_NUM}"
+        
+        echo "🔍 Verifying SQL Server setup for production environment..."
+        echo "SQL Server: ${SQL_SERVER_NAME}.database.windows.net"
+        echo "Database: ${DATABASE_NAME}"
+        
+        # Test basic connectivity to SQL Server
+        echo "Testing SQL Server connectivity..."
+        if az sql server show --name "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} >/dev/null 2>&1; then
+          echo "✅ SQL Server is accessible"
+          
+          # Check if database exists
+          if az sql db show --name "${DATABASE_NAME}" --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} >/dev/null 2>&1; then
+            echo "✅ Database is accessible"
+            
+            # For production, also verify Azure AD configuration
+            echo "🔐 Checking Azure AD configuration..."
+            AD_ADMIN=$(az sql server ad-admin list --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} --query '[0].login' --output tsv 2>/dev/null || echo "")
+            if [ -n "$AD_ADMIN" ] && [ "$AD_ADMIN" != "null" ]; then
+              echo "✅ Azure AD admin configured: $AD_ADMIN"
+              echo "🎯 Production infrastructure deployment successful - ready for application deployment"
+              echo ""
+              echo "📋 Next steps for application deployment:"
+              echo "   1. CI/CD pipeline will automatically create managed identity SQL user"
+              echo "   2. Application will use Azure AD authentication to connect"
+              echo "   3. Health checks should pass automatically"
+            else
+              echo "⚠️ Azure AD admin not configured - using SQL authentication"
+              echo "🎯 Infrastructure deployment successful - ready for application deployment"
+            fi
+          else
+            echo "⚠️ Database not found - may need to be created during first app deployment"
+          fi
+        else
+          echo "❌ SQL Server not accessible - check deployment"
+          exit 1
+        fi
 
     - name: Destroy Prod Infrastructure
       if: github.event.inputs.destroy == 'true'

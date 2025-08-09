@@ -710,15 +710,54 @@ jobs:
           # Get the SQL Server FQDN
           SQL_SERVER_FQDN="${SQL_SERVER_NAME}.database.windows.net"
           
-          echo "Note: For Azure AD-only authentication, the Web App managed identity needs to be added as a SQL user."
-          echo "Attempting to set up database access..."
-          echo ""
-          echo "If this fails, manually run these SQL commands as an Azure AD admin:"
-          echo "  USE [${DATABASE_NAME}]"
-          echo "  CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;"
-          echo "  ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];"
-          echo "  ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];"
-          echo "  ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];"
+          echo "🔐 Attempting to create SQL user for managed identity..."
+          
+          # Try to connect using the current Azure AD authenticated user and create the managed identity user
+          # This uses sqlcmd with Azure AD authentication
+          echo "Installing sqlcmd..."
+          curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list
+          sudo apt-get update
+          sudo apt-get install -y mssql-tools unixodbc-dev
+          
+          echo "Attempting to create managed identity user in SQL database..."
+          # Get Azure AD access token for SQL
+          SQL_TOKEN=$(az account get-access-token --resource https://database.windows.net/ --query accessToken --output tsv)
+          
+          # Create SQL script
+          cat > setup_managed_identity.sql << EOF
+          USE [${DATABASE_NAME}];
+          IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${WEBAPP_NAME}')
+          BEGIN
+              CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;
+              ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];
+              ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];
+              ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];
+              PRINT 'Managed identity user created and roles assigned successfully';
+          END
+          ELSE
+          BEGIN
+              PRINT 'Managed identity user already exists';
+          END
+          EOF
+          
+          # Execute the SQL script
+          if /opt/mssql-tools/bin/sqlcmd -S "${SQL_SERVER_FQDN}" -d "${DATABASE_NAME}" -G -l 30 -i setup_managed_identity.sql; then
+            echo "✅ Successfully created managed identity user and assigned roles"
+          else
+            echo "⚠️ Could not automatically create managed identity user."
+            echo "Please manually run these SQL commands as an Azure AD admin:"
+            echo "  USE [${DATABASE_NAME}]"
+            echo "  CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;"
+            echo "  ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];"
+            echo "  ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];"
+            echo "  ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];"
+            echo ""
+            echo "Connection details:"
+            echo "  Server: ${SQL_SERVER_FQDN}"
+            echo "  Database: ${DATABASE_NAME}"
+            echo "  Authentication: Azure Active Directory - Universal with MFA"
+          fi
 
       - name: Run database migrations
         run: |

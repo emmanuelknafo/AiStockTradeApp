@@ -753,27 +753,75 @@ stages:
                     overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth true -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin $(azureAdAdminLogin)"
                     deploymentMode: "Incremental"
 
-                - task: Bash@3
-                  displayName: "Database Access Setup Information"
+                - task: AzureCLI@2
+                  displayName: "Setup Web App SQL Database Access (Azure AD)"
                   inputs:
-                    targetType: "inline"
-                    script: |
-                      echo "🔐 Azure AD Authentication is now enabled for the SQL Server"
-                      echo "📋 To access the database:"
-                      echo "   1. Connect to SQL Server using Azure AD authentication"
-                      echo "   2. Server: sql-aistock-prod-$(instanceNum).database.windows.net"
-                      echo "   3. Authentication: Azure Active Directory - Integrated/Universal"
-                      echo "   4. Service Principal ($(azureAdAdminLogin)) has been set as Azure AD admin"
-                      echo ""
-                      echo "🔧 To grant access to the application's managed identity:"
-                      echo "   1. Connect to the database using Azure AD authentication"
-                      echo "   2. Run: CREATE USER [app-aistock-prod-$(instanceNum)] FROM EXTERNAL PROVIDER"
-                      echo "   3. Run: ALTER ROLE db_datareader ADD MEMBER [app-aistock-prod-$(instanceNum)]"
-                      echo "   4. Run: ALTER ROLE db_datawriter ADD MEMBER [app-aistock-prod-$(instanceNum)]"
-                      echo "   5. Run: ALTER ROLE db_ddladmin ADD MEMBER [app-aistock-prod-$(instanceNum)]"
-                      echo ""
-                      echo "ℹ️ The application will use managed identity to connect to the database"
-                      echo "⚠️ Note: Service Principal authentication is used for deployment automation"
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      INSTANCE_NUM="$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                      SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
+                      DATABASE_NAME="sqldb-aistock-prod-$(instanceNum)"
+                      
+                      echo "Setting up SQL Database access for Web App managed identity..."
+                      echo "Web App: ${WEBAPP_NAME}"
+                      echo "SQL Server: ${SQL_SERVER_NAME}"
+                      echo "Database: ${DATABASE_NAME}"
+                      
+                      # Get the SQL Server FQDN
+                      SQL_SERVER_FQDN="${SQL_SERVER_NAME}.database.windows.net"
+                      
+                      echo "🔐 Attempting to create SQL user for managed identity..."
+                      
+                      # Try to connect using the current Azure AD authenticated user and create the managed identity user
+                      # This uses sqlcmd with Azure AD authentication
+                      echo "Installing sqlcmd..."
+                      curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+                      curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list
+                      sudo apt-get update
+                      sudo apt-get install -y mssql-tools unixodbc-dev
+                      
+                      echo "Attempting to create managed identity user in SQL database..."
+                      # Get Azure AD access token for SQL
+                      SQL_TOKEN=$(az account get-access-token --resource https://database.windows.net/ --query accessToken --output tsv)
+                      
+                      # Create SQL script
+                      cat > setup_managed_identity.sql << EOF
+                      USE [${DATABASE_NAME}];
+                      IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${WEBAPP_NAME}')
+                      BEGIN
+                          CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;
+                          ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];
+                          ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];
+                          ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];
+                          PRINT 'Managed identity user created and roles assigned successfully';
+                      END
+                      ELSE
+                      BEGIN
+                          PRINT 'Managed identity user already exists';
+                      END
+                      EOF
+                      
+                      # Execute the SQL script
+                      if /opt/mssql-tools/bin/sqlcmd -S "${SQL_SERVER_FQDN}" -d "${DATABASE_NAME}" -G -l 30 -i setup_managed_identity.sql; then
+                        echo "✅ Successfully created managed identity user and assigned roles"
+                      else
+                        echo "⚠️ Could not automatically create managed identity user."
+                        echo "Please manually run these SQL commands as an Azure AD admin:"
+                        echo "  USE [${DATABASE_NAME}]"
+                        echo "  CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;"
+                        echo "  ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];"
+                        echo "  ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];"
+                        echo "  ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];"
+                        echo ""
+                        echo "Connection details:"
+                        echo "  Server: ${SQL_SERVER_FQDN}"
+                        echo "  Database: ${DATABASE_NAME}"
+                        echo "  Authentication: Azure Active Directory - Universal with MFA"
+                      fi
 
                 - task: AzureCLI@2
                   displayName: "Update Web App Container"
