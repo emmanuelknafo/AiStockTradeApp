@@ -114,8 +114,39 @@ stages:
                     scriptLocation: "inlineScript"
                     inlineScript: |
                       RG_NAME="$(azureResourceGroupDev)"
-                      echo "Destroying dev resource group: $RG_NAME"
+                      INSTANCE_NUM="${{ parameters.instanceNumber }}"
+                      KV_NAME="kv-aistock-dev-${INSTANCE_NUM}"
+                      
+                      echo "=== Destroying dev infrastructure ==="
+                      echo "Resource Group: $RG_NAME"
+                      echo "Key Vault: $KV_NAME"
+                      
+                      # First, check if Key Vault exists and purge it if it does
+                      echo "Checking for Key Vault: $KV_NAME"
+                      if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+                        echo "Key Vault found. It will be soft-deleted with the resource group."
+                        echo "Will purge Key Vault after resource group deletion..."
+                      else
+                        echo "Key Vault not found or already deleted."
+                      fi
+                      
+                      # Delete the resource group (this will soft-delete the Key Vault)
+                      echo "Deleting resource group: $RG_NAME"
                       az group delete --name "$RG_NAME" --yes --no-wait
+                      
+                      # Wait a bit for the deletion to process
+                      echo "Waiting for resource group deletion to process..."
+                      sleep 30
+                      
+                      # Now purge the Key Vault from soft-delete state
+                      echo "Attempting to purge Key Vault from soft-delete state..."
+                      if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
+                        echo "✅ Key Vault $KV_NAME purged successfully"
+                      else
+                        echo "ℹ️ Key Vault $KV_NAME not found in soft-delete state or already purged"
+                      fi
+                      
+                      echo "Dev infrastructure destruction initiated"
 
   - stage: DeployProd
     displayName: "Deploy Production Infrastructure"
@@ -194,8 +225,39 @@ stages:
                     scriptLocation: "inlineScript"
                     inlineScript: |
                       RG_NAME="$(azureResourceGroupProd)"
-                      echo "Destroying prod resource group: $RG_NAME"
+                      INSTANCE_NUM="${{ parameters.instanceNumber }}"
+                      KV_NAME="kv-aistock-prod-${INSTANCE_NUM}"
+                      
+                      echo "=== Destroying prod infrastructure ==="
+                      echo "Resource Group: $RG_NAME"
+                      echo "Key Vault: $KV_NAME"
+                      
+                      # First, check if Key Vault exists and purge it if it does
+                      echo "Checking for Key Vault: $KV_NAME"
+                      if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+                        echo "Key Vault found. It will be soft-deleted with the resource group."
+                        echo "Will purge Key Vault after resource group deletion..."
+                      else
+                        echo "Key Vault not found or already deleted."
+                      fi
+                      
+                      # Delete the resource group (this will soft-delete the Key Vault)
+                      echo "Deleting resource group: $RG_NAME"
                       az group delete --name "$RG_NAME" --yes --no-wait
+                      
+                      # Wait a bit for the deletion to process
+                      echo "Waiting for resource group deletion to process..."
+                      sleep 30
+                      
+                      # Now purge the Key Vault from soft-delete state
+                      echo "Attempting to purge Key Vault from soft-delete state..."
+                      if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
+                        echo "✅ Key Vault $KV_NAME purged successfully"
+                      else
+                        echo "ℹ️ Key Vault $KV_NAME not found in soft-delete state or already purged"
+                      fi
+                      
+                      echo "Prod infrastructure destruction initiated"
 
   - stage: DeploymentSummary
     displayName: "Deployment Summary"
