@@ -1,9 +1,9 @@
 @description('SQL Server admin username')
 param sqlAdminUsername string = 'sqladmin'
 
-@description('SQL Server admin password')
+@description('SQL Server admin password (ignored when enableAzureAdOnlyAuth = true). Left blank when using Azure AD only auth.')
 @secure()
-param sqlAdminPassword string
+param sqlAdminPassword string = ''
 
 @description('The location for all resources')
 param location string = resourceGroup().location
