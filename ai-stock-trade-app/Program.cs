@@ -6,7 +6,7 @@ using Microsoft.Data.SqlClient;
 
 public class Program
 {
-    private static void Main(string[] args)
+    private static async Task Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -33,14 +33,30 @@ public class Program
             // If using Azure AD authentication (detected by Authentication property)
             if (connectionString.Contains("Authentication=Active Directory Default", StringComparison.OrdinalIgnoreCase))
             {
-                // For Azure AD authentication, we'll configure the connection string directly
-                // The AccessTokenProvider approach requires newer SQL Client versions with additional dependencies
-                options.UseSqlServer(connectionString);
+                // For Azure AD authentication, increase timeout and ensure proper configuration
+                sqlConnectionStringBuilder.ConnectTimeout = 60; // Increase from default 30 to 60 seconds
+                sqlConnectionStringBuilder.CommandTimeout = 60; // Add command timeout
+                
+                // Configure Entity Framework with longer timeout for Azure AD
+                options.UseSqlServer(sqlConnectionStringBuilder.ConnectionString, sqlOptions =>
+                {
+                    sqlOptions.CommandTimeout(120); // 2 minutes for Entity Framework operations
+                    sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 3,
+                        maxRetryDelay: TimeSpan.FromSeconds(30),
+                        errorNumbersToAdd: null);
+                });
             }
             else
             {
                 // Standard SQL authentication
-                options.UseSqlServer(connectionString);
+                options.UseSqlServer(connectionString, sqlOptions =>
+                {
+                    sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 3,
+                        maxRetryDelay: TimeSpan.FromSeconds(30),
+                        errorNumbersToAdd: null);
+                });
             }
         });
 
@@ -83,16 +99,47 @@ public class Program
             
             // Extract server name from connection string
             var serverName = ExtractServerNameFromConnectionString(connectionString);
+            var isAzureAd = connectionString.Contains("Authentication=Active Directory Default", StringComparison.OrdinalIgnoreCase);
             
             try
             {
-                logger.LogInformation("Applying database migrations to server: {ServerName}...", serverName);
-                context.Database.Migrate();
+                if (isAzureAd)
+                {
+                    logger.LogInformation("Applying database migrations with Azure AD authentication to server: {ServerName}...", serverName);
+                    logger.LogInformation("This may take longer due to Azure AD token acquisition...");
+                }
+                else
+                {
+                    logger.LogInformation("Applying database migrations to server: {ServerName}...", serverName);
+                }
+                
+                // Use a longer timeout for Azure AD connections
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5)); // 5 minute timeout
+                await context.Database.MigrateAsync(cts.Token);
+                
                 logger.LogInformation("Database migrations applied successfully to server: {ServerName}", serverName);
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogError("Database migration timed out after 5 minutes for server: {ServerName}", serverName);
+                if (isAzureAd)
+                {
+                    logger.LogError("Azure AD authentication may be taking too long. Check managed identity configuration.");
+                }
+                throw;
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error applying database migrations to server: {ServerName}", serverName);
+                
+                if (isAzureAd && ex.Message.Contains("timeout"))
+                {
+                    logger.LogError("Azure AD authentication timeout detected. Possible issues:");
+                    logger.LogError("1. Managed identity not properly configured");
+                    logger.LogError("2. SQL Server firewall blocking connections");
+                    logger.LogError("3. Missing SQL user for managed identity");
+                }
+                
                 // In development, create the database if it doesn't exist
                 if (app.Environment.IsDevelopment())
                 {
@@ -130,7 +177,7 @@ public class Program
             pattern: "{controller=Home}/{action=Index}/{id?}")
             .WithStaticAssets();
 
-        app.Run();
+        await app.RunAsync();
     }
 
     /// <summary>

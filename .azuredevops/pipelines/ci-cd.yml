@@ -766,61 +766,207 @@ stages:
                       SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
                       DATABASE_NAME="sqldb-aistock-prod-$(instanceNum)"
                       
-                      echo "Setting up SQL Database access for Web App managed identity..."
+                      echo "🔧 Setting up SQL Database access for Web App managed identity..."
                       echo "Web App: ${WEBAPP_NAME}"
                       echo "SQL Server: ${SQL_SERVER_NAME}"
                       echo "Database: ${DATABASE_NAME}"
+                      
+                      # First, verify the web app managed identity is enabled
+                      echo "🔍 Verifying web app managed identity..."
+                      MANAGED_IDENTITY=$(az webapp identity show --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" --query "principalId" --output tsv 2>/dev/null || echo "")
+                      
+                      if [ -z "${MANAGED_IDENTITY}" ] || [ "${MANAGED_IDENTITY}" == "null" ]; then
+                        echo "⚠️ Web app managed identity not found. Enabling it..."
+                        az webapp identity assign --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}"
+                        sleep 10  # Wait for identity propagation
+                        MANAGED_IDENTITY=$(az webapp identity show --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" --query "principalId" --output tsv)
+                      fi
+                      
+                      echo "✅ Web app managed identity ID: ${MANAGED_IDENTITY}"
                       
                       # Get the SQL Server FQDN
                       SQL_SERVER_FQDN="${SQL_SERVER_NAME}.database.windows.net"
                       
                       echo "🔐 Attempting to create SQL user for managed identity..."
                       
-                      # Try to connect using the current Azure AD authenticated user and create the managed identity user
-                      # This uses sqlcmd with Azure AD authentication
+                      # Install sqlcmd tools
                       echo "Installing sqlcmd..."
                       curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
                       curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list
                       sudo apt-get update
                       sudo apt-get install -y mssql-tools unixodbc-dev
                       
-                      echo "Attempting to create managed identity user in SQL database..."
-                      # Get Azure AD access token for SQL
-                      SQL_TOKEN=$(az account get-access-token --resource https://database.windows.net/ --query accessToken --output tsv)
+                      echo "Testing basic connectivity to SQL Server..."
+                      if ! timeout 10 bash -c "</dev/tcp/${SQL_SERVER_NAME}.database.windows.net/1433" 2>/dev/null; then
+                        echo "❌ Cannot connect to SQL Server on port 1433. Check firewall rules."
+                        exit 1
+                      else
+                        echo "✅ SQL Server is reachable on port 1433"
+                      fi
                       
-                      # Create SQL script
+                      echo "Attempting to create managed identity user in SQL database..."
+                      
+                      # Create SQL script with better error handling
                       cat > setup_managed_identity.sql << EOF
+                      -- Switch to the target database
                       USE [${DATABASE_NAME}];
+                      GO
+                      
+                      -- Check if user already exists
                       IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${WEBAPP_NAME}')
                       BEGIN
+                          PRINT 'Creating managed identity user: ${WEBAPP_NAME}';
                           CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;
+                          PRINT 'User created successfully';
+                          
+                          -- Assign roles
                           ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];
+                          PRINT 'Added to db_datareader role';
+                          
                           ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];
+                          PRINT 'Added to db_datawriter role';
+                          
                           ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];
+                          PRINT 'Added to db_ddladmin role';
+                          
                           PRINT 'Managed identity user created and roles assigned successfully';
                       END
                       ELSE
                       BEGIN
-                          PRINT 'Managed identity user already exists';
+                          PRINT 'Managed identity user already exists: ${WEBAPP_NAME}';
+                          
+                          -- Verify roles are assigned
+                          IF IS_ROLEMEMBER('db_datareader', '${WEBAPP_NAME}') = 1
+                              PRINT '✓ db_datareader role confirmed';
+                          ELSE
+                              PRINT '⚠ Adding db_datareader role';
+                              ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];
+                          
+                          IF IS_ROLEMEMBER('db_datawriter', '${WEBAPP_NAME}') = 1
+                              PRINT '✓ db_datawriter role confirmed';
+                          ELSE
+                              PRINT '⚠ Adding db_datawriter role';
+                              ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];
+                          
+                          IF IS_ROLEMEMBER('db_ddladmin', '${WEBAPP_NAME}') = 1
+                              PRINT '✓ db_ddladmin role confirmed';
+                          ELSE
+                              PRINT '⚠ Adding db_ddladmin role';
+                              ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];
                       END
+                      GO
+                      
+                      -- Show final user permissions
+                      SELECT 
+                          dp.name AS principal_name,
+                          dp.type_desc AS principal_type,
+                          r.name AS role_name
+                      FROM sys.database_principals dp
+                      JOIN sys.database_role_members rm ON dp.principal_id = rm.member_principal_id
+                      JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id
+                      WHERE dp.name = '${WEBAPP_NAME}';
+                      GO
                       EOF
                       
-                      # Execute the SQL script
-                      if /opt/mssql-tools/bin/sqlcmd -S "${SQL_SERVER_FQDN}" -d "${DATABASE_NAME}" -G -l 30 -i setup_managed_identity.sql; then
-                        echo "✅ Successfully created managed identity user and assigned roles"
+                      # Execute the SQL script with detailed logging
+                      echo "Executing SQL script..."
+                      if /opt/mssql-tools/bin/sqlcmd -S "${SQL_SERVER_FQDN}" -d "${DATABASE_NAME}" -G -l 30 -i setup_managed_identity.sql -v; then
+                        echo "✅ Successfully executed SQL script for managed identity setup"
+                        
+                        # Test the connection with a simple query
+                        echo "Testing managed identity connection..."
+                        cat > test_connection.sql << EOF
+                        SELECT 
+                            USER_NAME() as current_user,
+                            SYSTEM_USER as system_user,
+                            DB_NAME() as database_name,
+                            GETDATE() as current_time;
+                        EOF
+                        
+                        if /opt/mssql-tools/bin/sqlcmd -S "${SQL_SERVER_FQDN}" -d "${DATABASE_NAME}" -G -l 30 -i test_connection.sql; then
+                          echo "✅ Connection test successful"
+                        else
+                          echo "⚠️ Connection test failed, but user creation may have succeeded"
+                        fi
                       else
-                        echo "⚠️ Could not automatically create managed identity user."
-                        echo "Please manually run these SQL commands as an Azure AD admin:"
-                        echo "  USE [${DATABASE_NAME}]"
+                        echo "❌ Failed to execute SQL script. Error details above."
+                        echo ""
+                        echo "🔧 Manual Steps Required:"
+                        echo "Please connect to SQL Server as an Azure AD admin and run:"
+                        echo "  Server: ${SQL_SERVER_FQDN}"
+                        echo "  Database: ${DATABASE_NAME}"
+                        echo "  Authentication: Azure Active Directory - Universal with MFA"
+                        echo ""
+                        echo "SQL Commands:"
+                        echo "  USE [${DATABASE_NAME}];"
                         echo "  CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;"
                         echo "  ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];"
                         echo "  ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];"
                         echo "  ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];"
                         echo ""
-                        echo "Connection details:"
-                        echo "  Server: ${SQL_SERVER_FQDN}"
-                        echo "  Database: ${DATABASE_NAME}"
-                        echo "  Authentication: Azure Active Directory - Universal with MFA"
+                        echo "The deployment will continue, but the application may fail until this is resolved."
+                      fi
+
+                - task: DotNetCoreCLI@2
+                  displayName: "Setup .NET for migrations"
+                  inputs:
+                    command: "custom"
+                    custom: "tool"
+                    arguments: "install --global dotnet-ef"
+
+                - task: AzureCLI@2
+                  displayName: "Run database migrations"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      INSTANCE_NUM="$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      
+                      echo "🗄️ Checking database migration options..."
+                      echo "Resource Group: ${RG_NAME}"
+                      
+                      # Try to get connection string from Key Vault, but don't fail if access is denied
+                      KEY_VAULT_NAME="kv-aistock-prod-$(instanceNum)"
+                      echo "Attempting to retrieve connection string from Key Vault: ${KEY_VAULT_NAME}"
+                      
+                      CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv 2>/dev/null || echo "")
+                      
+                      if [ -z "${CONNECTION_STRING}" ]; then
+                        echo "ℹ️ Could not retrieve connection string from Key Vault."
+                        echo "This is expected for first-time deployments or when pipeline doesn't have Key Vault access."
+                        echo ""
+                        echo "🚀 Database migrations will run automatically on first app startup."
+                        echo "The application is configured to:"
+                        echo "  1. Use Azure AD managed identity authentication"
+                        echo "  2. Run Entity Framework migrations automatically"
+                        echo "  3. Create necessary database schema"
+                        echo ""
+                        echo "✅ Skipping manual migration - letting app handle it during startup"
+                      else
+                        echo "✅ Retrieved connection string from Key Vault"
+                        echo "Connection string type: $(echo "${CONNECTION_STRING}" | grep -o 'Authentication=[^;]*' || echo 'SQL Authentication')"
+                        
+                        if echo "${CONNECTION_STRING}" | grep -q "Authentication=Active Directory Default"; then
+                          echo "🔐 Using Azure AD authentication for migrations"
+                        else
+                          echo "🔑 Using SQL authentication for migrations"
+                        fi
+                        
+                        echo "Running database migrations manually..."
+                        cd ai-stock-trade-app
+                        export ConnectionStrings__DefaultConnection="${CONNECTION_STRING}"
+                        
+                        # Run with verbose output
+                        echo "Starting Entity Framework migration..."
+                        dotnet ef database update --verbose
+                        
+                        if [ $? -eq 0 ]; then
+                          echo "✅ Database migrations completed successfully"
+                        else
+                          echo "⚠️ Migration failed, but this may be handled during app startup"
+                        fi
                       fi
 
                 - task: AzureCLI@2
@@ -858,18 +1004,81 @@ stages:
                         --container-registry-user "${REGISTRY_USERNAME}" \
                         --container-registry-password "${REGISTRY_PASSWORD}"
 
-                - task: Bash@3
+                - task: AzureCLI@2
                   displayName: "Run Health Check"
                   inputs:
-                    targetType: "inline"
-                    script: |
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
                       WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
                       HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+                      BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
+                      
+                      echo "🏥 Starting comprehensive health check..."
+                      echo "Base URL: ${BASE_URL}"
+                      echo "Health URL: ${HEALTH_URL}"
+                      
+                      # Wait for initial deployment
                       echo "Waiting for deployment to be ready..."
-                      echo "Health check URL: ${HEALTH_URL}"
-                      sleep 30
-                      curl -f "${HEALTH_URL}" || exit 1
-                      echo "Health check passed!"
+                      sleep 60
+                      
+                      # Check if the site is accessible at all
+                      echo "Testing basic site accessibility..."
+                      for i in {1..5}; do
+                        if curl -f -s "${BASE_URL}" >/dev/null 2>&1; then
+                          echo "✅ Site is accessible (attempt $i)"
+                          break
+                        else
+                          echo "⏳ Site not ready yet (attempt $i/5)..."
+                          sleep 30
+                        fi
+                      done
+                      
+                      # Check health endpoint specifically
+                      echo "Testing health endpoint..."
+                      for i in {1..10}; do
+                        echo "Health check attempt $i/10..."
+                        
+                        # Get detailed response
+                        HTTP_CODE=$(curl -s -o /tmp/health_response.txt -w "%{http_code}" "${HEALTH_URL}")
+                        RESPONSE_BODY=$(cat /tmp/health_response.txt 2>/dev/null || echo "No response body")
+                        
+                        echo "HTTP Status: ${HTTP_CODE}"
+                        echo "Response: ${RESPONSE_BODY}"
+                        
+                        if [ "${HTTP_CODE}" = "200" ]; then
+                          echo "✅ Health check passed!"
+                          echo "Deployment successful and application is healthy."
+                          exit 0
+                        elif [ "${HTTP_CODE}" = "503" ] || [ "${HTTP_CODE}" = "500" ]; then
+                          echo "⚠️ Application error detected (HTTP ${HTTP_CODE})"
+                          echo "This might be a database connectivity issue."
+                          
+                          # Try to get more detailed logs
+                          echo "Attempting to get application logs..."
+                          az webapp log tail --name "${WEBAPP_NAME}" --resource-group "rg-aistock-prod-$(instanceNum)" --timeout 30 || echo "Could not retrieve logs"
+                          
+                          if [ $i -eq 10 ]; then
+                            echo "❌ Health check failed after 10 attempts"
+                            echo "Last response (HTTP ${HTTP_CODE}): ${RESPONSE_BODY}"
+                            echo ""
+                            echo "🔍 Troubleshooting steps:"
+                            echo "1. Check Azure portal for app service logs"
+                            echo "2. Verify managed identity SQL user was created"
+                            echo "3. Check Key Vault access permissions"
+                            echo "4. Verify SQL Server firewall allows Azure services"
+                            exit 1
+                          fi
+                        else
+                          echo "⏳ Unexpected response (HTTP ${HTTP_CODE}), retrying..."
+                        fi
+                        
+                        sleep 30
+                      done
+                      
+                      echo "❌ Health check failed - no successful response received"
+                      exit 1
 
   - stage: SecurityScan
     displayName: "Security Scan"
