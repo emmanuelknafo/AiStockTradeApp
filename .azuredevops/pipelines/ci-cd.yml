@@ -707,16 +707,36 @@ stages:
                     inlineScript: |
                       echo "Getting Azure AD information for SQL Server administration..."
                       
-                      # Get the current user's information
-                      USER_INFO=$(az ad signed-in-user show)
-                      USER_OBJECT_ID=$(echo "$USER_INFO" | jq -r '.id')
-                      USER_PRINCIPAL_NAME=$(echo "$USER_INFO" | jq -r '.userPrincipalName')
+                      # Get the service principal information from the service connection
+                      # The service connection provides authentication context
+                      echo "Retrieving service principal information from connection context..."
                       
-                      echo "Current user object ID: $USER_OBJECT_ID"
-                      echo "Current user principal name: $USER_PRINCIPAL_NAME"
+                      # Get service principal details using Azure CLI context
+                      SP_INFO=$(az account show)
+                      TENANT_ID=$(echo "$SP_INFO" | jq -r '.tenantId')
                       
-                      echo "##vso[task.setvariable variable=azureAdAdminObjectId]$USER_OBJECT_ID"
-                      echo "##vso[task.setvariable variable=azureAdAdminLogin]$USER_PRINCIPAL_NAME"
+                      # For Azure DevOps, we'll use a predefined service principal name or get it from variables
+                      # This should be configured in your Azure DevOps variables
+                      if [ -n "$(AZURE_CLIENT_ID)" ]; then
+                        CLIENT_ID="$(AZURE_CLIENT_ID)"
+                        echo "Using client ID from variable: $CLIENT_ID"
+                        
+                        SP_DETAILS=$(az ad sp show --id "$CLIENT_ID")
+                        SP_OBJECT_ID=$(echo "$SP_DETAILS" | jq -r '.id')
+                        SP_DISPLAY_NAME=$(echo "$SP_DETAILS" | jq -r '.displayName')
+                      else
+                        echo "AZURE_CLIENT_ID variable not set. Using account context..."
+                        # Fallback: try to get service principal from current context
+                        SUBSCRIPTION_INFO=$(az account show)
+                        SP_OBJECT_ID=$(echo "$SUBSCRIPTION_INFO" | jq -r '.user.name')
+                        SP_DISPLAY_NAME="Azure DevOps Service Principal"
+                      fi
+                      
+                      echo "Service principal object ID: $SP_OBJECT_ID"
+                      echo "Service principal display name: $SP_DISPLAY_NAME"
+                      
+                      echo "##vso[task.setvariable variable=azureAdAdminObjectId]$SP_OBJECT_ID"
+                      echo "##vso[task.setvariable variable=azureAdAdminLogin]$SP_DISPLAY_NAME"
 
                 - task: AzureResourceManagerTemplateDeployment@3
                   displayName: "Deploy Bicep template"
@@ -743,7 +763,7 @@ stages:
                       echo "   1. Connect to SQL Server using Azure AD authentication"
                       echo "   2. Server: sql-aistock-prod-$(instanceNum).database.windows.net"
                       echo "   3. Authentication: Azure Active Directory - Integrated/Universal"
-                      echo "   4. Your account ($(azureAdAdminLogin)) has been set as Azure AD admin"
+                      echo "   4. Service Principal ($(azureAdAdminLogin)) has been set as Azure AD admin"
                       echo ""
                       echo "🔧 To grant access to the application's managed identity:"
                       echo "   1. Connect to the database using Azure AD authentication"
@@ -753,6 +773,7 @@ stages:
                       echo "   5. Run: ALTER ROLE db_ddladmin ADD MEMBER [app-aistock-prod-$(instanceNum)]"
                       echo ""
                       echo "ℹ️ The application will use managed identity to connect to the database"
+                      echo "⚠️ Note: Service Principal authentication is used for deployment automation"
 
                 - task: AzureCLI@2
                   displayName: "Update Web App Container"

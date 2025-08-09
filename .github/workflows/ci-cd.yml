@@ -663,16 +663,19 @@ jobs:
         run: |
           echo "Getting Azure AD information for SQL Server administration..."
           
-          # Get the current user's information
-          USER_INFO=$(az ad signed-in-user show)
-          USER_OBJECT_ID=$(echo "$USER_INFO" | jq -r '.id')
-          USER_PRINCIPAL_NAME=$(echo "$USER_INFO" | jq -r '.userPrincipalName')
+          # Get the service principal information using the client ID
+          CLIENT_ID="${{ vars.AZURE_CLIENT_ID }}"
+          echo "Looking up service principal with client ID: $CLIENT_ID"
           
-          echo "Current user object ID: $USER_OBJECT_ID"
-          echo "Current user principal name: $USER_PRINCIPAL_NAME"
+          SP_INFO=$(az ad sp show --id "$CLIENT_ID")
+          SP_OBJECT_ID=$(echo "$SP_INFO" | jq -r '.id')
+          SP_DISPLAY_NAME=$(echo "$SP_INFO" | jq -r '.displayName')
           
-          echo "azure_ad_admin_object_id=$USER_OBJECT_ID" >> "$GITHUB_OUTPUT"
-          echo "azure_ad_admin_login=$USER_PRINCIPAL_NAME" >> "$GITHUB_OUTPUT"
+          echo "Service principal object ID: $SP_OBJECT_ID"
+          echo "Service principal display name: $SP_DISPLAY_NAME"
+          
+          echo "azure_ad_admin_object_id=$SP_OBJECT_ID" >> "$GITHUB_OUTPUT"
+          echo "azure_ad_admin_login=$SP_DISPLAY_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Bicep template
         uses: azure/arm-deploy@v1
