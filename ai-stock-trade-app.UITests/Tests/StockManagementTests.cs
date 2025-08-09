@@ -128,13 +128,19 @@ public class StockManagementTests : BaseUITest
             await Page.WaitForTimeoutAsync(1000); // Small delay between additions
         }
 
+        // Set up dialog handler before clicking clear all
+        Page.Dialog += async (_, dialog) =>
+        {
+            await dialog.AcceptAsync();
+        };
+
         // Click clear all button regardless of how many were actually added
         var clearButton = Page.Locator("#clear-all");
         await Expect(clearButton).ToBeVisibleAsync();
         await clearButton.ClickAsync();
 
-        // Wait for clearing
-        await Page.WaitForTimeoutAsync(2000);
+        // Wait for clearing and potential page reload
+        await Page.WaitForTimeoutAsync(3000);
 
         // Verify all cards are removed
         var finalCount = await watchlist.Locator(".stock-card").CountAsync();

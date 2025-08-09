@@ -96,7 +96,10 @@ public class BaseUITest : PageTest
     {
         try
         {
-            await Page.GotoAsync($"{BaseUrl}/Stock/Dashboard", new PageGotoOptions { Timeout = 10000 });
+            await Page.GotoAsync($"{BaseUrl}/Stock/Dashboard", new PageGotoOptions { Timeout = 15000 });
+            await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+            // Additional wait for JavaScript to initialize
+            await Page.WaitForTimeoutAsync(1000);
         }
         catch (PlaywrightException ex) when (ex.Message.Contains("ERR_CONNECTION_REFUSED"))
         {
@@ -108,6 +111,10 @@ public class BaseUITest : PageTest
 
     protected async Task WaitForPageLoad()
     {
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 15000 });
+        await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded, new PageWaitForLoadStateOptions { Timeout = 15000 });
+        // Wait for the main elements to be visible
+        await Page.Locator("h1").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 10000 });
+        // Additional wait for JavaScript initialization
+        await Page.WaitForTimeoutAsync(500);
     }
 }

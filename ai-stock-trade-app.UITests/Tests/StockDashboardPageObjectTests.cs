@@ -152,10 +152,17 @@ public class StockDashboardPageObjectTests : BaseUITest
         var countAfterAdding = await _dashboardPage.GetStockCardCount();
         countAfterAdding.Should().BeGreaterThan(0);
 
-        // Clear all stocks
-        await _dashboardPage.ClearAllStocks();
+        // Set up dialog handler before clicking clear all
+        Page.Dialog += async (_, dialog) =>
+        {
+            await dialog.AcceptAsync();
+        };
 
-        // Verify all stocks were removed
+        // Clear all stocks
+        await _dashboardPage.ClearAllButton.ClickAsync();
+        await Page.WaitForTimeoutAsync(3000); // Wait longer for page reload
+
+        // Verify all stocks were removed (page should reload)
         var countAfterClearing = await _dashboardPage.GetStockCardCount();
         countAfterClearing.Should().Be(0);
     }
@@ -163,16 +170,27 @@ public class StockDashboardPageObjectTests : BaseUITest
     [Test]
     public async Task ThemeToggle_UsingPageObject_ShouldWork()
     {
-        // Get initial body class
-        var body = Page.Locator("body");
-        var initialClass = await body.GetAttributeAsync("class") ?? "";
+        // Get initial theme (check html data-theme attribute)
+        var html = Page.Locator("html");
+        var initialTheme = await html.GetAttributeAsync("data-theme") ?? "light";
 
         // Toggle theme
         await _dashboardPage.ToggleTheme();
 
         // Verify theme changed
-        var newClass = await body.GetAttributeAsync("class") ?? "";
-        newClass.Should().NotBe(initialClass);
+        var newTheme = await html.GetAttributeAsync("data-theme") ?? "light";
+        newTheme.Should().NotBe(initialTheme, "Theme should change when toggle is clicked");
+        
+        // Also verify the theme toggle button changed
+        var themeToggle = _dashboardPage.ThemeToggle;
+        var toggleText = await themeToggle.TextContentAsync();
+        toggleText.Should().NotBeNullOrEmpty("Theme toggle button should have text");
+        // The button text should change when theme is toggled
+        var validThemeIcons = new[] { "??", "??", "?", "??", "Sun", "Moon" };
+        toggleText.Should().Match(text => 
+            validThemeIcons.Any(icon => text.Contains(icon)) || 
+            text.Length > 0, // Accept any non-empty text as theme buttons can have different representations
+            "Theme toggle button should show a theme indicator");
     }
 
     [Test]

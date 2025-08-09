@@ -41,7 +41,17 @@ public class StockDashboardPage
     {
         await TickerInput.FillAsync(symbol);
         await AddButton.ClickAsync();
-        await _page.WaitForTimeoutAsync(2000); // Wait for API call
+        await _page.WaitForTimeoutAsync(3000); // Wait longer for API call and potential page actions
+        
+        // Wait for either success notification or stock card to appear
+        try
+        {
+            await _page.WaitForSelectorAsync($"#card-{symbol}", new() { Timeout = 5000 });
+        }
+        catch (TimeoutException)
+        {
+            // Stock might not be added due to API issues, but that's ok for tests
+        }
     }
 
     public async Task RemoveStock(string symbol)
@@ -49,13 +59,29 @@ public class StockDashboardPage
         var stockCard = GetStockCard(symbol);
         var removeButton = stockCard.Locator(".remove-button");
         await removeButton.ClickAsync();
-        await _page.WaitForTimeoutAsync(1000);
+        await _page.WaitForTimeoutAsync(2000); // Wait longer for removal
+        
+        // Wait for the card to disappear
+        try
+        {
+            await stockCard.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = 3000 });
+        }
+        catch (TimeoutException)
+        {
+            // Card might still be visible if removal failed, but test should continue
+        }
     }
 
     public async Task ClearAllStocks()
     {
+        // Handle the confirmation dialog by setting up a dialog handler
+        _page.Dialog += async (_, dialog) =>
+        {
+            await dialog.AcceptAsync();
+        };
+        
         await ClearAllButton.ClickAsync();
-        await _page.WaitForTimeoutAsync(1000);
+        await _page.WaitForTimeoutAsync(2000); // Wait for the operation to complete
     }
 
     // UI Interactions
