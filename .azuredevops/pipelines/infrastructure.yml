@@ -173,25 +173,36 @@ stages:
                         echo "⏳ Waiting 60 seconds for deletion to propagate..."
                         sleep 60
                         
-                        echo "🧹 Attempting to purge Key Vault from soft-delete state..."
-                        # Try multiple times with increasing delays
-                        for attempt in 1 2 3; do
-                          echo "Purge attempt $attempt/3..."
-                          if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
-                            echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
-                            break
-                          else
-                            if [ $attempt -lt 3 ]; then
-                              echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
-                              sleep 30
+                        echo "🔍 Checking if Key Vault is in soft-delete state..."
+                        
+                        # First check if the Key Vault is actually in the deleted/soft-delete state
+                        DELETED_KV=$(az keyvault list-deleted --query "[?name=='$KV_NAME'].name" --output tsv 2>/dev/null || echo "")
+                        
+                        if [ -n "$DELETED_KV" ]; then
+                          echo "🧹 Key Vault found in soft-delete state. Attempting to purge..."
+                          
+                          # Try multiple times with increasing delays
+                          for attempt in 1 2 3; do
+                            echo "Purge attempt $attempt/3..."
+                            if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
+                              echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
+                              break
                             else
-                              echo "⚠️ Could not purge Key Vault after 3 attempts."
-                              echo "This may happen if the Key Vault is still being processed."
-                              echo "You can manually purge it later with:"
-                              echo "az keyvault purge --name $KV_NAME --location '${{ parameters.location }}'"
+                              if [ $attempt -lt 3 ]; then
+                                echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
+                                sleep 30
+                              else
+                                echo "⚠️ Could not purge Key Vault after 3 attempts."
+                                echo "This may happen if the Key Vault is still being processed."
+                                echo "You can manually purge it later with:"
+                                echo "az keyvault purge --name $KV_NAME --location '${{ parameters.location }}'"
+                              fi
                             fi
-                          fi
-                        done
+                          done
+                        else
+                          echo "ℹ️ Key Vault is not in soft-delete state - no purge needed"
+                          echo "This is normal if the Key Vault was already purged or if soft-delete is disabled"
+                        fi
                       fi
                       
                       echo "✅ Dev infrastructure destruction process completed"
@@ -347,25 +358,36 @@ stages:
                         echo "⏳ Waiting 60 seconds for deletion to propagate..."
                         sleep 60
                         
-                        echo "🧹 Attempting to purge Key Vault from soft-delete state..."
-                        # Try multiple times with increasing delays
-                        for attempt in 1 2 3; do
-                          echo "Purge attempt $attempt/3..."
-                          if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
-                            echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
-                            break
-                          else
-                            if [ $attempt -lt 3 ]; then
-                              echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
-                              sleep 30
+                        echo "🔍 Checking if Key Vault is in soft-delete state..."
+                        
+                        # First check if the Key Vault is actually in the deleted/soft-delete state
+                        DELETED_KV=$(az keyvault list-deleted --query "[?name=='$KV_NAME'].name" --output tsv 2>/dev/null || echo "")
+                        
+                        if [ -n "$DELETED_KV" ]; then
+                          echo "🧹 Key Vault found in soft-delete state. Attempting to purge..."
+                          
+                          # Try multiple times with increasing delays
+                          for attempt in 1 2 3; do
+                            echo "Purge attempt $attempt/3..."
+                            if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
+                              echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
+                              break
                             else
-                              echo "⚠️ Could not purge Key Vault after 3 attempts."
-                              echo "This may happen if the Key Vault is still being processed."
-                              echo "You can manually purge it later with:"
-                              echo "az keyvault purge --name $KV_NAME --location '${{ parameters.location }}'"
+                              if [ $attempt -lt 3 ]; then
+                                echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
+                                sleep 30
+                              else
+                                echo "⚠️ Could not purge Key Vault after 3 attempts."
+                                echo "This may happen if the Key Vault is still being processed."
+                                echo "You can manually purge it later with:"
+                                echo "az keyvault purge --name $KV_NAME --location '${{ parameters.location }}'"
+                              fi
                             fi
-                          fi
-                        done
+                          done
+                        else
+                          echo "ℹ️ Key Vault is not in soft-delete state - no purge needed"
+                          echo "This is normal if the Key Vault was already purged or if soft-delete is disabled"
+                        fi
                       fi
                       
                       echo "✅ Prod infrastructure destruction process completed"
