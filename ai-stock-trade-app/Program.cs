@@ -33,20 +33,9 @@ public class Program
             // If using Azure AD authentication (detected by Authentication property)
             if (connectionString.Contains("Authentication=Active Directory Default", StringComparison.OrdinalIgnoreCase))
             {
-                var connection = new SqlConnection(connectionString);
-                
-                // Set up Azure AD token provider for production environments
-                if (builder.Environment.IsProduction())
-                {
-                    connection.AccessTokenProvider = async (cancellationToken) =>
-                    {
-                        var credential = new DefaultAzureCredential();
-                        var tokenResult = await credential.GetTokenAsync(new Azure.Core.TokenRequestContext(["https://database.windows.net/.default"]), cancellationToken);
-                        return tokenResult.Token;
-                    };
-                }
-                
-                options.UseSqlServer(connection);
+                // For Azure AD authentication, we'll configure the connection string directly
+                // The AccessTokenProvider approach requires newer SQL Client versions with additional dependencies
+                options.UseSqlServer(connectionString);
             }
             else
             {
