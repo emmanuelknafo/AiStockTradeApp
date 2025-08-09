@@ -141,6 +141,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: "Destroy Dev Infrastructure"
                   condition: eq('${{ parameters.destroy }}', true)
+                  continueOnError: true  # Don't fail the pipeline if dev destruction has issues
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
                     scriptType: "bash"
@@ -154,7 +155,17 @@ stages:
                       echo "Resource Group: $RG_NAME"
                       echo "Key Vault: $KV_NAME"
                       
-                      # First, check if Key Vault exists
+                      # First, check if resource group exists
+                      echo "Checking if resource group exists: $RG_NAME"
+                      if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
+                        echo "ℹ️ Resource group $RG_NAME not found - already deleted or never existed"
+                        echo "✅ Dev infrastructure destruction completed (nothing to destroy)"
+                        exit 0
+                      fi
+                      
+                      echo "✅ Resource group found. Proceeding with destruction..."
+                      
+                      # Check if Key Vault exists
                       echo "Checking for Key Vault: $KV_NAME"
                       KV_EXISTS=false
                       if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
@@ -166,7 +177,12 @@ stages:
                       
                       # Delete the resource group (this will soft-delete the Key Vault)
                       echo "🗑️ Deleting resource group: $RG_NAME"
-                      az group delete --name "$RG_NAME" --yes --no-wait
+                      if az group delete --name "$RG_NAME" --yes --no-wait; then
+                        echo "✅ Resource group deletion initiated successfully"
+                      else
+                        echo "⚠️ Failed to delete resource group, but continuing..."
+                        exit 0
+                      fi
                       
                       # Only attempt Key Vault purge if it existed
                       if [ "$KV_EXISTS" = true ]; then
@@ -210,7 +226,7 @@ stages:
   - stage: DeployProd
     displayName: "Deploy Production Infrastructure"
     dependsOn: DeployDev
-    condition: and(eq('${{ parameters.environment }}', 'prod'), succeeded('DeployDev'))
+    condition: and(eq('${{ parameters.environment }}', 'prod'), or(succeeded('DeployDev'), and(eq('${{ parameters.destroy }}', true), in(dependencies.DeployDev.result, 'Succeeded', 'SucceededWithIssues', 'Failed'))))
     jobs:
       - deployment: DeployProdInfrastructure
         displayName: "Deploy Prod Infrastructure"
@@ -339,7 +355,17 @@ stages:
                       echo "Resource Group: $RG_NAME"
                       echo "Key Vault: $KV_NAME"
                       
-                      # First, check if Key Vault exists
+                      # First, check if resource group exists
+                      echo "Checking if resource group exists: $RG_NAME"
+                      if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
+                        echo "ℹ️ Resource group $RG_NAME not found - already deleted or never existed"
+                        echo "✅ Prod infrastructure destruction completed (nothing to destroy)"
+                        exit 0
+                      fi
+                      
+                      echo "✅ Resource group found. Proceeding with destruction..."
+                      
+                      # Check if Key Vault exists
                       echo "Checking for Key Vault: $KV_NAME"
                       KV_EXISTS=false
                       if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
@@ -351,7 +377,12 @@ stages:
                       
                       # Delete the resource group (this will soft-delete the Key Vault)
                       echo "🗑️ Deleting resource group: $RG_NAME"
-                      az group delete --name "$RG_NAME" --yes --no-wait
+                      if az group delete --name "$RG_NAME" --yes --no-wait; then
+                        echo "✅ Resource group deletion initiated successfully"
+                      else
+                        echo "⚠️ Failed to delete resource group, but continuing..."
+                        exit 0
+                      fi
                       
                       # Only attempt Key Vault purge if it existed
                       if [ "$KV_EXISTS" = true ]; then

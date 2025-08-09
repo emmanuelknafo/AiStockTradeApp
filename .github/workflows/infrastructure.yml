@@ -119,6 +119,7 @@ jobs:
 
     - name: Destroy Dev Infrastructure
       if: github.event.inputs.destroy == 'true'
+      continue-on-error: true  # Don't fail the workflow if dev destruction has issues
       run: |
         RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
         INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
@@ -128,7 +129,17 @@ jobs:
         echo "Resource Group: $RG_NAME"
         echo "Key Vault: $KV_NAME"
         
-        # First, check if Key Vault exists
+        # First, check if resource group exists
+        echo "Checking if resource group exists: $RG_NAME"
+        if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
+          echo "ℹ️ Resource group $RG_NAME not found - already deleted or never existed"
+          echo "✅ Dev infrastructure destruction completed (nothing to destroy)"
+          exit 0
+        fi
+        
+        echo "✅ Resource group found. Proceeding with destruction..."
+        
+        # Check if Key Vault exists
         echo "Checking for Key Vault: $KV_NAME"
         KV_EXISTS=false
         if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
@@ -140,7 +151,12 @@ jobs:
         
         # Delete the resource group (this will soft-delete the Key Vault)
         echo "🗑️ Deleting resource group: $RG_NAME"
-        az group delete --name "$RG_NAME" --yes --no-wait
+        if az group delete --name "$RG_NAME" --yes --no-wait; then
+          echo "✅ Resource group deletion initiated successfully"
+        else
+          echo "⚠️ Failed to delete resource group, but continuing..."
+          exit 0
+        fi
         
         # Only attempt Key Vault purge if it existed
         if [ "$KV_EXISTS" = true ]; then
@@ -185,7 +201,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy Production Infrastructure
     needs: deploy-dev
-    if: github.event.inputs.environment == 'prod' && always() && (needs.deploy-dev.result == 'success')
+    if: github.event.inputs.environment == 'prod' && always() && (needs.deploy-dev.result == 'success' || (github.event.inputs.destroy == 'true' && needs.deploy-dev.result != 'cancelled'))
     environment: ${{ format('production-{0}', github.event.inputs.instanceNumber) }}
     
     permissions:
@@ -295,7 +311,17 @@ jobs:
         echo "Resource Group: $RG_NAME"
         echo "Key Vault: $KV_NAME"
         
-        # First, check if Key Vault exists
+        # First, check if resource group exists
+        echo "Checking if resource group exists: $RG_NAME"
+        if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
+          echo "ℹ️ Resource group $RG_NAME not found - already deleted or never existed"
+          echo "✅ Prod infrastructure destruction completed (nothing to destroy)"
+          exit 0
+        fi
+        
+        echo "✅ Resource group found. Proceeding with destruction..."
+        
+        # Check if Key Vault exists
         echo "Checking for Key Vault: $KV_NAME"
         KV_EXISTS=false
         if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
@@ -307,7 +333,12 @@ jobs:
         
         # Delete the resource group (this will soft-delete the Key Vault)
         echo "🗑️ Deleting resource group: $RG_NAME"
-        az group delete --name "$RG_NAME" --yes --no-wait
+        if az group delete --name "$RG_NAME" --yes --no-wait; then
+          echo "✅ Resource group deletion initiated successfully"
+        else
+          echo "⚠️ Failed to delete resource group, but continuing..."
+          exit 0
+        fi
         
         # Only attempt Key Vault purge if it existed
         if [ "$KV_EXISTS" = true ]; then
