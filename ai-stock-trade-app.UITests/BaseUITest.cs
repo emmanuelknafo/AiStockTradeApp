@@ -10,13 +10,13 @@ namespace ai_stock_trade_app.UITests;
 public class BaseUITest : PageTest
 {
     protected string BaseUrl;
-    
+
     public BaseUITest()
     {
         // Use environment variable for base URL, fallback to local HTTPS development URL
         BaseUrl = Environment.GetEnvironmentVariable("PLAYWRIGHT_BASE_URL") ?? "https://localhost:7043";
     }
-    
+
     public override BrowserNewContextOptions ContextOptions()
     {
         return new BrowserNewContextOptions()
@@ -30,7 +30,45 @@ public class BaseUITest : PageTest
             TimezoneId = "America/New_York"
         };
     }
-    
+
+    // Remove the 'override' modifier from the LaunchOptions method declaration
+    public BrowserTypeLaunchOptions LaunchOptions()
+    {
+        var launchOptions = new BrowserTypeLaunchOptions
+        {
+            Headless = true,
+            Args = new[]
+            {
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-web-security",
+                "--disable-features=TranslateUI",
+                "--disable-ipc-flooding-protection",
+                "--disable-blink-features=AutomationControlled"
+            }
+        };
+
+        // Additional options for CI environments
+        var isCI = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")) ||
+                   !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")) ||
+                   !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_PIPELINES"));
+
+        if (isCI)
+        {
+            Console.WriteLine("Running in CI environment - applying CI-specific browser options");
+            launchOptions.Timeout = 60000; // 60 seconds timeout
+        }
+
+        return launchOptions;
+    }
+
     [OneTimeSetUp]
     public async Task GlobalSetup()
     {
@@ -62,7 +100,7 @@ public class BaseUITest : PageTest
                 "playwright-traces",
                 $"{TestContext.CurrentContext.Test.Name}-{DateTime.Now:yyyyMMdd-HHmmss}.zip"
             );
-            
+
             Directory.CreateDirectory(Path.GetDirectoryName(tracePath)!);
             await Context.Tracing.StopAsync(new() { Path = tracePath });
         }
