@@ -210,20 +210,19 @@ stages:
               ASPNETCORE_ENVIRONMENT: "Development"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
-          - task: DotNetCoreCLI@2
-            displayName: "Install Playwright .NET tool"
+          - task: NodeTool@0
+            displayName: "Setup Node.js"
             inputs:
-              command: "custom"
-              custom: "tool"
-              arguments: "install --global Microsoft.Playwright.CLI"
+              versionSpec: "18.x"
 
           - script: |
-              echo "Installing Playwright browsers (dotnet CLI)..."
-              dotnet playwright install --with-deps
-              echo "Listing installed browsers..."
+              echo "Installing Playwright via npm (JS driver used by .NET binding)..."
+              cd ai-stock-trade-app.UITests
+              npm ci || npm install
+              npx playwright install --with-deps chromium
+              npx playwright --version
+              echo "Listing browser cache..."
               ls -R ~/.cache/ms-playwright || true
-              echo "Playwright version:" 
-              dotnet playwright --version || true
             displayName: "Install Playwright browsers"
 
           - script: |
@@ -303,8 +302,8 @@ stages:
               
               echo "Skipping X11 display probe (not required for headless Chromium)"
               
-              echo "Checking Playwright installation (dotnet CLI)..."
-              dotnet playwright --version || echo "Playwright .NET CLI not available"
+              echo "Checking Playwright installation (npx)..."
+              (cd ai-stock-trade-app.UITests && npx playwright --version) || echo "Playwright CLI not available"
               
               echo "Checking if Playwright browsers are installed..."
               ls -la /ms/playwright/ || echo "Playwright browser cache not found"
@@ -312,7 +311,7 @@ stages:
               
               echo "Testing simple browser launch..."
               echo "Testing simple browser launch via dotnet playwright (dry run using codegen list)..."
-              dotnet playwright show-trace || true
+              (cd ai-stock-trade-app.UITests && npx playwright install chromium) || true
               # Quick launch validation using a minimal script
                 echo "Installing dotnet-script for inline launch probe..."
                 dotnet tool install --global dotnet-script || true
@@ -352,13 +351,13 @@ stages:
               ASPNETCORE_ENVIRONMENT: "Development"
               PLAYWRIGHT_BASE_URL: "http://localhost:5000"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
-              PLAYWRIGHT_BROWSERS_PATH: "/ms/playwright"
               DISPLAY: ":99.0"
               PLAYWRIGHT_LAUNCH_OPTIONS: '{"headless":true,"args":["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu","--no-first-run","--no-default-browser-check","--disable-background-timer-throttling","--disable-backgrounding-occluded-windows","--disable-renderer-backgrounding"]}'
               PWDEBUG: "0"
               DEBUG: "pw:api"
               CI: "true"
               AZURE_PIPELINES: "true"
+              NODE_PATH: "$(System.DefaultWorkingDirectory)/ai-stock-trade-app.UITests/node_modules"
             condition: succeededOrFailed()
             timeoutInMinutes: 25
 

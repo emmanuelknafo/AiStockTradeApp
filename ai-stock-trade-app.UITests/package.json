@@ -1,0 +1,7 @@
+{
+  "name": "ai-stock-trade-app-uitests-helper",
+  "private": true,
+  "devDependencies": {
+    "playwright": "1.54.2"
+  }
+}
