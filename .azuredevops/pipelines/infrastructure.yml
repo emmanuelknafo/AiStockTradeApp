@@ -121,32 +121,47 @@ stages:
                       echo "Resource Group: $RG_NAME"
                       echo "Key Vault: $KV_NAME"
                       
-                      # First, check if Key Vault exists and purge it if it does
+                      # First, check if Key Vault exists
                       echo "Checking for Key Vault: $KV_NAME"
+                      KV_EXISTS=false
                       if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-                        echo "Key Vault found. It will be soft-deleted with the resource group."
-                        echo "Will purge Key Vault after resource group deletion..."
+                        echo "✅ Key Vault found. Will be handled after resource group deletion."
+                        KV_EXISTS=true
                       else
-                        echo "Key Vault not found or already deleted."
+                        echo "ℹ️ Key Vault not found or already deleted."
                       fi
                       
                       # Delete the resource group (this will soft-delete the Key Vault)
-                      echo "Deleting resource group: $RG_NAME"
+                      echo "🗑️ Deleting resource group: $RG_NAME"
                       az group delete --name "$RG_NAME" --yes --no-wait
                       
-                      # Wait a bit for the deletion to process
-                      echo "Waiting for resource group deletion to process..."
-                      sleep 30
-                      
-                      # Now purge the Key Vault from soft-delete state
-                      echo "Attempting to purge Key Vault from soft-delete state..."
-                      if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
-                        echo "✅ Key Vault $KV_NAME purged successfully"
-                      else
-                        echo "ℹ️ Key Vault $KV_NAME not found in soft-delete state or already purged"
+                      # Only attempt Key Vault purge if it existed
+                      if [ "$KV_EXISTS" = true ]; then
+                        echo "⏳ Waiting 60 seconds for deletion to propagate..."
+                        sleep 60
+                        
+                        echo "🧹 Attempting to purge Key Vault from soft-delete state..."
+                        # Try multiple times with increasing delays
+                        for attempt in 1 2 3; do
+                          echo "Purge attempt $attempt/3..."
+                          if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
+                            echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
+                            break
+                          else
+                            if [ $attempt -lt 3 ]; then
+                              echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
+                              sleep 30
+                            else
+                              echo "⚠️ Could not purge Key Vault after 3 attempts."
+                              echo "This may happen if the Key Vault is still being processed."
+                              echo "You can manually purge it later with:"
+                              echo "az keyvault purge --name $KV_NAME --location '${{ parameters.location }}'"
+                            fi
+                          fi
+                        done
                       fi
                       
-                      echo "Dev infrastructure destruction initiated"
+                      echo "✅ Dev infrastructure destruction process completed"
 
   - stage: DeployProd
     displayName: "Deploy Production Infrastructure"
@@ -232,32 +247,47 @@ stages:
                       echo "Resource Group: $RG_NAME"
                       echo "Key Vault: $KV_NAME"
                       
-                      # First, check if Key Vault exists and purge it if it does
+                      # First, check if Key Vault exists
                       echo "Checking for Key Vault: $KV_NAME"
+                      KV_EXISTS=false
                       if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-                        echo "Key Vault found. It will be soft-deleted with the resource group."
-                        echo "Will purge Key Vault after resource group deletion..."
+                        echo "✅ Key Vault found. Will be handled after resource group deletion."
+                        KV_EXISTS=true
                       else
-                        echo "Key Vault not found or already deleted."
+                        echo "ℹ️ Key Vault not found or already deleted."
                       fi
                       
                       # Delete the resource group (this will soft-delete the Key Vault)
-                      echo "Deleting resource group: $RG_NAME"
+                      echo "🗑️ Deleting resource group: $RG_NAME"
                       az group delete --name "$RG_NAME" --yes --no-wait
                       
-                      # Wait a bit for the deletion to process
-                      echo "Waiting for resource group deletion to process..."
-                      sleep 30
-                      
-                      # Now purge the Key Vault from soft-delete state
-                      echo "Attempting to purge Key Vault from soft-delete state..."
-                      if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
-                        echo "✅ Key Vault $KV_NAME purged successfully"
-                      else
-                        echo "ℹ️ Key Vault $KV_NAME not found in soft-delete state or already purged"
+                      # Only attempt Key Vault purge if it existed
+                      if [ "$KV_EXISTS" = true ]; then
+                        echo "⏳ Waiting 60 seconds for deletion to propagate..."
+                        sleep 60
+                        
+                        echo "🧹 Attempting to purge Key Vault from soft-delete state..."
+                        # Try multiple times with increasing delays
+                        for attempt in 1 2 3; do
+                          echo "Purge attempt $attempt/3..."
+                          if az keyvault purge --name "$KV_NAME" --location "${{ parameters.location }}" >/dev/null 2>&1; then
+                            echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
+                            break
+                          else
+                            if [ $attempt -lt 3 ]; then
+                              echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
+                              sleep 30
+                            else
+                              echo "⚠️ Could not purge Key Vault after 3 attempts."
+                              echo "This may happen if the Key Vault is still being processed."
+                              echo "You can manually purge it later with:"
+                              echo "az keyvault purge --name $KV_NAME --location '${{ parameters.location }}'"
+                            fi
+                          fi
+                        done
                       fi
                       
-                      echo "Prod infrastructure destruction initiated"
+                      echo "✅ Prod infrastructure destruction process completed"
 
   - stage: DeploymentSummary
     displayName: "Deployment Summary"
