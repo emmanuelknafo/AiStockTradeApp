@@ -743,7 +743,7 @@ jobs:
           echo "Attempting to create managed identity user in SQL database..."
           
           # Create SQL script with better error handling
-          cat > setup_managed_identity.sql << EOF
+          cat > setup_managed_identity.sql << 'SQL_SCRIPT_END'
           -- Switch to the target database
           USE [${DATABASE_NAME}];
           GO
@@ -773,21 +773,21 @@ jobs:
               
               -- Verify roles are assigned
               IF IS_ROLEMEMBER('db_datareader', '${WEBAPP_NAME}') = 1
-                  PRINT '✓ db_datareader role confirmed';
+                  PRINT 'db_datareader role confirmed';
               ELSE
-                  PRINT '⚠ Adding db_datareader role';
+                  PRINT 'Adding db_datareader role';
                   ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];
               
               IF IS_ROLEMEMBER('db_datawriter', '${WEBAPP_NAME}') = 1
-                  PRINT '✓ db_datawriter role confirmed';
+                  PRINT 'db_datawriter role confirmed';
               ELSE
-                  PRINT '⚠ Adding db_datawriter role';
+                  PRINT 'Adding db_datawriter role';
                   ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];
               
               IF IS_ROLEMEMBER('db_ddladmin', '${WEBAPP_NAME}') = 1
-                  PRINT '✓ db_ddladmin role confirmed';
+                  PRINT 'db_ddladmin role confirmed';
               ELSE
-                  PRINT '⚠ Adding db_ddladmin role';
+                  PRINT 'Adding db_ddladmin role';
                   ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];
           END
           GO
@@ -802,32 +802,32 @@ jobs:
           JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id
           WHERE dp.name = '${WEBAPP_NAME}';
           GO
-          EOF
+          SQL_SCRIPT_END
           
           # Execute the SQL script with detailed logging
           echo "Executing SQL script..."
           if /opt/mssql-tools/bin/sqlcmd -S "${SQL_SERVER_FQDN}" -d "${DATABASE_NAME}" -G -l 30 -i setup_managed_identity.sql -v; then
-            echo "✅ Successfully executed SQL script for managed identity setup"
+            echo "Successfully executed SQL script for managed identity setup"
             
             # Test the connection with a simple query
             echo "Testing managed identity connection..."
-            cat > test_connection.sql << EOF
-            SELECT 
-                USER_NAME() as current_user,
-                SYSTEM_USER as system_user,
-                DB_NAME() as database_name,
-                GETDATE() as current_time;
-            EOF
+            cat > test_connection.sql << 'TEST_SQL_END'
+          SELECT 
+              USER_NAME() as current_user,
+              SYSTEM_USER as system_user,
+              DB_NAME() as database_name,
+              GETDATE() as current_time;
+          TEST_SQL_END
             
             if /opt/mssql-tools/bin/sqlcmd -S "${SQL_SERVER_FQDN}" -d "${DATABASE_NAME}" -G -l 30 -i test_connection.sql; then
-              echo "✅ Connection test successful"
+              echo "Connection test successful"
             else
-              echo "⚠️ Connection test failed, but user creation may have succeeded"
+              echo "Connection test failed, but user creation may have succeeded"
             fi
           else
-            echo "❌ Failed to execute SQL script. Error details above."
+            echo "Failed to execute SQL script. Error details above."
             echo ""
-            echo "🔧 Manual Steps Required:"
+            echo "Manual Steps Required:"
             echo "Please connect to SQL Server as an Azure AD admin and run:"
             echo "  Server: ${SQL_SERVER_FQDN}"
             echo "  Database: ${DATABASE_NAME}"
