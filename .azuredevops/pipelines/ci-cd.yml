@@ -74,6 +74,14 @@ stages:
     jobs:
       - job: TestJob
         displayName: "Test Application"
+        services:
+          sqlserver: 
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            env:
+              SA_PASSWORD: "YourStrong@Passw0rd"
+              ACCEPT_EULA: "Y"
+            ports:
+              - 1433:1433
         steps:
           - checkout: self
             displayName: "Checkout code"
@@ -83,6 +91,13 @@ stages:
             inputs:
               packageType: "sdk"
               version: $(DOTNET_VERSION)
+
+          - task: DotNetCoreCLI@2
+            displayName: "Install Entity Framework tools"
+            inputs:
+              command: "custom"
+              custom: "tool"
+              arguments: "install --global dotnet-ef"
 
           - task: DotNetCoreCLI@2
             displayName: "Restore dependencies"
@@ -97,17 +112,51 @@ stages:
               projects: "**/*.csproj"
               arguments: "--no-restore --configuration Release"
 
+          - script: |
+              # Wait for SQL Server to be ready
+              echo "Waiting for SQL Server to start..."
+              for i in {1..30}; do
+                if sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -Q "SELECT 1" >/dev/null 2>&1; then
+                  echo "SQL Server is ready"
+                  break
+                fi
+                echo "Waiting for SQL Server... ($i/30)"
+                sleep 2
+              done
+            displayName: "Wait for SQL Server to start"
+
+          - task: DotNetCoreCLI@2
+            displayName: "Run database migrations for testing"
+            inputs:
+              command: "custom"
+              custom: "ef"
+              arguments: "database update --project ai-stock-trade-app/ai-stock-trade-app.csproj"
+            env:
+              ASPNETCORE_ENVIRONMENT: "Testing"
+              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+
           - task: DotNetCoreCLI@2
             displayName: "Run tests"
             inputs:
               command: "test"
               projects: "**/*.csproj"
               arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests"'
+            env:
+              ASPNETCORE_ENVIRONMENT: "Testing"
+              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
       - job: UITestJob
         displayName: "UI Tests with Playwright"
         dependsOn: TestJob
         condition: succeeded()
+        services:
+          sqlserver: 
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            env:
+              SA_PASSWORD: "YourStrong@Passw0rd"
+              ACCEPT_EULA: "Y"
+            ports:
+              - 1433:1433
         steps:
           - checkout: self
             displayName: "Checkout code"
@@ -139,81 +188,26 @@ stages:
               arguments: "install --global dotnet-ef"
 
           - script: |
-              # Start SQL Server container for testing
-              echo "Starting SQL Server container..."
-              docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=YourStrong@Passw0rd" \
-                -e "MSSQL_PID=Express" \
-                -p 1433:1433 --name sqlserver-ui-test \
-                -d mcr.microsoft.com/mssql/server:2022-latest
-              
-              # Wait for SQL Server to start - give it more time
-              echo "Waiting for SQL Server to initialize..."
-              sleep 60
-              
-              # Check if container is running and port is available
-              echo "Checking SQL Server status..."
-              timeout=90
-              while [ $timeout -gt 0 ]; do
-                # Check if container is running
-                if ! docker ps --filter "name=sqlserver-ui-test" --filter "status=running" | grep -q sqlserver-ui-test; then
-                  echo "Container is not running. Checking logs..."
-                  docker logs sqlserver-ui-test
-                  exit 1
-                fi
-                
-                # Check if port 1433 is responding
-                if nc -z localhost 1433 2>/dev/null; then
-                  echo "SQL Server port 1433 is responding!"
-                  # Give it a bit more time to fully initialize
-                  sleep 10
-                  echo "SQL Server is ready!"
+              # Wait for SQL Server to be ready
+              echo "Waiting for SQL Server to start..."
+              for i in {1..30}; do
+                if sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -Q "SELECT 1" >/dev/null 2>&1; then
+                  echo "SQL Server is ready"
                   break
                 fi
-                
-                echo "Waiting for SQL Server port 1433... ($timeout seconds remaining)"
-                sleep 5
-                timeout=$((timeout-5))
+                echo "Waiting for SQL Server... ($i/30)"
+                sleep 2
               done
-              
-              if [ $timeout -le 0 ]; then
-                echo "SQL Server failed to start within timeout"
-                echo "Container status:"
-                docker ps -a --filter "name=sqlserver-ui-test"
-                echo "Container logs:"
-                docker logs sqlserver-ui-test
-                exit 1
-              fi
-            displayName: "Setup SQL Server for UI testing"
+            displayName: "Wait for SQL Server to start"
 
-          - script: |
-              # Run database migrations with retry logic
-              echo "Running database migrations..."
-              
-              export ConnectionStrings__DefaultConnection="Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
-              
-              # Retry migration up to 3 times
-              retry_count=0
-              max_retries=3
-              
-              while [ $retry_count -lt $max_retries ]; do
-                echo "Migration attempt $((retry_count + 1)) of $max_retries..."
-                
-                if dotnet ef database update --project ai-stock-trade-app/ai-stock-trade-app.csproj --verbose; then
-                  echo "Database migration completed successfully!"
-                  break
-                fi
-                
-                retry_count=$((retry_count + 1))
-                if [ $retry_count -lt $max_retries ]; then
-                  echo "Migration failed, waiting 10 seconds before retry..."
-                  sleep 10
-                else
-                  echo "Migration failed after $max_retries attempts"
-                  exit 1
-                fi
-              done
+          - task: DotNetCoreCLI@2
             displayName: "Run database migrations for UI testing"
+            inputs:
+              command: "custom"
+              custom: "ef"
+              arguments: "database update --project ai-stock-trade-app/ai-stock-trade-app.csproj"
             env:
+              ASPNETCORE_ENVIRONMENT: "Testing"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
           - task: NodeTool@0
@@ -256,7 +250,7 @@ stages:
               fi
             displayName: "Start application in background"
             env:
-              ASPNETCORE_ENVIRONMENT: "Development"
+              ASPNETCORE_ENVIRONMENT: "Testing"
               ASPNETCORE_URLS: "http://localhost:5000"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
@@ -286,8 +280,9 @@ stages:
               projects: "**/*.csproj"
               arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx"'
             env:
+              ASPNETCORE_ENVIRONMENT: "Testing"
               PLAYWRIGHT_BASE_URL: "http://localhost:5000"
-              ASPNETCORE_ENVIRONMENT: "Development"
+              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
             condition: succeededOrFailed()
 
           - task: PublishTestResults@2
