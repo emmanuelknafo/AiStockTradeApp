@@ -1,6 +1,8 @@
 using ai_stock_trade_app.Services;
 using ai_stock_trade_app.Data;
 using Microsoft.EntityFrameworkCore;
+using Azure.Identity;
+using Microsoft.Data.SqlClient;
 
 public class Program
 {
@@ -15,7 +17,7 @@ public class Program
         builder.Services.AddHealthChecks()
             .AddDbContextCheck<StockDataContext>("database");
 
-        // Add Entity Framework
+        // Add Entity Framework with Azure AD support
         builder.Services.AddDbContext<StockDataContext>(options =>
         {
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -24,7 +26,33 @@ public class Program
                 // Fallback for development - using local default instance
                 connectionString = "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
             }
-            options.UseSqlServer(connectionString);
+
+            // Configure SQL connection with Azure AD authentication support
+            var sqlConnectionStringBuilder = new SqlConnectionStringBuilder(connectionString);
+            
+            // If using Azure AD authentication (detected by Authentication property)
+            if (connectionString.Contains("Authentication=Active Directory Default", StringComparison.OrdinalIgnoreCase))
+            {
+                var connection = new SqlConnection(connectionString);
+                
+                // Set up Azure AD token provider for production environments
+                if (builder.Environment.IsProduction())
+                {
+                    connection.AccessTokenProvider = async (cancellationToken) =>
+                    {
+                        var credential = new DefaultAzureCredential();
+                        var tokenResult = await credential.GetTokenAsync(new Azure.Core.TokenRequestContext(["https://database.windows.net/.default"]), cancellationToken);
+                        return tokenResult.Token;
+                    };
+                }
+                
+                options.UseSqlServer(connection);
+            }
+            else
+            {
+                // Standard SQL authentication
+                options.UseSqlServer(connectionString);
+            }
         });
 
         // Add HttpClient for external API calls

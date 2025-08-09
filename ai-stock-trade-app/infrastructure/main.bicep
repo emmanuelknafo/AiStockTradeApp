@@ -38,6 +38,15 @@ param instanceNumber string = '002'
 @description('Whether to deploy container registry (only for dev environment)')
 param deployContainerRegistry bool = true
 
+@description('Azure AD admin object ID for SQL Server')
+param azureAdAdminObjectId string = ''
+
+@description('Azure AD admin login name for SQL Server')
+param azureAdAdminLogin string = ''
+
+@description('Whether to enable Azure AD only authentication (required for some subscriptions)')
+param enableAzureAdOnlyAuth bool = false
+
 // Variables
 var resourceNamePrefix = '${appName}-${environment}'
 var appServicePlanName = 'asp-${resourceNamePrefix}-${instanceNumber}'
@@ -104,10 +113,22 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
   name: sqlServerName
   location: location
   properties: {
-    administratorLogin: sqlAdminUsername
-    administratorLoginPassword: sqlAdminPassword
+    administratorLogin: enableAzureAdOnlyAuth ? null : sqlAdminUsername
+    administratorLoginPassword: enableAzureAdOnlyAuth ? null : sqlAdminPassword
     version: '12.0'
     publicNetworkAccess: 'Enabled'
+  }
+}
+
+// SQL Server Azure AD Administrator (when Azure AD auth is enabled)
+resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = if (enableAzureAdOnlyAuth && !empty(azureAdAdminObjectId)) {
+  parent: sqlServer
+  name: 'ActiveDirectory'
+  properties: {
+    administratorType: 'ActiveDirectory'
+    login: azureAdAdminLogin
+    sid: azureAdAdminObjectId
+    tenantId: subscription().tenantId
   }
 }
 
@@ -142,7 +163,9 @@ resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01
   parent: keyVault
   name: 'SqlConnectionString'
   properties: {
-    value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;'
+    value: enableAzureAdOnlyAuth 
+      ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;'
+      : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;'
   }
 }
 
@@ -232,7 +255,9 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
       connectionStrings: [
         {
           name: 'DefaultConnection'
-          connectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;'
+          connectionString: enableAzureAdOnlyAuth 
+            ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;'
+            : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=30;'
           type: 'SQLAzure'
         }
       ]
@@ -253,9 +278,20 @@ resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-0
   }
 }
 
+// NOTE: When enableAzureAdOnlyAuth is true, after deployment you need to manually:
+// 1. Connect to the SQL database as the Azure AD admin
+// 2. Run: CREATE USER [app-aistock-{environment}-{instanceNumber}] FROM EXTERNAL PROVIDER
+// 3. Run: ALTER ROLE db_datareader ADD MEMBER [app-aistock-{environment}-{instanceNumber}]
+// 4. Run: ALTER ROLE db_datawriter ADD MEMBER [app-aistock-{environment}-{instanceNumber}]
+// 5. Run: ALTER ROLE db_ddladmin ADD MEMBER [app-aistock-{environment}-{instanceNumber}]
+
 // Outputs
 output webAppName string = webApp.name
 output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
+output webAppPrincipalId string = webApp.identity.principalId
+output sqlServerName string = sqlServer.name
+output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
+output sqlDatabaseName string = sqlDatabaseName
 output containerRegistryName string = deployContainerRegistry ? containerRegistry!.name : 'not-deployed'
 output containerRegistryLoginServer string = deployContainerRegistry ? containerRegistry!.properties.loginServer : 'not-deployed'
 output keyVaultName string = keyVault.name

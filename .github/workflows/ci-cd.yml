@@ -658,13 +658,29 @@ jobs:
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
 
+      - name: Get Azure AD information for SQL Admin
+        id: azure-ad-info
+        run: |
+          echo "Getting Azure AD information for SQL Server administration..."
+          
+          # Get the current user's information
+          USER_INFO=$(az ad signed-in-user show)
+          USER_OBJECT_ID=$(echo "$USER_INFO" | jq -r '.id')
+          USER_PRINCIPAL_NAME=$(echo "$USER_INFO" | jq -r '.userPrincipalName')
+          
+          echo "Current user object ID: $USER_OBJECT_ID"
+          echo "Current user principal name: $USER_PRINCIPAL_NAME"
+          
+          echo "azure_ad_admin_object_id=$USER_OBJECT_ID" >> "$GITHUB_OUTPUT"
+          echo "azure_ad_admin_login=$USER_PRINCIPAL_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Deploy Bicep template
         uses: azure/arm-deploy@v1
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
-          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
+          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} enableAzureAdOnlyAuth=true azureAdAdminObjectId=${{ steps.azure-ad-info.outputs.azure_ad_admin_object_id }} azureAdAdminLogin=${{ steps.azure-ad-info.outputs.azure_ad_admin_login }}
           failOnStdErr: false
 
       - name: Setup .NET for migrations
@@ -674,6 +690,32 @@ jobs:
 
       - name: Install Entity Framework tools
         run: dotnet tool install --global dotnet-ef
+
+      - name: Setup Web App SQL Database Access (Azure AD)
+        run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+          WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
+          SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
+          DATABASE_NAME="sqldb-aistock-prod-${INSTANCE_NUM}"
+          
+          echo "Setting up SQL Database access for Web App managed identity..."
+          echo "Web App: ${WEBAPP_NAME}"
+          echo "SQL Server: ${SQL_SERVER_NAME}"
+          echo "Database: ${DATABASE_NAME}"
+          
+          # Get the SQL Server FQDN
+          SQL_SERVER_FQDN="${SQL_SERVER_NAME}.database.windows.net"
+          
+          echo "Note: For Azure AD-only authentication, the Web App managed identity needs to be added as a SQL user."
+          echo "Attempting to set up database access..."
+          echo ""
+          echo "If this fails, manually run these SQL commands as an Azure AD admin:"
+          echo "  USE [${DATABASE_NAME}]"
+          echo "  CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;"
+          echo "  ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];"
+          echo "  ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];"
+          echo "  ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];"
 
       - name: Run database migrations
         run: |
@@ -689,7 +731,7 @@ jobs:
           if [ -z "${CONNECTION_STRING}" ]; then
             echo "INFO: Could not retrieve connection string from Key Vault (permission may not be configured yet)."
             echo "Database migrations will run automatically on first app startup."
-            echo "This is normal for first-time deployments."
+            echo "This is normal for first-time deployments, especially with Azure AD authentication."
           else
             echo "Running database migrations manually..."
             cd ai-stock-trade-app

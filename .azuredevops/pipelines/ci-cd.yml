@@ -698,6 +698,26 @@ stages:
                       echo "Web App Name: app-aistock-prod-$(instanceNum)"
                       echo "Container image from artifact: $(containerImage)"
 
+                - task: AzureCLI@2
+                  displayName: "Get Azure AD information for SQL Admin"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      echo "Getting Azure AD information for SQL Server administration..."
+                      
+                      # Get the current user's information
+                      USER_INFO=$(az ad signed-in-user show)
+                      USER_OBJECT_ID=$(echo "$USER_INFO" | jq -r '.id')
+                      USER_PRINCIPAL_NAME=$(echo "$USER_INFO" | jq -r '.userPrincipalName')
+                      
+                      echo "Current user object ID: $USER_OBJECT_ID"
+                      echo "Current user principal name: $USER_PRINCIPAL_NAME"
+                      
+                      echo "##vso[task.setvariable variable=azureAdAdminObjectId]$USER_OBJECT_ID"
+                      echo "##vso[task.setvariable variable=azureAdAdminLogin]$USER_PRINCIPAL_NAME"
+
                 - task: AzureResourceManagerTemplateDeployment@3
                   displayName: "Deploy Bicep template"
                   inputs:
@@ -710,8 +730,29 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./ai-stock-trade-app/infrastructure/main.bicep"
                     csmParametersFile: "./ai-stock-trade-app/infrastructure/parameters.prod.json"
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD)"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth true -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin $(azureAdAdminLogin)"
                     deploymentMode: "Incremental"
+
+                - task: Bash@3
+                  displayName: "Database Access Setup Information"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "🔐 Azure AD Authentication is now enabled for the SQL Server"
+                      echo "📋 To access the database:"
+                      echo "   1. Connect to SQL Server using Azure AD authentication"
+                      echo "   2. Server: sql-aistock-prod-$(instanceNum).database.windows.net"
+                      echo "   3. Authentication: Azure Active Directory - Integrated/Universal"
+                      echo "   4. Your account ($(azureAdAdminLogin)) has been set as Azure AD admin"
+                      echo ""
+                      echo "🔧 To grant access to the application's managed identity:"
+                      echo "   1. Connect to the database using Azure AD authentication"
+                      echo "   2. Run: CREATE USER [app-aistock-prod-$(instanceNum)] FROM EXTERNAL PROVIDER"
+                      echo "   3. Run: ALTER ROLE db_datareader ADD MEMBER [app-aistock-prod-$(instanceNum)]"
+                      echo "   4. Run: ALTER ROLE db_datawriter ADD MEMBER [app-aistock-prod-$(instanceNum)]"
+                      echo "   5. Run: ALTER ROLE db_ddladmin ADD MEMBER [app-aistock-prod-$(instanceNum)]"
+                      echo ""
+                      echo "ℹ️ The application will use managed identity to connect to the database"
 
                 - task: AzureCLI@2
                   displayName: "Update Web App Container"
