@@ -207,7 +207,7 @@ stages:
               custom: "ef"
               arguments: "database update --project ai-stock-trade-app/ai-stock-trade-app.csproj"
             env:
-              ASPNETCORE_ENVIRONMENT: "Testing"
+              ASPNETCORE_ENVIRONMENT: "Development"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
           - task: NodeTool@0
@@ -216,9 +216,22 @@ stages:
               versionSpec: "18.x"
 
           - script: |
-              npx playwright install
-              npx playwright install-deps
+              echo "Installing Playwright browsers..."
+              export PLAYWRIGHT_BROWSERS_PATH=/ms/playwright
+              npx playwright install --with-deps chromium
+              echo "Verifying Playwright installation..."
+              npx playwright --version
+              echo "Checking browser installation..."
+              ls -la $PLAYWRIGHT_BROWSERS_PATH || echo "Browser path not found"
+              
+              # Set proper permissions for headless browser execution
+              echo "Setting up display for headless execution..."
+              export DISPLAY=:99.0
+              Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+              
             displayName: "Install Playwright browsers"
+            env:
+              PLAYWRIGHT_BROWSERS_PATH: "/ms/playwright"
 
           - script: |
               # Start application in background
@@ -250,7 +263,7 @@ stages:
               fi
             displayName: "Start application in background"
             env:
-              ASPNETCORE_ENVIRONMENT: "Testing"
+              ASPNETCORE_ENVIRONMENT: "Development"
               ASPNETCORE_URLS: "http://localhost:5000"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
@@ -273,17 +286,53 @@ stages:
               fi
             displayName: "Wait for application to be ready"
 
+          - script: |
+              echo "=== Pre-test debugging ==="
+              echo "Checking if UITests project built correctly..."
+              ls -la ai-stock-trade-app.UITests/bin/Release/net9.0/ || echo "Build output directory not found"
+              
+              echo "Checking for required assemblies..."
+              ls -la ai-stock-trade-app.UITests/bin/Release/net9.0/*Playwright* || echo "Playwright assemblies not found"
+              ls -la ai-stock-trade-app.UITests/bin/Release/net9.0/*NUnit* || echo "NUnit assemblies not found"
+              
+              echo "Checking test.runsettings file..."
+              cat test.runsettings || echo "test.runsettings not found"
+              
+              echo "Environment variables:"
+              echo "PLAYWRIGHT_BASE_URL: $PLAYWRIGHT_BASE_URL"
+              echo "ASPNETCORE_ENVIRONMENT: $ASPNETCORE_ENVIRONMENT"
+              
+              echo "Testing application accessibility..."
+              curl -v http://localhost:5000 || echo "Application not responding"
+              
+              echo "Checking Playwright installation..."
+              npx playwright --version || echo "Playwright CLI not available"
+              
+              echo "Checking if Playwright browsers are installed..."
+              ls -la ~/.cache/ms-playwright/ || echo "Playwright browser cache not found"
+            displayName: "Pre-test debugging"
+            env:
+              ASPNETCORE_ENVIRONMENT: "Development"
+              PLAYWRIGHT_BASE_URL: "http://localhost:5000"
+
+          - script: |
+              echo "Listing all tests in UITests project..."
+              dotnet test ai-stock-trade-app.UITests --list-tests --verbosity normal
+            displayName: "List UI Tests to be executed"
+
           - task: DotNetCoreCLI@2
             displayName: "Run Playwright UI Tests"
             inputs:
               command: "test"
-              projects: "**/*.csproj"
-              arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx"'
+              projects: "ai-stock-trade-app.UITests/ai-stock-trade-app.UITests.csproj"
+              arguments: '--no-build --configuration Release --verbosity diagnostic --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings --logger "console;verbosity=diagnostic"'
             env:
-              ASPNETCORE_ENVIRONMENT: "Testing"
+              ASPNETCORE_ENVIRONMENT: "Development"
               PLAYWRIGHT_BASE_URL: "http://localhost:5000"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+              PLAYWRIGHT_BROWSERS_PATH: "/ms/playwright"
             condition: succeededOrFailed()
+            timeoutInMinutes: 25
 
           - task: PublishTestResults@2
             displayName: "Publish UI Test Results"
@@ -293,6 +342,18 @@ stages:
               testRunTitle: "Playwright UI Tests"
               mergeTestResults: true
             condition: succeededOrFailed()
+
+          - script: |
+              echo "Capturing application logs for debugging..."
+              if [ -f "ai-stock-trade-app/app.log" ]; then
+                echo "=== Application Logs ==="
+                cat ai-stock-trade-app/app.log
+                echo "=== End Application Logs ==="
+              else
+                echo "No application log file found"
+              fi
+            displayName: "Debug: Show application logs"
+            condition: failed()
 
           - script: |
               echo "Stopping application..."
