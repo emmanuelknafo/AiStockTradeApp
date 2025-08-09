@@ -826,6 +826,21 @@ stages:
                       echo "##vso[task.setvariable variable=azureAdAdminObjectId]$SP_OBJECT_ID"
                       echo "##vso[task.setvariable variable=azureAdAdminLogin]$SP_DISPLAY_NAME"
 
+                - task: Bash@3
+                  displayName: "Derive Azure AD auth enable flag"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "Evaluating whether to enable Azure AD only auth..."
+                      if [ -n "$(azureAdAdminObjectId)" ] && [ -n "$(azureAdAdminLogin)" ]; then
+                        echo "Azure AD admin details present. Enabling AAD only auth."
+                        echo "##vso[task.setvariable variable=enableAdOnlyAuthFlag]true"
+                      else
+                        echo "Azure AD admin details missing (objectId='$(azureAdAdminObjectId)', login='$(azureAdAdminLogin)'). Disabling AAD only auth for this deployment."
+                        echo "##vso[task.setvariable variable=enableAdOnlyAuthFlag]false"
+                      fi
+                      echo "enableAdOnlyAuthFlag=$(enableAdOnlyAuthFlag)"
+
                 - task: AzureResourceManagerTemplateDeployment@3
                   displayName: "Deploy Bicep template"
                   inputs:
@@ -839,7 +854,7 @@ stages:
                     csmFile: "./ai-stock-trade-app/infrastructure/main.bicep"
                     csmParametersFile: "./ai-stock-trade-app/infrastructure/parameters.prod.json"
                     # Only pass parameters that differ from parameter file defaults to prevent empty value issues
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -enableAzureAdOnlyAuth true -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)'"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -enableAzureAdOnlyAuth $(enableAdOnlyAuthFlag) -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)'"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2

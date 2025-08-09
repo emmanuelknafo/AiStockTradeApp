@@ -120,8 +120,8 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
   }
 }
 
-// SQL Server Azure AD Administrator (when Azure AD auth is enabled)
-resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = if (enableAzureAdOnlyAuth && !empty(azureAdAdminObjectId)) {
+// SQL Server Azure AD Administrator (deploy only when all required values provided)
+resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = if (enableAzureAdOnlyAuth && !empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin)) {
   parent: sqlServer
   name: 'ActiveDirectory'
   properties: {
