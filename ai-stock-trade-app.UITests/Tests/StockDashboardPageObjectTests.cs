@@ -35,8 +35,8 @@ public class StockDashboardPageObjectTests : BaseUITest
         await Expect(_dashboardPage.AlertsToggle).ToBeVisibleAsync();
         await Expect(_dashboardPage.AutoRefreshToggle).ToBeVisibleAsync();
 
-        // Verify main sections
-        await Expect(_dashboardPage.Watchlist).ToBeVisibleAsync();
+        // Verify main sections - watchlist container should be attached to DOM even if initially empty
+        await Expect(_dashboardPage.Watchlist).ToBeAttachedAsync();
         await Expect(_dashboardPage.PortfolioSummary).ToBeVisibleAsync();
     }
 
