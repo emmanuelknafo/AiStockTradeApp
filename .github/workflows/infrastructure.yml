@@ -122,17 +122,36 @@ jobs:
           fi
           az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
         fi
-
+        get_admin_sid() {
+          local show_sid list_sid
+          show_sid=$(az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query sid -o tsv 2>/dev/null || echo "")
+            if [ -n "$show_sid" ] && [ "$show_sid" != "null" ]; then echo "$show_sid"; return; fi
+          list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPP_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
+            if [ -n "$list_sid" ] && [ "$list_sid" != "null" ]; then echo "$list_sid"; return; fi
+          echo ""
+        }
         echo "[DEV] Waiting for admin propagation..."
-        for i in $(seq 1 12); do
-          ADMIN_OID=$(az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query sid -o tsv 2>/dev/null || echo "")
-          if [ "$ADMIN_OID" = "$PRINCIPAL_ID" ]; then echo "[DEV] Admin propagation confirmed (attempt $i)"; break; fi
-          echo "[DEV] Admin not propagated yet (attempt $i); sleeping 5s..."; sleep 5
+        sleep 8
+        PROPAGATED=false
+        for i in $(seq 1 24); do
+          ADMIN_OID=$(get_admin_sid)
+          if [ "$ADMIN_OID" = "$PRINCIPAL_ID" ]; then echo "[DEV] Admin propagation confirmed (attempt $i)"; PROPAGATED=true; break; fi
+          echo "[DEV] Admin not propagated yet (attempt $i); current='$ADMIN_OID'; sleeping 5s..."; sleep 5
         done
-        FINAL_OID=$(az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query sid -o tsv 2>/dev/null || echo "")
-        if [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then echo "[DEV][ERROR] Admin assignment did not propagate correctly"; exit 1; fi
-        az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME"
-        echo "[DEV] MI is confirmed as SQL Entra admin."
+        if [ "$PROPAGATED" != "true" ]; then
+          echo "[DEV][WARN] Propagation not confirmed after initial window. Gathering diagnostics..."
+          echo "[DEV] SHOW JSON:"; az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(show failed)"
+          echo "[DEV] LIST JSON:"; az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(list failed)"
+          ANY_MATCH=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?sid=='$PRINCIPAL_ID'] | length(@)" -o tsv 2>/dev/null || echo "0")
+          if [ "$ANY_MATCH" = "1" ]; then
+            echo "[DEV][INFO] Principal ID appears in admin list despite show mismatch; proceeding (eventual consistency)."
+            PROPAGATED=true
+          fi
+        fi
+        FINAL_OID=$(get_admin_sid)
+        if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
+          echo "[DEV][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
+        echo "[DEV] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
 
     - name: Verify Dev Infrastructure SQL Setup
       if: github.event.inputs.destroy != 'true'
@@ -337,15 +356,35 @@ jobs:
         fi
 
         echo "[PROD] Waiting for admin propagation..."
-        for i in $(seq 1 12); do
-          ADMIN_OID=$(az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query sid -o tsv 2>/dev/null || echo "")
-          if [ "$ADMIN_OID" = "$PRINCIPAL_ID" ]; then echo "[PROD] Admin propagation confirmed (attempt $i)"; break; fi
-          echo "[PROD] Admin not propagated yet (attempt $i); sleeping 5s..."; sleep 5
+        get_admin_sid_prod() {
+          local show_sid list_sid
+          show_sid=$(az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query sid -o tsv 2>/dev/null || echo "")
+          if [ -n "$show_sid" ] && [ "$show_sid" != "null" ]; then echo "$show_sid"; return; fi
+          list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPP_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
+          if [ -n "$list_sid" ] && [ "$list_sid" != "null" ]; then echo "$list_sid"; return; fi
+          echo ""
+        }
+        sleep 8
+        PROPAGATED=false
+        for i in $(seq 1 24); do
+          ADMIN_OID=$(get_admin_sid_prod)
+          if [ "$ADMIN_OID" = "$PRINCIPAL_ID" ]; then echo "[PROD] Admin propagation confirmed (attempt $i)"; PROPAGATED=true; break; fi
+          echo "[PROD] Admin not propagated yet (attempt $i); current='$ADMIN_OID'; sleeping 5s..."; sleep 5
         done
-        FINAL_OID=$(az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query sid -o tsv 2>/dev/null || echo "")
-        if [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then echo "[PROD][ERROR] Admin assignment did not propagate correctly"; exit 1; fi
-        az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME"
-        echo "[PROD] MI is confirmed as SQL Entra admin."
+        if [ "$PROPAGATED" != "true" ]; then
+          echo "[PROD][WARN] Propagation not confirmed after initial window. Gathering diagnostics..."
+          echo "[PROD] SHOW JSON:"; az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(show failed)"
+          echo "[PROD] LIST JSON:"; az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(list failed)"
+          ANY_MATCH=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?sid=='$PRINCIPAL_ID'] | length(@)" -o tsv 2>/dev/null || echo "0")
+          if [ "$ANY_MATCH" = "1" ]; then
+            echo "[PROD][INFO] Principal ID appears in admin list despite show mismatch; proceeding (eventual consistency)."
+            PROPAGATED=true
+          fi
+        fi
+        FINAL_OID=$(get_admin_sid_prod)
+        if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
+          echo "[PROD][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
+        echo "[PROD] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
 
     - name: Verify Prod Infrastructure SQL Setup
       if: github.event.inputs.destroy != 'true'
