@@ -835,14 +835,15 @@ stages:
                     targetType: "inline"
                     script: |
                       echo "Evaluating whether to enable Azure AD only auth..."
-                      if [ -n "$(azureAdAdminObjectId)" ] && [ -n "$(azureAdAdminLogin)" ]; then
+                      # Use Azure DevOps variable syntax: $VARIABLE (already set earlier)
+                      if [ -n "$azureAdAdminObjectId" ] && [ -n "$azureAdAdminLogin" ]; then
                         echo "Azure AD admin details present. Enabling AAD only auth."
                         echo "##vso[task.setvariable variable=enableAdOnlyAuthFlag]true"
                       else
-                        echo "Azure AD admin details missing (objectId='$(azureAdAdminObjectId)', login='$(azureAdAdminLogin)'). Disabling AAD only auth for this deployment."
+                        echo "Azure AD admin details missing (objectId='$azureAdAdminObjectId', login='$azureAdAdminLogin'). Disabling AAD only auth for this deployment."
                         echo "##vso[task.setvariable variable=enableAdOnlyAuthFlag]false"
                       fi
-                      echo "enableAdOnlyAuthFlag=$(enableAdOnlyAuthFlag)"
+                      echo "enableAdOnlyAuthFlag=$enableAdOnlyAuthFlag"
 
                 - task: AzureResourceManagerTemplateDeployment@3
                   displayName: "Deploy Bicep template"
@@ -867,152 +868,108 @@ stages:
                     scriptType: "bash"
                     scriptLocation: "inlineScript"
                     inlineScript: |
+                      # Do NOT 'set -e' globally; we handle retries manually
                       INSTANCE_NUM="$(instanceNum)"
                       RG_NAME="rg-aistock-prod-$(instanceNum)"
                       WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
                       DATABASE_NAME="sqldb-aistock-prod-$(instanceNum)"
-                      
-                      echo "🔧 Setting up SQL Database access for Web App managed identity..."
-                      echo "Web App: ${WEBAPP_NAME}"
-                      echo "SQL Server: ${SQL_SERVER_NAME}"
-                      echo "Database: ${DATABASE_NAME}"
-                      
-                      # First, verify the web app managed identity is enabled
-                      echo "🔍 Verifying web app managed identity..."
-                      MANAGED_IDENTITY=$(az webapp identity show --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" --query "principalId" --output tsv 2>/dev/null || echo "")
-                      
-                      if [ -z "${MANAGED_IDENTITY}" ] || [ "${MANAGED_IDENTITY}" == "null" ]; then
-                        echo "⚠️ Web app managed identity not found. Enabling it..."
-                        az webapp identity assign --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}"
-                        sleep 10  # Wait for identity propagation
-                        MANAGED_IDENTITY=$(az webapp identity show --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" --query "principalId" --output tsv)
+                      ENABLE_AAD_ONLY="$(enableAdOnlyAuthFlag)"
+                      echo "[INFO] === Managed identity SQL database access setup ==="
+                      echo "[INFO] ENABLE_AAD_ONLY=${ENABLE_AAD_ONLY}"
+                      if [ "${ENABLE_AAD_ONLY}" != "true" ]; then echo "[INFO] AAD-only auth disabled; skipping."; exit 0; fi
+                      echo "[INFO] Ensuring web app managed identity enabled..."
+                      MANAGED_IDENTITY=$(az webapp identity show --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" --query principalId -o tsv 2>/dev/null || echo "")
+                      if [ -z "$MANAGED_IDENTITY" ] || [ "$MANAGED_IDENTITY" = "null" ]; then
+                        az webapp identity assign --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" >/dev/null
+                        sleep 8
+                        MANAGED_IDENTITY=$(az webapp identity show --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" --query principalId -o tsv)
                       fi
-                      
-                      echo "✅ Web app managed identity ID: ${MANAGED_IDENTITY}"
-                      
-                      # Get the SQL Server FQDN
+                      echo "[INFO] Managed identity principalId: $MANAGED_IDENTITY"
                       SQL_SERVER_FQDN="${SQL_SERVER_NAME}.database.windows.net"
-                      
-                      echo "🔐 Attempting to create SQL user for managed identity..."
-                      
-                      # Install sqlcmd tools
-                      echo "Installing sqlcmd..."
-                      curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-                      curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list
-                      sudo apt-get update
-                      sudo apt-get install -y mssql-tools unixodbc-dev
-                      
-                      echo "Testing basic connectivity to SQL Server..."
-                      if ! timeout 10 bash -c "</dev/tcp/${SQL_SERVER_NAME}.database.windows.net/1433" 2>/dev/null; then
-                        echo "❌ Cannot connect to SQL Server on port 1433. Check firewall rules."
-                        exit 1
-                      else
-                        echo "✅ SQL Server is reachable on port 1433"
-                      fi
-                      
-                      echo "Attempting to create managed identity user in SQL database..."
-                      
-                      # Create SQL script with better error handling
-                      cat > setup_managed_identity.sql << EOF
-                      -- Switch to the target database
-                      USE [${DATABASE_NAME}];
-                      GO
-                      
-                      -- Check if user already exists
-                      IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${WEBAPP_NAME}')
-                      BEGIN
-                          PRINT 'Creating managed identity user: ${WEBAPP_NAME}';
-                          CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;
-                          PRINT 'User created successfully';
-                          
-                          -- Assign roles
-                          ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];
-                          PRINT 'Added to db_datareader role';
-                          
-                          ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];
-                          PRINT 'Added to db_datawriter role';
-                          
-                          ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];
-                          PRINT 'Added to db_ddladmin role';
-                          
-                          PRINT 'Managed identity user created and roles assigned successfully';
-                      END
-                      ELSE
-                      BEGIN
-                          PRINT 'Managed identity user already exists: ${WEBAPP_NAME}';
-                          
-                          -- Verify roles are assigned
-                          IF IS_ROLEMEMBER('db_datareader', '${WEBAPP_NAME}') = 1
-                              PRINT '✓ db_datareader role confirmed';
-                          ELSE
-                              PRINT '⚠ Adding db_datareader role';
-                              ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];
-                          
-                          IF IS_ROLEMEMBER('db_datawriter', '${WEBAPP_NAME}') = 1
-                              PRINT '✓ db_datawriter role confirmed';
-                          ELSE
-                              PRINT '⚠ Adding db_datawriter role';
-                              ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];
-                          
-                          IF IS_ROLEMEMBER('db_ddladmin', '${WEBAPP_NAME}') = 1
-                              PRINT '✓ db_ddladmin role confirmed';
-                          ELSE
-                              PRINT '⚠ Adding db_ddladmin role';
-                              ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];
-                      END
-                      GO
-                      
-                      -- Show final user permissions
-                      SELECT 
-                          dp.name AS principal_name,
-                          dp.type_desc AS principal_type,
-                          r.name AS role_name
-                      FROM sys.database_principals dp
-                      JOIN sys.database_role_members rm ON dp.principal_id = rm.member_principal_id
-                      JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id
-                      WHERE dp.name = '${WEBAPP_NAME}';
-                      GO
-                      EOF
-                      
-                      # Execute the SQL script with detailed logging
-                      echo "Executing SQL script..."
-                      if /opt/mssql-tools/bin/sqlcmd -S "${SQL_SERVER_FQDN}" -d "${DATABASE_NAME}" -G -l 30 -i setup_managed_identity.sql; then
-                        echo "✅ Successfully executed SQL script for managed identity setup"
-                        
-                        # Test the connection with a simple query
-                        echo "Testing managed identity connection..."
-                        cat > test_connection.sql << EOF
-                        SELECT 
-                            USER_NAME() as current_user,
-                            SYSTEM_USER as system_user,
-                            DB_NAME() as database_name,
-                            GETDATE() as current_time;
-                        EOF
-                        
-                        if /opt/mssql-tools/bin/sqlcmd -S "${SQL_SERVER_FQDN}" -d "${DATABASE_NAME}" -G -l 30 -i test_connection.sql; then
-                          echo "✅ Connection test successful"
-                        else
-                          echo "⚠️ Connection test failed, but user creation may have succeeded"
+                      echo "[INFO] Waiting for database '${DATABASE_NAME}' to be online..."
+                      for i in $(seq 1 18); do
+                        ACCESS_TOKEN_TMP=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>/dev/null || echo "")
+                        if [ -n "$ACCESS_TOKEN_TMP" ]; then
+                          export SQLCMDACCESSTOKEN="$ACCESS_TOKEN_TMP"
+                          if /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d master -C -l 15 -h -1 -Q "SET NOCOUNT ON; SELECT state_desc FROM sys.databases WHERE name='${DATABASE_NAME}';" | grep -qi 'ONLINE'; then
+                            echo "[INFO] Database is ONLINE (attempt $i)"; break
+                          fi
                         fi
-                      else
-                        echo "❌ Failed to execute SQL script. Error details above."
-                        echo ""
-                        echo "🔧 Manual Steps Required:"
-                        echo "Please connect to SQL Server as an Azure AD admin and run:"
-                        echo "  Server: ${SQL_SERVER_FQDN}"
-                        echo "  Database: ${DATABASE_NAME}"
-                        echo "  Authentication: Azure Active Directory - Universal with MFA"
-                        echo ""
-                        echo "SQL Commands:"
-                        echo "  USE [${DATABASE_NAME}];"
-                        echo "  CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER;"
-                        echo "  ALTER ROLE db_datareader ADD MEMBER [${WEBAPP_NAME}];"
-                        echo "  ALTER ROLE db_datawriter ADD MEMBER [${WEBAPP_NAME}];"
-                        echo "  ALTER ROLE db_ddladmin ADD MEMBER [${WEBAPP_NAME}];"
-                        echo ""
-                        echo "The deployment will continue, but the application may fail until this is resolved."
+                        echo "[INFO] Database not online yet (attempt $i/18); sleeping 10s..."; sleep 10
+                      done
+                      echo "[INFO] Checking configured Azure AD admin on SQL server..."
+                      ADMIN_CHECK_ATTEMPTS=12
+                      ADMIN_SEEN=0
+                      for i in $(seq 1 $ADMIN_CHECK_ATTEMPTS); do
+                        ADMIN_LOGIN=$(az sql server ad-admin show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query login -o tsv 2>/dev/null || echo "")
+                        if [ -n "$ADMIN_LOGIN" ] && [ "$ADMIN_LOGIN" != "null" ]; then
+                          echo "[INFO] Azure AD admin detected: $ADMIN_LOGIN (attempt $i)"; ADMIN_SEEN=1; break
+                        fi
+                        echo "[INFO] Azure AD admin not yet visible (attempt $i/$ADMIN_CHECK_ATTEMPTS); waiting 10s..."
+                        sleep 10
+                      done
+                      if [ "$ADMIN_SEEN" != "1" ]; then
+                        echo "[WARN] Azure AD admin not visible after waiting. User creation may fail; continuing anyway."
                       fi
+                      echo "[INFO] Installing sqlcmd tooling..."
+                      curl -s https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add - >/dev/null
+                      curl -s https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list >/dev/null
+                      sudo apt-get update -y >/dev/null
+                      sudo apt-get install -y mssql-tools unixodbc-dev >/dev/null
+                      if ! timeout 5 bash -c "</dev/tcp/${SQL_SERVER_NAME}.database.windows.net/1433" 2>/dev/null; then echo "[ERROR] Port 1433 unreachable"; exit 1; fi
+                      SQL_SCRIPT=$'USE [${DATABASE_NAME}];\nIF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name='"'${WEBAPP_NAME}'"') BEGIN PRINT 'Creating user ${WEBAPP_NAME}'; CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER; END;\nDECLARE @roles TABLE(r sysname); INSERT INTO @roles VALUES(\'db_datareader\'),(\'db_datawriter\'),(\'db_ddladmin\');\nDECLARE c CURSOR LOCAL FAST_FORWARD FOR SELECT r FROM @roles; OPEN c; DECLARE @r sysname; FETCH NEXT FROM c INTO @r;\nWHILE @@FETCH_STATUS=0 BEGIN IF IS_ROLEMEMBER(@r,\'${WEBAPP_NAME}\')=1 PRINT @r+\' already assigned\'; ELSE EXEC(\'ALTER ROLE \' +QUOTENAME(@r)+ ' ADD MEMBER [${WEBAPP_NAME}]\'); FETCH NEXT FROM c INTO @r; END CLOSE c; DEALLOCATE c;\nSELECT dp.name AS principal, r.name AS role_name FROM sys.database_principals dp JOIN sys.database_role_members rm ON dp.principal_id=rm.member_principal_id JOIN sys.database_principals r ON rm.role_principal_id=r.principal_id WHERE dp.name=\'${WEBAPP_NAME}\';'
+                      printf '%s\n' "$SQL_SCRIPT" > setup_managed_identity.sql
+
+                      echo "[INFO] Waiting for successful token-based connectivity..."
+                      LOGIN_OK=0
+                      for i in $(seq 1 12); do
+                        ACCESS_TOKEN=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>/dev/null || echo "")
+                        if [ -z "$ACCESS_TOKEN" ]; then echo "[INFO] (attempt $i) token not acquired, retrying in 10s"; sleep 10; continue; fi
+                        export SQLCMDACCESSTOKEN="$ACCESS_TOKEN"
+                        if /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d master -C -l 15 -Q "SELECT 1" >/dev/null 2>&1; then
+                          echo "[INFO] Token login succeeded on attempt $i"; LOGIN_OK=1; break
+                        else
+                          echo "[INFO] Token login failed (attempt $i); waiting 10s..."; sleep 10
+                        fi
+                      done
+                      if [ "$LOGIN_OK" != "1" ]; then
+                        echo "[WARN] Could not establish token login after retries. Skipping user creation to avoid hard failure."
+                        exit 0
+                      fi
+
+                      echo "[INFO] Executing user/role script with retries..."
+                      CREATE_OK=0
+                      for i in $(seq 1 5); do
+                        # Refresh token before each attempt (tokens ~ 1h but safe)
+                        ACCESS_TOKEN=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>/dev/null || echo "")
+                        [ -n "$ACCESS_TOKEN" ] && export SQLCMDACCESSTOKEN="$ACCESS_TOKEN"
+                        if /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 60 -i setup_managed_identity.sql; then
+                          echo "[INFO] User/role script succeeded (attempt $i)"; CREATE_OK=1; break
+                        else
+                          echo "[WARN] User/role script failed (attempt $i); sleeping 15s before retry"; sleep 15
+                        fi
+                      done
+                      if [ "$CREATE_OK" != "1" ]; then
+                        echo "[WARN] Exhausted retries creating/verifying managed identity user. Manual intervention may be required."
+                        exit 0
+                      fi
+
+                      echo "[INFO] Running identity test query..."
+                      echo "SELECT SUSER_SNAME() AS suser, CURRENT_USER AS current_user, DB_NAME() AS dbname;" > test_connection.sql
+                      /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 15 -i test_connection.sql || echo "[WARN] Identity test query failed"
+                      echo "[INFO] Verifying presence of managed identity user principal..."
+                      VERIFY_SQL=$'SET NOCOUNT ON; SELECT name,type_desc,create_date FROM sys.database_principals WHERE name='"'${WEBAPP_NAME}'"';'
+                      VERIFY_OUTPUT=$(/opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 30 -h -1 -Q "$VERIFY_SQL" 2>/dev/null || echo "")
+                      if echo "$VERIFY_OUTPUT" | grep -qi "${WEBAPP_NAME}"; then
+                        echo "[INFO] Managed identity user exists in database."
+                      else
+                        echo "[ERROR] Managed identity user ${WEBAPP_NAME} NOT FOUND after creation attempts."; exit 1
+                      fi
+                      echo "[INFO] Listing role memberships for managed identity (if any)..."
+                      ROLE_SQL=$'SET NOCOUNT ON; SELECT r.name AS role_name FROM sys.database_principals dp JOIN sys.database_role_members rm ON dp.principal_id=rm.member_principal_id JOIN sys.database_principals r ON rm.role_principal_id=r.principal_id WHERE dp.name='"'${WEBAPP_NAME}'"';'
+                      /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 30 -Q "$ROLE_SQL" || echo "[WARN] Role listing query failed"
+                      echo "[INFO] Managed identity SQL setup complete"
 
                 - task: DotNetCoreCLI@2
                   displayName: "Setup .NET for migrations"

@@ -83,7 +83,7 @@ public class Program
 
         var app = builder.Build();
 
-        // Ensure database is created and migrated
+    // Ensure database is created and migrated with resilient Azure AD handling
         using (var scope = app.Services.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<StockDataContext>();
@@ -101,54 +101,79 @@ public class Program
             var serverName = ExtractServerNameFromConnectionString(connectionString);
             var isAzureAd = connectionString.Contains("Authentication=Active Directory Default", StringComparison.OrdinalIgnoreCase);
             
-            try
+            var maxAttempts = isAzureAd ? 6 : 1; // up to ~ (0+5+10+20+30) seconds + work
+            var delays = new[] { 0, 5, 10, 20, 30, 45 }; // seconds
+            Exception? lastException = null;
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
+                var delay = isAzureAd ? delays[Math.Min(attempt - 1, delays.Length - 1)] : 0;
+                if (delay > 0)
+                {
+                    logger.LogInformation("[MIGRATIONS] Waiting {Delay}s before attempt {Attempt}/{MaxAttempts} (Azure AD)", delay, attempt, maxAttempts);
+                    await Task.Delay(TimeSpan.FromSeconds(delay));
+                }
+
+                try
+                {
+                    if (isAzureAd)
+                    {
+                        logger.LogInformation("[MIGRATIONS] Attempt {Attempt}/{MaxAttempts} applying migrations with Azure AD auth to {ServerName}", attempt, maxAttempts, serverName);
+                    }
+                    else if (attempt == 1)
+                    {
+                        logger.LogInformation("[MIGRATIONS] Applying migrations to {ServerName}", serverName);
+                    }
+
+                    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                    await context.Database.MigrateAsync(cts.Token);
+                    logger.LogInformation("[MIGRATIONS] Success on attempt {Attempt}", attempt);
+                    lastException = null;
+                    break; // success
+                }
+                catch (OperationCanceledException oce)
+                {
+                    lastException = oce;
+                    logger.LogWarning(oce, "[MIGRATIONS] Timeout on attempt {Attempt}/{MaxAttempts}", attempt, maxAttempts);
+                }
+                catch (SqlException sqlEx) when (isAzureAd)
+                {
+                    lastException = sqlEx;
+                    // Common AAD transient issues: 18456 login failed, network, principal not found yet
+                    var msg = sqlEx.Message;
+                    if (sqlEx.Number == 18456 || msg.Contains("Login failed", StringComparison.OrdinalIgnoreCase) || msg.Contains("transient", StringComparison.OrdinalIgnoreCase))
+                    {
+                        logger.LogWarning(sqlEx, "[MIGRATIONS] Transient Azure AD login/mapping issue on attempt {Attempt}/{MaxAttempts}", attempt, maxAttempts);
+                        continue;
+                    }
+                    logger.LogError(sqlEx, "[MIGRATIONS] Non-transient SqlException on attempt {Attempt}/{MaxAttempts}", attempt, maxAttempts);
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    if (isAzureAd && ex.Message.Contains("Login failed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        logger.LogWarning(ex, "[MIGRATIONS] Generic login failed (Azure AD) attempt {Attempt}/{MaxAttempts}", attempt, maxAttempts);
+                        continue;
+                    }
+                    logger.LogError(ex, "[MIGRATIONS] Unexpected error attempt {Attempt}/{MaxAttempts}");
+                }
+            }
+
+            if (lastException != null)
+            {
+                logger.LogError(lastException, "[MIGRATIONS] Final failure after {MaxAttempts} attempts", maxAttempts);
                 if (isAzureAd)
                 {
-                    logger.LogInformation("Applying database migrations with Azure AD authentication to server: {ServerName}...", serverName);
-                    logger.LogInformation("This may take longer due to Azure AD token acquisition...");
+                    logger.LogError("[MIGRATIONS] Potential causes: missing DB user for managed identity, AAD admin propagation delay, or firewall.");
                 }
-                else
-                {
-                    logger.LogInformation("Applying database migrations to server: {ServerName}...", serverName);
-                }
-                
-                // Use a longer timeout for Azure AD connections
-                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5)); // 5 minute timeout
-                await context.Database.MigrateAsync(cts.Token);
-                
-                logger.LogInformation("Database migrations applied successfully to server: {ServerName}", serverName);
-            }
-            catch (OperationCanceledException)
-            {
-                logger.LogError("Database migration timed out after 5 minutes for server: {ServerName}", serverName);
-                if (isAzureAd)
-                {
-                    logger.LogError("Azure AD authentication may be taking too long. Check managed identity configuration.");
-                }
-                throw;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error applying database migrations to server: {ServerName}", serverName);
-                
-                if (isAzureAd && ex.Message.Contains("timeout"))
-                {
-                    logger.LogError("Azure AD authentication timeout detected. Possible issues:");
-                    logger.LogError("1. Managed identity not properly configured");
-                    logger.LogError("2. SQL Server firewall blocking connections");
-                    logger.LogError("3. Missing SQL user for managed identity");
-                }
-                
-                // In development, create the database if it doesn't exist
                 if (app.Environment.IsDevelopment())
                 {
-                    logger.LogInformation("Creating database for development environment on server: {ServerName}...", serverName);
+                    logger.LogInformation("[MIGRATIONS] Development mode fallback: EnsureCreated()");
                     context.Database.EnsureCreated();
                 }
                 else
                 {
-                    throw;
+                    throw lastException;
                 }
             }
         }
