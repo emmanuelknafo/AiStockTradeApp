@@ -1,0 +1,6 @@
+{
+    "terminal.integrated.shellIntegration.environmentReporting": true,
+    "terminal.integrated.stickyScroll.enabled": true,
+    "terminal.integrated.suggest.enabled": true,
+    "python.terminal.shellIntegration.enabled": true
+}

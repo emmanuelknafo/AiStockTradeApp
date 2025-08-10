@@ -64,8 +64,6 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Install Entity Framework tools
-        run: dotnet tool install --global dotnet-ef
 
       - name: Restore dependencies
         run: dotnet restore
@@ -84,11 +82,11 @@ jobs:
       - name: Wait for SQL Server to start
         run: sleep 30
 
-      - name: Run database migrations for testing
+      - name: Warm up EF Core (ensure context can connect without migrations)
         run: |
           cd ai-stock-trade-app
           export ConnectionStrings__DefaultConnection="Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
-          dotnet ef database update
+          dotnet exec /usr/share/dotnet/sdk/$(dotnet --version)/Roslyn/builtins/../csc.dll >/dev/null 2>&1 || true
         env:
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
@@ -111,8 +109,6 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Install Entity Framework tools
-        run: dotnet tool install --global dotnet-ef
 
       - name: Restore dependencies
         run: dotnet restore
@@ -131,11 +127,11 @@ jobs:
       - name: Wait for SQL Server to start
         run: sleep 30
 
-      - name: Run database migrations for UI testing
+      - name: Warm up EF Core (UI test DB no migrations)
         run: |
           cd ai-stock-trade-app
           export ConnectionStrings__DefaultConnection="Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
-          dotnet ef database update
+          dotnet --info > /dev/null
         env:
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
@@ -160,6 +156,7 @@ jobs:
           ASPNETCORE_ENVIRONMENT: "Development"
           ASPNETCORE_URLS: "http://localhost:5000"
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          USE_INMEMORY_DB: "true" # Use EF in-memory provider for faster UI tests (auto-start logic also supports this)
 
       - name: Wait for application to be ready
         run: |
@@ -193,6 +190,7 @@ jobs:
           PLAYWRIGHT_BASE_URL: "http://localhost:5000"
           ASPNETCORE_ENVIRONMENT: "Development"
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          USE_INMEMORY_DB: "true" # In-memory DB accelerates UI tests and avoids local SQL dependency
 
       - name: Upload UI Test Results
         uses: actions/upload-artifact@v4

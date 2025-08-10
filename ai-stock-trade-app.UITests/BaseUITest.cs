@@ -13,8 +13,8 @@ public class BaseUITest : PageTest
 
     public BaseUITest()
     {
-        // Use environment variable for base URL, fallback to local HTTPS development URL
-        BaseUrl = Environment.GetEnvironmentVariable("PLAYWRIGHT_BASE_URL") ?? "https://localhost:7043";
+        // Use environment variable for base URL, fallback to standard HTTP dev port (matches auto-start logic)
+        BaseUrl = Environment.GetEnvironmentVariable("PLAYWRIGHT_BASE_URL") ?? "http://localhost:5000";
     }
 
     public override BrowserNewContextOptions ContextOptions()
@@ -74,6 +74,12 @@ public class BaseUITest : PageTest
     {
         // Check if the application is running before starting tests
         await TestSetupHelper.WaitForApplicationStartup(BaseUrl, timeoutSeconds: 10);
+    }
+
+    [OneTimeTearDown]
+    public void GlobalTeardown()
+    {
+        TestSetupHelper.StopIfStartedByTests();
     }
 
     [SetUp]

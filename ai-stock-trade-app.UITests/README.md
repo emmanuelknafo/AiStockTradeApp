@@ -21,20 +21,38 @@ dotnet build
 playwright install
 ```
 
-### IMPORTANT: Start Application First
+### Application Startup (Auto-Start Enabled)
+
+By default the UI tests will attempt to auto-start the application if it is not already running.
+
 ```bash
-# Step 1: Start your application (in one terminal)
-cd ai-stock-trade-app
-dotnet run
+# Standard run (auto-starts app on http://localhost:5000 if not running)
+dotnet test
 
-# Step 2: Wait for application to start at https://localhost:7043
-
-# Step 3: Run tests (in another terminal)
-cd ai-stock-trade-app.UITests
+# Opt-out of auto-start (e.g., if you want to run the app yourself)
+$env:DISABLE_UI_TEST_AUTOSTART = "true"  # PowerShell
+export DISABLE_UI_TEST_AUTOSTART=true     # bash
+dotnet run --project ./ai-stock-trade-app/ai-stock-trade-app.csproj
 dotnet test
 ```
 
+The default base URL now falls back to `http://localhost:5000` unless `PLAYWRIGHT_BASE_URL` is set.
+
+### In-Memory Database Option
+
+For faster UI test execution (and to avoid requiring a local SQL instance) the tests can run with an in-memory EF Core database:
+
+```bash
+# Enable in-memory DB (skips migrations) for all app code executed during UI tests
+$env:USE_INMEMORY_DB = "true"  # PowerShell
+export USE_INMEMORY_DB=true     # bash
+dotnet test
+```
+
+When `USE_INMEMORY_DB=true` migrations are skipped and a volatile store is used (`UiTestDb`).
+
 ### Run Specific Test Categories
+
 ```bash
 # Run only navigation tests
 dotnet test --filter "NavigationTests"
@@ -47,6 +65,7 @@ dotnet test --filter "PerformanceTests"
 ```
 
 ### Run with Different Browsers
+
 ```bash
 # Run with Firefox
 BROWSER=firefox dotnet test
@@ -56,6 +75,7 @@ BROWSER=webkit dotnet test
 ```
 
 ### Debugging Tests
+
 ```bash
 # Run tests in headed mode (visible browser)
 HEADED=1 dotnet test
@@ -67,19 +87,22 @@ SLOWMO=1000 dotnet test
 ## Test Results and Traces
 
 Failed tests automatically generate:
+
 - Screenshots
 - Video recordings  
 - Trace files (playwright-traces/ directory)
 
 ## Configuration
 
-Application URL is configured to match launchSettings.json:
-- `BaseUrl`: `https://localhost:7043` (HTTPS profile from launchSettings.json)
-- SSL certificate errors are automatically ignored for localhost
+Application URL defaults:
+
+- `BaseUrl` (fallback): `http://localhost:5000`
+- Override via `PLAYWRIGHT_BASE_URL` environment variable
+- SSL certificate errors are ignored (still works if you point at `https://localhost:7043`)
 - Viewport settings: 1280x720 (configurable)
 - Timeout configurations: 10-15 seconds for most operations
 
-**Critical**: The application MUST be running at `https://localhost:7043` before executing tests.
+If auto-start is disabled you must ensure the application is running at the chosen BaseUrl before executing tests.
 
 ## Test Resilience Features
 
@@ -110,6 +133,7 @@ Application URL is configured to match launchSettings.json:
 ### Quick Verification
 
 Check if your setup is correct:
-1. Application running: Visit `https://localhost:7043` in your browser
+
+1. Application running: Visit `https://localhost:7043` (or chosen BaseUrl) in your browser
 2. Playwright installed: `playwright install` completed successfully
 3. Tests building: `dotnet build` in UITests directory succeeds

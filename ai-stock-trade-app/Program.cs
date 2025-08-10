@@ -3,6 +3,7 @@ using ai_stock_trade_app.Data;
 using Microsoft.EntityFrameworkCore;
 using Azure.Identity;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 
 public class Program
 {
@@ -17,48 +18,57 @@ public class Program
         builder.Services.AddHealthChecks()
             .AddDbContextCheck<StockDataContext>("database");
 
-        // Add Entity Framework with Azure AD support
-        builder.Services.AddDbContext<StockDataContext>(options =>
+        // Add Entity Framework with optional in-memory provider for UI tests
+        var useInMemory = string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
+        if (useInMemory)
         {
-            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-            if (string.IsNullOrEmpty(connectionString))
+            builder.Services.AddDbContext<StockDataContext>(options =>
+                options.UseInMemoryDatabase("UiTestDb"));
+        }
+        else
+        {
+            builder.Services.AddDbContext<StockDataContext>(options =>
             {
-                // Fallback for development - using local default instance
-                connectionString = "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
-            }
+                var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+                if (string.IsNullOrEmpty(connectionString))
+                {
+                    // Fallback for development - using local default instance
+                    connectionString = "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+                }
 
-            // Configure SQL connection with Azure AD authentication support
-            var sqlConnectionStringBuilder = new SqlConnectionStringBuilder(connectionString);
-            
-            // If using Azure AD authentication (detected by Authentication property)
-            if (connectionString.Contains("Authentication=Active Directory Default", StringComparison.OrdinalIgnoreCase))
-            {
-                // For Azure AD authentication, increase timeout and ensure proper configuration
-                sqlConnectionStringBuilder.ConnectTimeout = 60; // Increase from default 30 to 60 seconds
-                sqlConnectionStringBuilder.CommandTimeout = 60; // Add command timeout
+                // Configure SQL connection with Azure AD authentication support
+                var sqlConnectionStringBuilder = new SqlConnectionStringBuilder(connectionString);
                 
-                // Configure Entity Framework with longer timeout for Azure AD
-                options.UseSqlServer(sqlConnectionStringBuilder.ConnectionString, sqlOptions =>
+                // If using Azure AD authentication (detected by Authentication property)
+                if (connectionString.Contains("Authentication=Active Directory Default", StringComparison.OrdinalIgnoreCase))
                 {
-                    sqlOptions.CommandTimeout(120); // 2 minutes for Entity Framework operations
-                    sqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 3,
-                        maxRetryDelay: TimeSpan.FromSeconds(30),
-                        errorNumbersToAdd: null);
-                });
-            }
-            else
-            {
-                // Standard SQL authentication
-                options.UseSqlServer(connectionString, sqlOptions =>
+                    // For Azure AD authentication, increase timeout and ensure proper configuration
+                    sqlConnectionStringBuilder.ConnectTimeout = 60; // Increase from default 30 to 60 seconds
+                    sqlConnectionStringBuilder.CommandTimeout = 60; // Add command timeout
+                    
+                    // Configure Entity Framework with longer timeout for Azure AD
+                    options.UseSqlServer(sqlConnectionStringBuilder.ConnectionString, sqlOptions =>
+                    {
+                        sqlOptions.CommandTimeout(120); // 2 minutes for Entity Framework operations
+                        sqlOptions.EnableRetryOnFailure(
+                            maxRetryCount: 3,
+                            maxRetryDelay: TimeSpan.FromSeconds(30),
+                            errorNumbersToAdd: null);
+                    });
+                }
+                else
                 {
-                    sqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 3,
-                        maxRetryDelay: TimeSpan.FromSeconds(30),
-                        errorNumbersToAdd: null);
-                });
-            }
-        });
+                    // Standard SQL authentication
+                    options.UseSqlServer(connectionString, sqlOptions =>
+                    {
+                        sqlOptions.EnableRetryOnFailure(
+                            maxRetryCount: 3,
+                            maxRetryDelay: TimeSpan.FromSeconds(30),
+                            errorNumbersToAdd: null);
+                    });
+                }
+            });
+        }
 
         // Add HttpClient for external API calls
         builder.Services.AddHttpClient<IStockDataService, StockDataService>();
@@ -89,6 +99,11 @@ public class Program
             var context = scope.ServiceProvider.GetRequiredService<StockDataContext>();
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
             var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+            var useInMemoryRuntime = string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
+            if (useInMemoryRuntime)
+            {
+                logger.LogInformation("[MIGRATIONS] Skipping migrations – using in-memory provider (USE_INMEMORY_DB=true)");
+            }
             
             // Get connection string and extract server information
             var connectionString = configuration.GetConnectionString("DefaultConnection");
@@ -104,7 +119,7 @@ public class Program
             var maxAttempts = isAzureAd ? 6 : 1; // up to ~ (0+5+10+20+30) seconds + work
             var delays = new[] { 0, 5, 10, 20, 30, 45 }; // seconds
             Exception? lastException = null;
-            for (var attempt = 1; attempt <= maxAttempts; attempt++)
+            for (var attempt = 1; attempt <= maxAttempts && !useInMemoryRuntime; attempt++)
             {
                 var delay = isAzureAd ? delays[Math.Min(attempt - 1, delays.Length - 1)] : 0;
                 if (delay > 0)
@@ -155,11 +170,11 @@ public class Program
                         logger.LogWarning(ex, "[MIGRATIONS] Generic login failed (Azure AD) attempt {Attempt}/{MaxAttempts}", attempt, maxAttempts);
                         continue;
                     }
-                    logger.LogError(ex, "[MIGRATIONS] Unexpected error attempt {Attempt}/{MaxAttempts}");
+                    logger.LogError(ex, "[MIGRATIONS] Unexpected error attempt {Attempt}/{MaxAttempts}", attempt, maxAttempts);
                 }
             }
 
-            if (lastException != null)
+            if (!useInMemoryRuntime && lastException != null)
             {
                 logger.LogError(lastException, "[MIGRATIONS] Final failure after {MaxAttempts} attempts", maxAttempts);
                 if (isAzureAd)

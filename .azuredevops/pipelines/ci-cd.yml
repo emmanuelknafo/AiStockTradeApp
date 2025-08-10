@@ -128,15 +128,7 @@ stages:
               done
             displayName: "Wait for SQL Server to start"
 
-          - task: DotNetCoreCLI@2
-            displayName: "Run database migrations for testing"
-            inputs:
-              command: "custom"
-              custom: "ef"
-              arguments: "database update --project ai-stock-trade-app/ai-stock-trade-app.csproj"
-            env:
-              ASPNETCORE_ENVIRONMENT: "Testing"
-              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          # Removed EF Core database update: migrations will run at application startup in deployed environment
 
           - task: DotNetCoreCLI@2
             displayName: "Run tests"
@@ -203,15 +195,7 @@ stages:
               done
             displayName: "Wait for SQL Server to start"
 
-          - task: DotNetCoreCLI@2
-            displayName: "Run database migrations for UI testing"
-            inputs:
-              command: "custom"
-              custom: "ef"
-              arguments: "database update --project ai-stock-trade-app/ai-stock-trade-app.csproj"
-            env:
-              ASPNETCORE_ENVIRONMENT: "Development"
-              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          # Removed EF Core database update for UI tests: app handles migrations on startup (post-deployment)
 
           - task: NodeTool@0
             displayName: "Setup Node.js"
@@ -338,6 +322,7 @@ stages:
               DISPLAY: ":99.0"
               CI: "true"
               AZURE_PIPELINES: "true"
+              USE_INMEMORY_DB: "true" # Use EF in-memory provider for faster UI tests
 
           - script: |
               echo "Listing all tests in UITests project..."
@@ -361,6 +346,7 @@ stages:
               CI: "true"
               AZURE_PIPELINES: "true"
               NODE_PATH: "$(System.DefaultWorkingDirectory)/ai-stock-trade-app.UITests/node_modules"
+              USE_INMEMORY_DB: "true" # In-memory DB accelerates UI tests
             condition: succeededOrFailed()
             timeoutInMinutes: 25
 
@@ -675,6 +661,39 @@ stages:
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
+                  displayName: "Set Web App Managed Identity as SQL Admin (Dev)"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      RG_NAME="rg-aistock-dev-$(instanceNum)"
+                      WEBAPP_NAME="app-aistock-dev-$(instanceNum)"
+                      SQL_SERVER_NAME="sql-aistock-dev-$(instanceNum)"
+                      echo "[DEV] Retrieving web app managed identity principalId..."
+                      PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv)
+                      if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then
+                        echo "[DEV] Enabling managed identity on web app..."
+                        az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null
+                        sleep 8
+                        PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv)
+                      fi
+                      echo "[DEV] Web app MI objectId(principalId): $PRINCIPAL_ID"
+                      echo "[DEV] Setting SQL Server Entra admin to web app MI..."
+                      # Remove existing admin if present (avoid conflict)
+                      if az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?name=='ActiveDirectory']" -o tsv | grep -q ActiveDirectory; then
+                        echo "[DEV] Existing Entra admin found - removing before reassigning..."
+                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        sleep 5
+                      fi
+                      az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
+                      echo "[DEV] Confirming admin assignment..."
+                      az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME"
+                      echo "[DEV] Waiting 20s for admin propagation..."; sleep 20
+                      echo "[DEV] Admin assignment complete."
+
+                - task: AzureCLI@2
                   displayName: "Update Web App Container"
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
@@ -860,6 +879,38 @@ stages:
                     # Only pass parameters that differ from parameter file defaults to prevent empty value issues
                     overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -enableAzureAdOnlyAuth $(enableAdOnlyAuthFlag) -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)'"
                     deploymentMode: "Incremental"
+
+                - task: AzureCLI@2
+                  displayName: "Set Web App Managed Identity as SQL Admin (Prod)"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                      SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
+                      echo "[PROD] Retrieving web app managed identity principalId..."
+                      PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv)
+                      if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then
+                        echo "[PROD] Enabling managed identity on web app..."
+                        az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null
+                        sleep 8
+                        PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv)
+                      fi
+                      echo "[PROD] Web app MI objectId(principalId): $PRINCIPAL_ID"
+                      echo "[PROD] Setting SQL Server Entra admin to web app MI..."
+                      if az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?name=='ActiveDirectory']" -o tsv | grep -q ActiveDirectory; then
+                        echo "[PROD] Existing Entra admin found - removing before reassigning..."
+                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        sleep 5
+                      fi
+                      az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
+                      echo "[PROD] Confirming admin assignment..."
+                      az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME"
+                      echo "[PROD] Waiting 20s for admin propagation..."; sleep 20
+                      echo "[PROD] Admin assignment complete."
 
                 - task: AzureCLI@2
                   displayName: "Setup Web App SQL Database Access (Azure AD)"
