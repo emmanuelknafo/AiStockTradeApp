@@ -1,42 +1,45 @@
 # Azure DevOps CI/CD Pipeline
 # Converted from GitHub Actions workflow
 
-trigger:
-  branches:
-    include:
-      - main
-      - develop
-  paths:
-    exclude:
-      - "**.md"
-      - "**/README.md"
-      - "docs/**"
-      - "*.txt"
-      - ".gitignore"
-      - ".vscode/**"
-      - ".vs/**"
-      #- '.azuredevops/**'
-      - ".github/**"
-      - "AGENTS.md"
-      - "LICENSE"
+# trigger:
+#   branches:
+#     include:
+#       - main
+#       - develop
+#   paths:
+#     exclude:
+#       - "**.md"
+#       - "**/README.md"
+#       - "docs/**"
+#       - "*.txt"
+#       - ".gitignore"
+#       - ".vscode/**"
+#       - ".vs/**"
+#       #- '.azuredevops/**'
+#       - ".github/**"
+#       - "AGENTS.md"
+#       - "LICENSE"
 
-pr:
-  branches:
-    include:
-      - main
-  paths:
-    exclude:
-      - "**.md"
-      - "**/README.md"
-      - "docs/**"
-      - "*.txt"
-      - ".gitignore"
-      - ".vscode/**"
-      - ".vs/**"
-      #- '.azuredevops/**'
-      - ".github/**"
-      - "AGENTS.md"
-      - "LICENSE"
+# pr:
+#   branches:
+#     include:
+#       - main
+#   paths:
+#     exclude:
+#       - "**.md"
+#       - "**/README.md"
+#       - "docs/**"
+#       - "*.txt"
+#       - ".gitignore"
+#       - ".vscode/**"
+#       - ".vs/**"
+#       #- '.azuredevops/**'
+#       - ".github/**"
+#       - "AGENTS.md"
+#       - "LICENSE"
+trigger: none  # CI temporarily disabled
+
+pr: none  # PR validation temporarily disabled
 
 parameters:
   - name: environment

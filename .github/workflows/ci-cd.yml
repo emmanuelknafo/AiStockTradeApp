@@ -1,34 +1,35 @@
 name: CI/CD Pipeline
 
 on:
-  push:
-    branches: [main, develop]
-    paths-ignore:
-      - '**.md'
-      - '**/README.md'
-      - 'docs/**'
-      - '*.txt'
-      - '.gitignore'
-      - '.vscode/**'
-      - '.vs/**'
-      - '.azuredevops/**'
-      #- '.github/**'
-      - 'AGENTS.md'
-      - 'LICENSE'
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '**/README.md'
-      - 'docs/**'
-      - '*.txt'
-      - '.gitignore'
-      - '.vscode/**'
-      - '.vs/**'
-      - '.azuredevops/**'
-      #- '.github/**'
-      - 'AGENTS.md'
-      - 'LICENSE'
+  # push:
+  #   branches: [main, develop]
+  #   paths-ignore:
+  #     - '**.md'
+  #     - '**/README.md'
+  #     - 'docs/**'
+  #     - '*.txt'
+  #     - '.gitignore'
+  #     - '.vscode/**'
+  #     - '.vs/**'
+  #     - '.azuredevops/**'
+  #     #- '.github/**'
+  #     - 'AGENTS.md'
+  #     - 'LICENSE'
+  # pull_request:
+  #   branches: [main]
+  #   paths-ignore:
+  #     - '**.md'
+  #     - '**/README.md'
+  #     - 'docs/**'
+  #     - '*.txt'
+  #     - '.gitignore'
+  #     - '.vscode/**'
+  #     - '.vs/**'
+  #     - '.azuredevops/**'
+  #     #- '.github/**'
+  #     - 'AGENTS.md'
+  #     - 'LICENSE'
+  # CI triggers temporarily disabled; manual runs only
   workflow_dispatch:
     inputs:
       environment:
