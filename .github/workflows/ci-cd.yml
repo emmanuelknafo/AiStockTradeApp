@@ -1,34 +1,34 @@
 name: CI/CD Pipeline
 
 on:
-  # push:
-  #   branches: [main, develop]
-  #   paths-ignore:
-  #     - '**.md'
-  #     - '**/README.md'
-  #     - 'docs/**'
-  #     - '*.txt'
-  #     - '.gitignore'
-  #     - '.vscode/**'
-  #     - '.vs/**'
-  #     - '.azuredevops/**'
-  #     #- '.github/**'
-  #     - 'AGENTS.md'
-  #     - 'LICENSE'
-  # pull_request:
-  #   branches: [main]
-  #   paths-ignore:
-  #     - '**.md'
-  #     - '**/README.md'
-  #     - 'docs/**'
-  #     - '*.txt'
-  #     - '.gitignore'
-  #     - '.vscode/**'
-  #     - '.vs/**'
-  #     - '.azuredevops/**'
-  #     #- '.github/**'
-  #     - 'AGENTS.md'
-  #     - 'LICENSE'
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - '**.md'
+      - '**/README.md'
+      - 'docs/**'
+      - '*.txt'
+      - '.gitignore'
+      - '.vscode/**'
+      - '.vs/**'
+      - '.azuredevops/**'
+      #- '.github/**'
+      - 'AGENTS.md'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '**/README.md'
+      - 'docs/**'
+      - '*.txt'
+      - '.gitignore'
+      - '.vscode/**'
+      - '.vs/**'
+      - '.azuredevops/**'
+      #- '.github/**'
+      - 'AGENTS.md'
+      - 'LICENSE'
   # CI triggers temporarily disabled; manual runs only
   workflow_dispatch:
     inputs:
@@ -63,6 +63,22 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0
+        with:
+          versionSpec: '5.x'
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0
+
+      - name: Display computed version
+        run: |
+          echo "FullSemVer=${{ steps.gitversion.outputs.fullSemVer }}"
+          echo "AssemblySemVer=${{ steps.gitversion.outputs.assemblySemVer }}"
+          echo "InformationalVersion=${{ steps.gitversion.outputs.informationalVersion }}"
+          echo "Version for downstream usage set"
 
 
       - name: Restore dependencies
@@ -343,8 +359,7 @@ jobs:
         with:
           images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/ai-stock-trade-app
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
+            type=raw,value=${{ steps.gitversion.outputs.fullSemVer }}
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -365,7 +380,9 @@ jobs:
           file: ./ai-stock-trade-app/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.gitversion.outputs.fullSemVer }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Extract and set container image for deployment
         id: final-output
@@ -393,20 +410,15 @@ jobs:
             exit 1
           fi
           
-          # Find SHA tag (preferred for deployment) - handle multiline properly
-          echo "Searching for SHA tag..."
-          SHA_TAG=$(echo "${TAGS}" | grep -E "sha-[a-f0-9]+" | head -1 | tr -d '\n\r' | xargs)
-          echo "SHA_TAG search result: '${SHA_TAG}'"
-          echo "SHA_TAG length: ${#SHA_TAG}"
-          
-          if [ -n "${SHA_TAG}" ]; then
-            echo "Found SHA tag: ${SHA_TAG}"
-            DEPLOY_IMAGE="${SHA_TAG}"
+          # Prefer semantic version tag, then sha, else first tag
+          SEMVER_TAG=$(echo "${TAGS}" | grep -E ":[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.]+)?$" | head -1 | tr -d '\n\r' | xargs || true)
+          SHA_TAG=$(echo "${TAGS}" | grep -E "sha-[a-f0-9]+" | head -1 | tr -d '\n\r' | xargs || true)
+          if [ -n "$SEMVER_TAG" ]; then
+            DEPLOY_IMAGE="$SEMVER_TAG"; echo "Using semantic version tag: $SEMVER_TAG";
+          elif [ -n "$SHA_TAG" ]; then
+            DEPLOY_IMAGE="$SHA_TAG"; echo "Using SHA tag: $SHA_TAG";
           else
-            echo "No SHA tag found, using first tag..."
-            # Fallback to first tag - strip whitespace and newlines
-            DEPLOY_IMAGE=$(echo "${TAGS}" | head -1 | tr -d '\n\r' | xargs)
-            echo "Using first tag: ${DEPLOY_IMAGE}"
+            DEPLOY_IMAGE=$(echo "${TAGS}" | head -1 | tr -d '\n\r' | xargs); echo "Fallback deploy image: $DEPLOY_IMAGE";
           fi
           
           echo "=== SETTING OUTPUTS AND ARTIFACTS ==="
@@ -502,6 +514,18 @@ jobs:
             exit 1
           fi
 
+      - name: Derive appVersion from image tag (Dev)
+        id: derive-version-dev
+        run: |
+          IMAGE="${{ steps.load-image.outputs.container_image }}"
+          TAG="${IMAGE##*:}"
+          if [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+            echo "Semantic-like tag detected: $TAG"
+            echo "app_version=$TAG" >> $GITHUB_OUTPUT
+          else
+            echo "Tag '$TAG' not semantic; app_version left empty"
+          fi
+
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -515,7 +539,7 @@ jobs:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-002' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
-          parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
+          parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} appVersion=${{ steps.derive-version-dev.outputs.app_version }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches Web App Managed Identity (Dev)
@@ -646,6 +670,18 @@ jobs:
             exit 1
           fi
 
+      - name: Derive appVersion from image tag (Prod)
+        id: derive-version-prod
+        run: |
+          IMAGE="${{ steps.load-image.outputs.container_image }}"
+          TAG="${IMAGE##*:}"
+          if [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+            echo "Semantic-like tag detected: $TAG"
+            echo "app_version=$TAG" >> $GITHUB_OUTPUT
+          else
+            echo "Tag '$TAG' not semantic; app_version left empty"
+          fi
+
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -690,7 +726,7 @@ jobs:
           # For GitHub we infer enabling AAD-only via an input/secret flag (ENABLE_AAD_ONLY_AUTH) or default to true for prod to standardize.
           # Currently leaving enableAzureAdOnlyAuth=false until AZURE_AD_ADMIN_* values are explicitly provided.
           # To enable AAD-only auth: define repository variables AZURE_AD_ADMIN_OBJECT_ID + AZURE_AD_ADMIN_LOGIN then replace enableAzureAdOnlyAuth=false below with true and include those values.
-          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} enableAzureAdOnlyAuth=false
+          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} enableAzureAdOnlyAuth=false appVersion=${{ steps.derive-version-prod.outputs.app_version }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches Web App Managed Identity (Prod)

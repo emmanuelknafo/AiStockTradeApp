@@ -23,6 +23,8 @@ param containerRegistryName string
 
 @description('Container image name and tag')
 param containerImage string
+@description('Optional application semantic version (injected into APP_VERSION setting)')
+param appVersion string = ''
 
 @description('Alpha Vantage API Key')
 @secure()
@@ -250,6 +252,10 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
         {
           name: 'ConnectionStrings__DefaultConnection'
           value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=SqlConnectionString)'
+        }
+        {
+          name: 'APP_VERSION'
+          value: empty(appVersion) ? '' : appVersion
         }
       ]
       connectionStrings: [

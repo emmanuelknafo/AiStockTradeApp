@@ -1,45 +1,45 @@
 # Azure DevOps CI/CD Pipeline
 # Converted from GitHub Actions workflow
 
-# trigger:
-#   branches:
-#     include:
-#       - main
-#       - develop
-#   paths:
-#     exclude:
-#       - "**.md"
-#       - "**/README.md"
-#       - "docs/**"
-#       - "*.txt"
-#       - ".gitignore"
-#       - ".vscode/**"
-#       - ".vs/**"
-#       #- '.azuredevops/**'
-#       - ".github/**"
-#       - "AGENTS.md"
-#       - "LICENSE"
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    exclude:
+      - "**.md"
+      - "**/README.md"
+      - "docs/**"
+      - "*.txt"
+      - ".gitignore"
+      - ".vscode/**"
+      - ".vs/**"
+      #- '.azuredevops/**'
+      - ".github/**"
+      - "AGENTS.md"
+      - "LICENSE"
 
-# pr:
-#   branches:
-#     include:
-#       - main
-#   paths:
-#     exclude:
-#       - "**.md"
-#       - "**/README.md"
-#       - "docs/**"
-#       - "*.txt"
-#       - ".gitignore"
-#       - ".vscode/**"
-#       - ".vs/**"
-#       #- '.azuredevops/**'
-#       - ".github/**"
-#       - "AGENTS.md"
-#       - "LICENSE"
-trigger: none  # CI temporarily disabled
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - "**.md"
+      - "**/README.md"
+      - "docs/**"
+      - "*.txt"
+      - ".gitignore"
+      - ".vscode/**"
+      - ".vs/**"
+      #- '.azuredevops/**'
+      - ".github/**"
+      - "AGENTS.md"
+      - "LICENSE"
+# trigger: none  # CI temporarily disabled
 
-pr: none  # PR validation temporarily disabled
+# pr: none  # PR validation temporarily disabled
 
 parameters:
   - name: environment
@@ -94,6 +94,15 @@ stages:
             inputs:
               packageType: "sdk"
               version: $(DOTNET_VERSION)
+              
+          - task: gittools.gitversion.gitversion-task.GitVersion@5
+            displayName: "Determine Semantic Version (GitVersion)"
+            inputs:
+              runtime: 'core'
+              updateAssemblyInfo: true
+              useConfigFile: true
+              configFilePath: 'GitVersion.yml'
+            continueOnError: true
 
           - task: DotNetCoreCLI@2
             displayName: "Install Entity Framework tools"
@@ -502,6 +511,12 @@ stages:
             inputs:
               targetType: "inline"
               script: |
+                echo "=== GitVersion (if present) ==="
+                if [ -n "$(GitVersion.FullSemVer)" ]; then
+                  echo "FullSemVer: $(GitVersion.FullSemVer)"
+                else
+                  echo "GitVersion variables not set; falling back to branch/sha tags only."
+                fi
                 # Generate tags similar to docker/metadata-action
                 REGISTRY_URL="$(registryName).azurecr.io"
                 IMAGE_NAME="${REGISTRY_URL}/ai-stock-trade-app"
@@ -515,16 +530,36 @@ stages:
                 SHA_TAG="${IMAGE_NAME}:sha-${SHORT_SHA}"
 
                 # Latest tag for main/master branch
+                VERSION_TAG=""
+                if [ -n "$(GitVersion.FullSemVer)" ]; then
+                  VERSION_TAG="${IMAGE_NAME}:$(GitVersion.FullSemVer)"
+                fi
                 if [[ "$(Build.SourceBranchName)" == "main" || "$(Build.SourceBranchName)" == "master" ]]; then
                   LATEST_TAG="${IMAGE_NAME}:latest"
-                  TAGS="${BRANCH_TAG},${SHA_TAG},${LATEST_TAG}"
+                  if [ -n "$VERSION_TAG" ]; then
+                    TAGS="${BRANCH_TAG},${SHA_TAG},${VERSION_TAG},${LATEST_TAG}"
+                  else
+                    TAGS="${BRANCH_TAG},${SHA_TAG},${LATEST_TAG}"
+                  fi
                 else
-                  TAGS="${BRANCH_TAG},${SHA_TAG}"
+                  if [ -n "$VERSION_TAG" ]; then
+                    TAGS="${BRANCH_TAG},${SHA_TAG},${VERSION_TAG}"
+                  else
+                    TAGS="${BRANCH_TAG},${SHA_TAG}"
+                  fi
                 fi
 
                 echo "Generated tags: ${TAGS}"
                 echo "##vso[task.setvariable variable=containerTags]${TAGS}"
-                echo "##vso[task.setvariable variable=deployTag]${SHA_TAG}"
+                DEPLOY_TAG="${SHA_TAG}"
+                if [ -n "$VERSION_TAG" ]; then
+                  echo "Semantic version tag available: $VERSION_TAG (will be used for deployment)"
+                  DEPLOY_TAG="$VERSION_TAG"
+                else
+                  echo "No semantic version tag available; using sha tag for deployment"
+                fi
+                echo "Selected deploy tag: ${DEPLOY_TAG}"
+                echo "##vso[task.setvariable variable=deployTag]${DEPLOY_TAG}"
 
           - task: AzureCLI@2
             displayName: "Build and push Docker image"
@@ -644,6 +679,19 @@ stages:
                         ls -la $(Pipeline.Workspace)/build-outputs/
                         exit 1
                       fi
+                - task: Bash@3
+                  displayName: "Derive appVersion parameter (Dev)"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      IMG="$(containerImage)"
+                      TAG="${IMG##*:}"
+                      if echo "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+'; then
+                        echo "Semantic version detected in image tag: $TAG"
+                        echo "##vso[task.setvariable variable=appVersion]$TAG"
+                      else
+                        echo "Image tag $TAG is not semantic version; leaving appVersion empty"
+                      fi
 
                 - task: AzureResourceManagerTemplateDeployment@3
                   displayName: "Deploy Bicep template"
@@ -657,7 +705,7 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./ai-stock-trade-app/infrastructure/main.bicep"
                     csmParametersFile: "./ai-stock-trade-app/infrastructure/parameters.dev.json"
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD)"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -appVersion $(appVersion)"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
@@ -854,6 +902,19 @@ stages:
                       fi
                       echo "enableAdOnlyAuthFlag=$enableAdOnlyAuthFlag"
 
+                - task: Bash@3
+                  displayName: "Derive appVersion parameter (Prod)"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      IMG="$(containerImage)"
+                      TAG="${IMG##*:}"
+                      if echo "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+'; then
+                        echo "Semantic version detected in image tag: $TAG"
+                        echo "##vso[task.setvariable variable=appVersion]$TAG"
+                      else
+                        echo "Image tag $TAG is not semantic version; leaving appVersion empty"
+                      fi
                 - task: AzureResourceManagerTemplateDeployment@3
                   displayName: "Deploy Bicep template (no SQL admin override)"
                   inputs:
@@ -866,9 +927,9 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./ai-stock-trade-app/infrastructure/main.bicep"
                     csmParametersFile: "./ai-stock-trade-app/infrastructure/parameters.prod.json"
-                    # NOTE: Include sqlAdminPassword to avoid blank blank password; also pass enableAzureAdOnlyAuth flag if infra set MI admin.
-                    # We reuse the derived enableAdOnlyAuthFlag (true when azureAdAdmin* vars detected earlier) to flip template into AAD-only mode.
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth $(enableAdOnlyAuthFlag) -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)'"
+                    # Use containerImage variable if provided; prefer GitVersion FullSemVer tag if available
+                    # containerImage variable expected to be ai-stock-trade-app:<tag>
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth $(enableAdOnlyAuthFlag) -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)' -appVersion $(appVersion)"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2

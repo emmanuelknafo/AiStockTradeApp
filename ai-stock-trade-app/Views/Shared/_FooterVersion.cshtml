@@ -1,0 +1,8 @@
+@using System.Reflection
+@{
+    var asm = Assembly.GetExecutingAssembly();
+    var infoVersion = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+    var fileVersion = asm.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
+    var display = infoVersion ?? fileVersion ?? "dev";
+}
+<span>Version: @display</span>

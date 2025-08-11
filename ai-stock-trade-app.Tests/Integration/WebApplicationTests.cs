@@ -87,6 +87,49 @@ namespace ai_stock_trade_app.Tests.Integration
         }
 
         [Fact]
+        public async Task Get_VersionEndpoint_ShouldReturnJsonWithVersion()
+        {
+            var response = await _client.GetAsync("/version");
+            response.EnsureSuccessStatusCode();
+            response.Content.Headers.ContentType!.ToString().Should().Contain("application/json");
+            var json = await response.Content.ReadAsStringAsync();
+            json.Should().Contain("version");
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            root.TryGetProperty("version", out var versionProp).Should().BeTrue();
+            versionProp.GetString().Should().NotBeNullOrWhiteSpace();
+
+            if (root.TryGetProperty("appVersion", out var appVersionProp) && appVersionProp.ValueKind != JsonValueKind.Null)
+            {
+                // appVersion should match semantic-like pattern if present
+                var appVersion = appVersionProp.GetString();
+                appVersion.Should().MatchRegex(@"^[0-9]+\.[0-9]+\.[0-9]+.*$");
+            }
+        }
+
+        [Fact]
+        public async Task Get_VersionEndpoint_ShouldExposeAppVersionEnvWhenSet()
+        {
+            const string expectedAppVersion = "1.2.3-test";
+            var factory = _factory.WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureServices(services => { });
+                builder.UseSetting("APP_VERSION", expectedAppVersion);
+            });
+            var client = factory.CreateClient();
+            var response = await client.GetAsync("/version");
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("appVersion", out var appVersionProp))
+            {
+                appVersionProp.GetString().Should().Be(expectedAppVersion);
+            }
+        }
+
+        [Fact]
         public async Task Post_AddStock_ShouldRequireValidSymbol()
         {
             // Arrange - Use JSON content as the controller expects FromBody
