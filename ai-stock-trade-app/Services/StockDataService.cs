@@ -16,8 +16,12 @@ namespace ai_stock_trade_app.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<StockDataService> _logger;
         private readonly IStockDataRepository _repository;
-        private static readonly Dictionary<string, DateTime> _lastRequestTimes = new();
-        private static readonly TimeSpan _rateLimitDelay = TimeSpan.FromSeconds(1);
+    // Rate limiting (simple global limiter to avoid hammering public APIs). Previous implementation
+    // used an unsynchronized dictionary which allowed concurrent callers to both see no prior request
+    // and skip the delay, making timing-based tests flaky. Use a semaphore for serialization.
+    private static readonly TimeSpan _rateLimitDelay = TimeSpan.FromSeconds(1);
+    private static readonly SemaphoreSlim _rateLimitSemaphore = new(1, 1);
+    private static DateTime _lastRequestTimeUtc = DateTime.MinValue;
 
         public StockDataService(
             HttpClient httpClient, 
@@ -297,20 +301,22 @@ namespace ai_stock_trade_app.Services
 
         private static async Task ApplyRateLimitAsync()
         {
-            var key = "general";
-            var now = DateTime.UtcNow;
-
-            if (_lastRequestTimes.ContainsKey(key))
+            await _rateLimitSemaphore.WaitAsync();
+            try
             {
-                var timeSinceLastRequest = now - _lastRequestTimes[key];
-                if (timeSinceLastRequest < _rateLimitDelay)
+                var now = DateTime.UtcNow;
+                var elapsed = now - _lastRequestTimeUtc;
+                if (elapsed < _rateLimitDelay)
                 {
-                    var delay = _rateLimitDelay - timeSinceLastRequest;
-                    await Task.Delay(delay);
+                    var remaining = _rateLimitDelay - elapsed;
+                    await Task.Delay(remaining);
                 }
+                _lastRequestTimeUtc = DateTime.UtcNow;
             }
-
-            _lastRequestTimes[key] = DateTime.UtcNow;
+            finally
+            {
+                _rateLimitSemaphore.Release();
+            }
         }
 
         public Task<List<string>> GetStockSuggestionsAsync(string query)

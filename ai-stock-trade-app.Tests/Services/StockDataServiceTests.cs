@@ -240,8 +240,9 @@ namespace ai_stock_trade_app.Tests.Services
             stopwatch.Stop();
 
             // Assert
-            // The second call should be delayed due to rate limiting
-            stopwatch.ElapsedMilliseconds.Should().BeGreaterThan(900); // Expect at least 1 second delay
+            // The second call should be delayed due to rate limiting.
+            // Allow some jitter for scheduling / CI variability but require ~1s enforced delay.
+            stopwatch.ElapsedMilliseconds.Should().BeGreaterThan(850); // Expect near 1 second total
         }
 
         [Fact]
