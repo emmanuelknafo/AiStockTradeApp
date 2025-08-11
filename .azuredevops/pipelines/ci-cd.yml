@@ -688,8 +688,8 @@ stages:
                         sleep 5
                       fi
                       az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
-                      echo "[DEV] Confirming admin assignment..."
-                      az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME"
+                      echo "[DEV] Confirming admin assignment (list)..."
+                      az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o table
                       echo "[DEV] Waiting 20s for admin propagation..."; sleep 20
                       echo "[DEV] Admin assignment complete."
 
@@ -907,8 +907,8 @@ stages:
                         sleep 5
                       fi
                       az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
-                      echo "[PROD] Confirming admin assignment..."
-                      az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME"
+                      echo "[PROD] Confirming admin assignment (list)..."
+                      az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o table
                       echo "[PROD] Waiting 20s for admin propagation..."; sleep 20
                       echo "[PROD] Admin assignment complete."
 
@@ -953,7 +953,7 @@ stages:
                       ADMIN_CHECK_ATTEMPTS=12
                       ADMIN_SEEN=0
                       for i in $(seq 1 $ADMIN_CHECK_ATTEMPTS); do
-                        ADMIN_LOGIN=$(az sql server ad-admin show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query login -o tsv 2>/dev/null || echo "")
+                        ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
                         if [ -n "$ADMIN_LOGIN" ] && [ "$ADMIN_LOGIN" != "null" ]; then
                           echo "[INFO] Azure AD admin detected: $ADMIN_LOGIN (attempt $i)"; ADMIN_SEEN=1; break
                         fi

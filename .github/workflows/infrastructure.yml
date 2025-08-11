@@ -123,11 +123,9 @@ jobs:
           az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
         fi
         get_admin_sid() {
-          local show_sid list_sid
-          show_sid=$(az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query sid -o tsv 2>/dev/null || echo "")
-            if [ -n "$show_sid" ] && [ "$show_sid" != "null" ]; then echo "$show_sid"; return; fi
+          local list_sid
           list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPP_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
-            if [ -n "$list_sid" ] && [ "$list_sid" != "null" ]; then echo "$list_sid"; return; fi
+          if [ -n "$list_sid" ] && [ "$list_sid" != "null" ]; then echo "$list_sid"; return; fi
           echo ""
         }
         echo "[DEV] Waiting for admin propagation..."
@@ -140,7 +138,6 @@ jobs:
         done
         if [ "$PROPAGATED" != "true" ]; then
           echo "[DEV][WARN] Propagation not confirmed after initial window. Gathering diagnostics..."
-          echo "[DEV] SHOW JSON:"; az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(show failed)"
           echo "[DEV] LIST JSON:"; az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(list failed)"
           ANY_MATCH=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?sid=='$PRINCIPAL_ID'] | length(@)" -o tsv 2>/dev/null || echo "0")
           if [ "$ANY_MATCH" = "1" ]; then
@@ -357,9 +354,7 @@ jobs:
 
         echo "[PROD] Waiting for admin propagation..."
         get_admin_sid_prod() {
-          local show_sid list_sid
-          show_sid=$(az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query sid -o tsv 2>/dev/null || echo "")
-          if [ -n "$show_sid" ] && [ "$show_sid" != "null" ]; then echo "$show_sid"; return; fi
+          local list_sid
           list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPP_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
           if [ -n "$list_sid" ] && [ "$list_sid" != "null" ]; then echo "$list_sid"; return; fi
           echo ""
@@ -373,7 +368,6 @@ jobs:
         done
         if [ "$PROPAGATED" != "true" ]; then
           echo "[PROD][WARN] Propagation not confirmed after initial window. Gathering diagnostics..."
-          echo "[PROD] SHOW JSON:"; az sql server ad-admin show --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(show failed)"
           echo "[PROD] LIST JSON:"; az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(list failed)"
           ANY_MATCH=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?sid=='$PRINCIPAL_ID'] | length(@)" -o tsv 2>/dev/null || echo "0")
           if [ "$ANY_MATCH" = "1" ]; then
