@@ -94,7 +94,7 @@ jobs:
         run: |
           dotnet build --no-restore --configuration Release \
             /p:Version=${{ steps.gitversion.outputs.fullSemVer }} \
-            /p:FileVersion=${{ steps.gitversion.outputs.fullSemVer }} \
+            /p:FileVersion=${{ steps.gitversion.outputs.assemblySemFileVer }} \
             /p:InformationalVersion=${{ steps.gitversion.outputs.fullSemVer }} \
             /p:AssemblyVersion=${{ steps.gitversion.outputs.assemblySemVer }}
 

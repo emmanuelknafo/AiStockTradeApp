@@ -88,7 +88,7 @@ stages:
         steps:
           - checkout: self
             displayName: "Checkout code"
-            fetchDepth: 0          # full history for GitVersion
+            fetchDepth: 0 # full history for GitVersion
             persistCredentials: true
             clean: true
 
@@ -187,7 +187,7 @@ stages:
             inputs:
               command: "test"
               projects: "**/*Tests.csproj"
-              arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests" --collect "XPlat Code Coverage"'
+              arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests" --collect "XPlat Code Coverage" --results-directory "$(System.DefaultWorkingDirectory)/TestResults"'
             env:
               ASPNETCORE_ENVIRONMENT: "Testing"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
@@ -198,9 +198,11 @@ stages:
               targetType: inline
               script: |
                 echo "Listing TestResults directories..."
-                find $(System.DefaultWorkingDirectory) -type d -name TestResults | head -20
+                find $(System.DefaultWorkingDirectory) -type d -name TestResults | head -50
                 echo "Listing coverage candidates (xml/json)..."
-                find $(System.DefaultWorkingDirectory) -type f \( -name 'coverage.cobertura.xml' -o -name 'coverage.opencover.xml' -o -name 'coverage.xml' -o -name 'coverage.json' \) | head -40
+                find $(System.DefaultWorkingDirectory) -type f \( -name 'coverage.cobertura.xml' -o -name 'coverage.opencover.xml' -o -name 'coverage.xml' -o -name 'coverage.json' \) | head -80
+                echo "Agent temp coverage candidates..."
+                find $(Agent.TempDirectory) -type f \( -name 'coverage.cobertura.xml' -o -name 'coverage.opencover.xml' -o -name 'coverage.xml' -o -name 'coverage.json' \) 2>/dev/null | head -40 || true
                 echo "Disk usage for test project directories:"; du -sh */*Tests 2>/dev/null || true
 
           - task: Bash@3
@@ -212,19 +214,27 @@ stages:
                 echo "Searching for coverage files (cobertura/opencover)..."
                 FOUND=$(find $(System.DefaultWorkingDirectory) -type f \( -name 'coverage.cobertura.xml' -o -name 'coverage.opencover.xml' -o -name 'coverage.xml' \) | head -1 || true)
                 if [ -z "$FOUND" ]; then
+                  echo "Not found in workspace; checking Agent.TempDirectory..."
+                  FOUND=$(find $(Agent.TempDirectory) -type f \( -name 'coverage.cobertura.xml' -o -name 'coverage.opencover.xml' -o -name 'coverage.xml' \) 2>/dev/null | head -1 || true)
+                fi
+                if [ -z "$FOUND" ]; then
                   echo "No coverage file found (will skip publish)."; exit 0; fi
                 echo "Found coverage file: $FOUND";
-                echo "##vso[task.setvariable variable=CoverageFile]$FOUND";
+                # Copy to workspace so later tasks can read reliably
+                mkdir -p $(System.DefaultWorkingDirectory)/Coverage
+                cp "$FOUND" $(System.DefaultWorkingDirectory)/Coverage/coverage.cobertura.xml || true
+                echo "Coverage copied to $(System.DefaultWorkingDirectory)/Coverage/coverage.cobertura.xml"
+                echo "##vso[task.setvariable variable=CoverageFile]$(System.DefaultWorkingDirectory)/Coverage/coverage.cobertura.xml";
 
           - task: PublishTestResults@2
             displayName: "Publish Unit Test Results"
             condition: always()
             inputs:
-              testResultsFormat: 'VSTest'
-              testResultsFiles: '**/TestResults/*.trx'
-              searchFolder: '$(System.DefaultWorkingDirectory)'
+              testResultsFormat: "VSTest"
+              testResultsFiles: "**/TestResults/*.trx"
+              searchFolder: "$(System.DefaultWorkingDirectory)"
               mergeTestResults: true
-              testRunTitle: 'Unit Tests'
+              testRunTitle: "Unit Tests"
 
           - task: Bash@3
             displayName: "Generate HTML coverage report"
@@ -248,7 +258,9 @@ stages:
             displayName: "Publish code coverage"
             condition: and(succeeded(), ne(variables.CoverageFile, ''))
             inputs:
-              summaryFileLocation: '$(CoverageFile)'
+              codeCoverageTool: Cobertura
+              summaryFileLocation: "$(CoverageFile)"
+              reportDirectory: "$(CoverageReportDir)"
               failIfCoverageEmpty: true
               # additionalCodeCoverageFiles can be added if multiple assemblies produce separate files
 
