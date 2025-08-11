@@ -120,27 +120,26 @@ jobs:
       - name: Run tests
         run: |
           set -e
-          COVERAGE_DIR=unit-test-results/coverage
-          mkdir -p "$COVERAGE_DIR"
-          echo "Running unit tests with coverage (coverlet msbuild)..."
+          RESULTS_DIR=unit-test-results
+          COVERAGE_DIR="$RESULTS_DIR/coverage"
+          mkdir -p "$RESULTS_DIR" "$COVERAGE_DIR"
+          echo "Running unit tests with coverage (XPlat collector)..."
           dotnet test --no-build --configuration Release --verbosity normal \
             --filter "FullyQualifiedName!~UITests" \
             --logger "trx;LogFileName=unit-test-results.trx" \
-            --results-directory ./unit-test-results \
-            /p:CollectCoverage=true \
-            /p:CoverletOutput="$COVERAGE_DIR/" \
-            /p:CoverletOutputFormat=cobertura,opencover,json
-          echo "Listing produced coverage artifacts (root + nested)..."
-          find "$COVERAGE_DIR" -maxdepth 2 -type f -print || true
-          echo "Searching fallback locations (TestResults) if coverage files missing in central dir..."
-          if [ ! -f "$COVERAGE_DIR/coverage.cobertura.xml" ]; then
+            --results-directory "$RESULTS_DIR" \
+            --collect "XPlat Code Coverage"
+          echo "Looking for cobertura files under $RESULTS_DIR..."
+          FOUND=$(find "$RESULTS_DIR" -type f -name 'coverage.cobertura.xml' | head -1 || true)
+          if [ -n "$FOUND" ]; then
+            echo "Found coverage: $FOUND"
+            cp "$FOUND" "$COVERAGE_DIR/" || true
+          else
+            echo "No cobertura file found under $RESULTS_DIR; scanning workspace..."
             FOUND=$(find . -type f -name 'coverage.cobertura.xml' | head -1 || true)
-            if [ -n "$FOUND" ]; then
-              echo "Copying discovered coverage file $FOUND to central dir";
-              cp "$FOUND" "$COVERAGE_DIR/";
-            fi
+            if [ -n "$FOUND" ]; then echo "Copying $FOUND to $COVERAGE_DIR"; cp "$FOUND" "$COVERAGE_DIR/"; fi
           fi
-          ls -la "$COVERAGE_DIR" || true
+          echo "Listing coverage dir contents:"; ls -la "$COVERAGE_DIR" || true
           echo "Listing TRX files produced:"; find . -type f -name '*.trx' -print || true
         env:
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
@@ -190,6 +189,7 @@ jobs:
         with:
           name: unit-test-coverage
           path: |
+            unit-test-results/**/coverage.cobertura.xml
             unit-test-results/coverage/**
             unit-test-results/coverage-report/**
           retention-days: 5
@@ -201,7 +201,7 @@ jobs:
           name: unit-test-results
           path: |
             unit-test-results/**/*.trx
-            unit-test-results/coverage/*.cobertura.xml
+            unit-test-results/**/coverage.cobertura.xml
           retention-days: 5
 
   ui-test:
