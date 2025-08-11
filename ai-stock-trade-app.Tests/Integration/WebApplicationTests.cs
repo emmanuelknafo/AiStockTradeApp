@@ -4,6 +4,7 @@ using ai_stock_trade_app.Services;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Reflection;
 
 namespace ai_stock_trade_app.Tests.Integration
 {
@@ -271,6 +272,39 @@ namespace ai_stock_trade_app.Tests.Integration
             // Assert
             response.EnsureSuccessStatusCode();
             response.Content.Headers.ContentType!.ToString().Should().Contain("application/json");
+        }
+
+        [Fact]
+        public async Task Get_VersionEndpoint_AppVersionShouldMatchAssemblyInformationalVersion()
+        {
+            // Use the assembly informational version we compiled with as the APP_VERSION
+            var asm = typeof(Program).Assembly;
+            var attr = Attribute.GetCustomAttribute(asm, typeof(AssemblyInformationalVersionAttribute)) as AssemblyInformationalVersionAttribute;
+            var informational = attr?.InformationalVersion ?? "unknown";
+
+            var factory = _factory.WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("APP_VERSION", informational);
+            });
+            var client = factory.CreateClient();
+
+            var response = await client.GetAsync("/version");
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync();
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            root.TryGetProperty("version", out var versionProp).Should().BeTrue();
+            root.TryGetProperty("appVersion", out var appVersionProp).Should().BeTrue();
+            var version = versionProp.GetString();
+            var appVersion = appVersionProp.GetString();
+            version.Should().NotBeNullOrWhiteSpace();
+            appVersion.Should().Be(informational);
+            // They should match (or assembly may contain '+sha' metadata). Allow version to start with appVersion when metadata present.
+            if (version != appVersion)
+            {
+                version.Should().StartWith(appVersion);
+            }
         }
     }
 }

@@ -49,6 +49,10 @@ on:
 env:
   AZURE_WEBAPP_PACKAGE_PATH: "."
   DOTNET_VERSION: "9.0.x"
+  # Map GitHub repository variables into env.* for consistent context usage
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
 jobs:
   test:
@@ -87,7 +91,12 @@ jobs:
         run: dotnet restore
 
       - name: Build application
-        run: dotnet build --no-restore --configuration Release
+        run: |
+          dotnet build --no-restore --configuration Release \
+            /p:Version=${{ steps.gitversion.outputs.fullSemVer }} \
+            /p:FileVersion=${{ steps.gitversion.outputs.fullSemVer }} \
+            /p:InformationalVersion=${{ steps.gitversion.outputs.fullSemVer }} \
+            /p:AssemblyVersion=${{ steps.gitversion.outputs.assemblySemVer }}
 
       - name: Setup SQL Server for testing
         uses: potatoqualitee/mssqlsuite@v1.7
@@ -112,6 +121,7 @@ jobs:
         run: dotnet test --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests"
         env:
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          APP_VERSION: ${{ steps.gitversion.outputs.fullSemVer }}
 
   ui-test:
     runs-on: ubuntu-latest
@@ -275,6 +285,31 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0
+        with:
+          versionSpec: "5.x"
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0
+
+      - name: Display computed version (build job)
+        run: |
+          echo "FullSemVer=${{ steps.gitversion.outputs.fullSemVer }}"
+          echo "AssemblySemVer=${{ steps.gitversion.outputs.assemblySemVer }}"
+          echo "InformationalVersion=${{ steps.gitversion.outputs.informationalVersion }}"
+
+      - name: Validate semantic version (no placeholder)
+        run: |
+          if [ -z "${{ steps.gitversion.outputs.fullSemVer }}" ] || [ "${{ steps.gitversion.outputs.fullSemVer }}" = "0.0.0-local" ]; then
+            echo "Invalid or placeholder semantic version detected; failing build to prevent ambiguous artifacts.";
+            exit 1;
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -282,9 +317,9 @@ jobs:
       - name: Azure Login for Registry Access
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Get Container Registry Information
         id: registry
@@ -378,6 +413,7 @@ jobs:
           images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/ai-stock-trade-app
           tags: |
             type=raw,value=${{ steps.gitversion.outputs.fullSemVer }}
+            type=raw,value=v${{ steps.gitversion.outputs.fullSemVer }}
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -397,13 +433,18 @@ jobs:
           context: ./ai-stock-trade-app
           file: ./ai-stock-trade-app/Dockerfile
           push: true
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
             org.opencontainers.image.version=${{ steps.gitversion.outputs.fullSemVer }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.ref.name=v${{ steps.gitversion.outputs.fullSemVer }}
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.version.prefixed=v${{ steps.gitversion.outputs.fullSemVer }}
 
       - name: Create and push semantic git tag
-        if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
+        if: ${{ github.ref == 'refs/heads/main' }}
         run: |
           set -e
           VERSION='${{ steps.gitversion.outputs.fullSemVer }}'
@@ -568,14 +609,15 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy Bicep template
         uses: azure/arm-deploy@v1
         with:
-          subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          # vars.* mapped via env at top to reduce linter warnings
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-002' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
           parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} appVersion=${{ steps.derive-version-dev.outputs.app_version }}
@@ -723,9 +765,9 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Debug Variables
         run: |
@@ -747,7 +789,8 @@ jobs:
           echo "=== ARTIFACT DATA ==="
           echo "Container image from artifact: ${{ steps.load-image.outputs.container_image }}"
           echo "=== VARIABLES ==="
-          echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
+          echo "Subscription ID: ${{ env.AZURE_SUBSCRIPTION_ID }}"
+          echo "Resolved Subscription ID via env: ${{ env.AZURE_SUBSCRIPTION_ID }}"
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
 
       # Removed service principal-based SQL admin override. Infrastructure workflow already sets
@@ -757,7 +800,8 @@ jobs:
       - name: Deploy Bicep template (AAD-only capable)
         uses: azure/arm-deploy@v1
         with:
-          subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          # Using env mapping
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
           # Pass sqlAdminPassword to avoid accidental blanking; also surface enableAzureAdOnlyAuth if AAD admin already established.

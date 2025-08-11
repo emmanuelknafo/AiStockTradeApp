@@ -88,6 +88,21 @@ stages:
         steps:
           - checkout: self
             displayName: "Checkout code"
+            fetchDepth: 0          # full history for GitVersion
+            persistCredentials: true
+            clean: true
+
+          - task: Bash@3
+            displayName: "Debug git state (pre-version)"
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                echo "GitVersion.yml present? $( [ -f GitVersion.yml ] && echo yes || echo no )"
+                echo "HEAD commit: $(git rev-parse --short=12 HEAD)"
+                echo "Commit count: $(git rev-list --count HEAD)"
+                echo "Recent commits:"; git --no-pager log --oneline -n 5 || true
+                echo "Existing tags (tail):"; git tag -l | tail -10 || true
             fetchDepth: 0 # full history for GitVersion
             persistCredentials: true
 
@@ -544,8 +559,8 @@ stages:
                 set -e
                 if [ -n "$(GitVersion.FullSemVer)" ]; then
                   echo "GitVersion variables already present from previous stage/job: $(GitVersion.FullSemVer)"; exit 0; fi
-                echo "Ensuring full git history (unshallow + tags) for GitVersion (build stage)..."
-                git fetch --prune --unshallow --tags || git fetch --prune --tags || true
+                echo "Ensuring full git history & tags (safety fetch)..."
+                git fetch --prune --tags --force || true
                 echo "Commit count: $(git rev-list --count HEAD 2>/dev/null || echo '?')"
                 git --no-pager log --oneline -n 5 || true
                 echo "Installing GitVersion CLI (build stage)..."
@@ -563,6 +578,16 @@ stages:
                 echo "FullSemVer (build)=$FULL"
                 echo "##vso[task.setvariable variable=GitVersion.FullSemVer]$FULL"
                 echo "##vso[task.setvariable variable=FullSemVer]$FULL"
+
+          - task: Bash@3
+            displayName: "Show resolved semantic version (post GitVersion)"
+            inputs:
+              targetType: inline
+              script: |
+                echo "Resolved GitVersion.FullSemVer='$(GitVersion.FullSemVer)'"
+                if [ "$(GitVersion.FullSemVer)" = "0.0.0-local" ] || [ -z "$(GitVersion.FullSemVer)" ]; then
+                  echo "WARNING: Semantic version is placeholder. Investigate GitVersion output above. Tag push will skip.";
+                fi
 
           - task: Bash@3
             displayName: "Generate Container Tags"
@@ -633,7 +658,15 @@ stages:
 
                 # Build the image first
                 echo "Building Docker image..."
-                docker build -t temp-build-image ./ai-stock-trade-app
+                if [ -n "$(GitVersion.FullSemVer)" ] && [ "$(GitVersion.FullSemVer)" != "0.0.0-local" ]; then
+                  echo "Using semantic version build arg APP_VERSION=$(GitVersion.FullSemVer)"
+                  docker build \
+                    --build-arg APP_VERSION=$(GitVersion.FullSemVer) \
+                    -t temp-build-image ./ai-stock-trade-app
+                else
+                  echo "No valid semantic version found; building without APP_VERSION build-arg"
+                  docker build -t temp-build-image ./ai-stock-trade-app
+                fi
 
                 # Tag and push each tag
                 for tag in "${TAG_ARRAY[@]}"; do
@@ -663,13 +696,24 @@ stages:
                 if [ -z "$VERSION" ] || [ "$VERSION" = "0.0.0-local" ]; then
                   echo "No valid semantic version available; skipping git tag."; exit 0; fi
                 if [[ "$VERSION" != v* ]]; then VERSION="v$VERSION"; fi
+                git config user.name "ci-bot"
+                git config user.email "ci-bot@users.noreply.local"
+                # Ensure tags are current before creating new one
                 echo "Preparing to create tag $VERSION on commit $(Build.SourceVersion)"
                 git fetch --tags --prune || true
                 if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
                   echo "Tag $VERSION already exists; skipping."; exit 0; fi
                 git tag -a "$VERSION" -m "Release $VERSION (Azure DevOps CI)" $(Build.SourceVersion)
-                git push origin "$VERSION" || echo "Push failed (check permissions)"
+                # Use OAuth token if available
+                if [ -n "$SYSTEM_ACCESSTOKEN" ]; then
+                  git -c http.extraheader="AUTHORIZATION: bearer $SYSTEM_ACCESSTOKEN" push origin "$VERSION" || {
+                    echo "Tag push failed even with token"; exit 1; }
+                else
+                  git push origin "$VERSION" || echo "Push failed (no SYSTEM_ACCESSTOKEN)"
+                fi
                 echo "Tag operation complete"
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
           - task: Bash@3
             displayName: "Extract and set container image for deployment"

@@ -11,20 +11,48 @@ EXPOSE 8081
 # This stage is used to build the service project
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
 WORKDIR /src
 COPY ["ai-stock-trade-app.csproj", "."]
 RUN dotnet restore "./ai-stock-trade-app.csproj"
 COPY . .
 WORKDIR "/src/."
-RUN dotnet build "./ai-stock-trade-app.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN if [ -n "$APP_VERSION" ]; then \
+			echo "Building with semantic version $APP_VERSION"; \
+			BASE_VERSION=$(echo "$APP_VERSION" | sed 's/[+-].*$//' ); \
+			dotnet build "./ai-stock-trade-app.csproj" -c $BUILD_CONFIGURATION -o /app/build \
+				/p:Version=$APP_VERSION \
+				/p:InformationalVersion=$APP_VERSION \
+				/p:FileVersion=$BASE_VERSION \
+				/p:AssemblyVersion=$BASE_VERSION; \
+		else \
+			echo "APP_VERSION not provided; performing standard build"; \
+			dotnet build "./ai-stock-trade-app.csproj" -c $BUILD_CONFIGURATION -o /app/build; \
+		fi
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./ai-stock-trade-app.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
+RUN if [ -n "$APP_VERSION" ]; then \
+			echo "Publishing with semantic version $APP_VERSION"; \
+			BASE_VERSION=$(echo "$APP_VERSION" | sed 's/[+-].*$//' ); \
+			dotnet publish "./ai-stock-trade-app.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false \
+				/p:Version=$APP_VERSION \
+				/p:InformationalVersion=$APP_VERSION \
+				/p:FileVersion=$BASE_VERSION \
+				/p:AssemblyVersion=$BASE_VERSION; \
+		else \
+			echo "APP_VERSION not provided; performing standard publish"; \
+			dotnet publish "./ai-stock-trade-app.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false; \
+		fi
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
 WORKDIR /app
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "ai-stock-trade-app.dll"]
