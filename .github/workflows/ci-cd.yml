@@ -119,23 +119,59 @@ jobs:
 
       - name: Run tests
         run: |
-          mkdir -p unit-test-results
+          set -e
+          COVERAGE_DIR=unit-test-results/coverage
+          mkdir -p "$COVERAGE_DIR"
+          echo "Running unit tests with coverage (coverlet msbuild)..."
           dotnet test --no-build --configuration Release --verbosity normal \
             --filter "FullyQualifiedName!~UITests" \
             --logger "trx;LogFileName=unit-test-results.trx" \
             --results-directory ./unit-test-results \
             /p:CollectCoverage=true \
-            /p:CoverletOutput=./unit-test-results/coverage/ \
-            /p:CoverletOutputFormat=cobertura,opencover \
-            /p:MergeWith="$(pwd)/unit-test-results/coverage/coverage.json" || true
-          echo "Listing coverage output:"; ls -R unit-test-results/coverage || true
+            /p:CoverletOutput="$COVERAGE_DIR/" \
+            /p:CoverletOutputFormat=cobertura,opencover,json
+          echo "Listing produced coverage artifacts (root + nested)..."
+          find "$COVERAGE_DIR" -maxdepth 2 -type f -print || true
+          echo "Searching fallback locations (TestResults) if coverage files missing in central dir..."
+          if [ ! -f "$COVERAGE_DIR/coverage.cobertura.xml" ]; then
+            FOUND=$(find . -type f -name 'coverage.cobertura.xml' | head -1 || true)
+            if [ -n "$FOUND" ]; then
+              echo "Copying discovered coverage file $FOUND to central dir";
+              cp "$FOUND" "$COVERAGE_DIR/";
+            fi
+          fi
+          ls -la "$COVERAGE_DIR" || true
+          echo "Listing TRX files produced:"; find . -type f -name '*.trx' -print || true
         env:
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
           APP_VERSION: ${{ steps.gitversion.outputs.fullSemVer }}
 
+      - name: Collect test result files (TRX)
+        if: always()
+        run: |
+          set -e
+          echo "Aggregating TRX files into unit-test-results/collected..."
+          mkdir -p unit-test-results/collected
+          COUNT=0
+          while IFS= read -r f; do
+            base=$(basename "$f")
+            ts=$(date +%s%3N)
+            cp "$f" "unit-test-results/collected/${ts}-${base}" || true
+            COUNT=$((COUNT+1))
+          done < <(find . -type f -name '*.trx')
+          echo "Copied $COUNT TRX files into unit-test-results/collected"
+          echo "Final collected listing:"; ls -la unit-test-results/collected || true
+
+      - name: Diagnostics - list unit test results directory
+        if: always()
+        run: |
+          echo "Tree for unit-test-results:"; ls -R unit-test-results || true
+
       - name: Generate coverage summary (ReportGenerator)
         if: always()
         run: |
+          echo "Coverage summary generation starting..."
+          ls -R unit-test-results/coverage || true
           if ls unit-test-results/coverage/*.cobertura.xml 1> /dev/null 2>&1; then
             dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.* || true
             export PATH="${PATH}:${HOME}/.dotnet/tools"
@@ -165,6 +201,7 @@ jobs:
           name: unit-test-results
           path: |
             unit-test-results/**/*.trx
+            unit-test-results/coverage/*.cobertura.xml
           retention-days: 5
 
   ui-test:
