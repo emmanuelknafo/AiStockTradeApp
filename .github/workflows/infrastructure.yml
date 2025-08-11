@@ -340,23 +340,29 @@ jobs:
         CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
         CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
         if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
-          echo "[PROD] Desired admin already set to MI ($CURRENT_ADMIN_LOGIN) - skipping reconfiguration."
+          echo "[PROD] Desired admin already set to MI ($CURRENT_ADMIN_LOGIN)."
+          if [ "$CURRENT_ADMIN_LOGIN" != "$WEBAPP_NAME" ]; then
+            echo "[PROD] Display name mismatch ($CURRENT_ADMIN_LOGIN != $WEBAPP_NAME); normalizing..."
+            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+            sleep 5
+            az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
+          fi
         else
           if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
-            echo "[PROD] Replacing existing admin '$CURRENT_ADMIN_LOGIN' with web app MI"
+            echo "[PROD] Existing admin '$CURRENT_ADMIN_LOGIN' (sid=$CURRENT_ADMIN_OID) differs from MI (sid=$PRINCIPAL_ID); replacing..."
             az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
             sleep 5
           else
-            echo "[PROD] No existing Entra admin set; creating new admin with MI"
+            echo "[PROD] No existing Entra admin; creating new MI admin."
           fi
           az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
         fi
 
         echo "[PROD] Waiting for admin propagation..."
         get_admin_sid_prod() {
-          local list_sid
-          list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPP_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
-          if [ -n "$list_sid" ] && [ "$list_sid" != "null" ]; then echo "$list_sid"; return; fi
+          local sid_any
+          sid_any=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+          if [ -n "$sid_any" ] && [ "$sid_any" != "null" ]; then echo "$sid_any"; return; fi
           echo ""
         }
         sleep 8
