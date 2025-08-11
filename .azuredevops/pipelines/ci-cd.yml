@@ -78,7 +78,7 @@ stages:
       - job: TestJob
         displayName: "Test Application"
         services:
-          sqlserver: 
+          sqlserver:
             image: mcr.microsoft.com/mssql/server:2022-latest
             env:
               SA_PASSWORD: "YourStrong@Passw0rd"
@@ -88,42 +88,47 @@ stages:
         steps:
           - checkout: self
             displayName: "Checkout code"
+            fetchDepth: 0  # full history for GitVersion
+            persistCredentials: true
 
           - task: UseDotNet@2
             displayName: "Setup .NET"
             inputs:
               packageType: "sdk"
               version: $(DOTNET_VERSION)
-              
+
           - task: Bash@3
             displayName: "Determine Semantic Version (GitVersion CLI Fallback)"
             inputs:
               targetType: inline
               script: |
+                set -e
+                echo "Ensuring full git history (unshallow + tags) for GitVersion..."
+                git fetch --prune --unshallow --tags || git fetch --prune --tags || true
+                echo "Commit count: $(git rev-list --count HEAD 2>/dev/null || echo '?')"
+                git --no-pager log --oneline -n 5 || true
                 echo "Installing GitVersion CLI as global dotnet tool..."
-                dotnet tool install --global GitVersion.Tool --version 5.* || {
-                  echo "Failed to install GitVersion.Tool"; exit 1; }
+                dotnet tool install --global GitVersion.Tool --version 5.* || { echo "Failed to install GitVersion.Tool"; exit 1; }
                 export PATH="$PATH:$HOME/.dotnet/tools"
                 echo "Running GitVersion..."
-                RAW=$(dotnet-gitversion /config GitVersion.yml /output json || echo '')
-                if [ -z "$RAW" ]; then
-                  echo "GitVersion failed; setting placeholder version.";
+                RAW=$(dotnet-gitversion /config GitVersion.yml /output json 2>&1 || true)
+                echo "Raw GitVersion output (first 60 lines):"; echo "$RAW" | head -60
+                if ! echo "$RAW" | grep -q '"FullSemVer"'; then
+                  echo "GitVersion did not return JSON with FullSemVer. Using placeholder version.";
                   FULL="0.0.0-local"; ASM="0.0.0"; INFO="0.0.0-local";
                 else
-                  echo "$RAW" | head -100
-                  # Ensure jq present
-                  if ! command -v jq >/dev/null 2>&1; then
-                    echo "Installing jq..."; sudo apt-get update -y && sudo apt-get install -y jq;
-                  fi
-                  FULL=$(echo "$RAW" | jq -r '.FullSemVer')
-                  ASM=$(echo "$RAW" | jq -r '.AssemblySemVer')
-                  INFO=$(echo "$RAW" | jq -r '.InformationalVersion')
+                  if ! command -v jq >/dev/null 2>&1; then sudo apt-get update -y && sudo apt-get install -y jq; fi
+                  FULL=$(echo "$RAW" | jq -r '.FullSemVer // empty')
+                  ASM=$(echo "$RAW" | jq -r '.AssemblySemVer // empty')
+                  INFO=$(echo "$RAW" | jq -r '.InformationalVersion // empty')
+                  [ -n "$FULL" ] || FULL="0.0.0-local"
+                  [ -n "$ASM" ] || ASM="0.0.0"
+                  [ -n "$INFO" ] || INFO="$FULL"
                 fi
                 echo "Computed FullSemVer=$FULL"
                 echo "##vso[task.setvariable variable=GitVersion.FullSemVer]$FULL"
                 echo "##vso[task.setvariable variable=GitVersion.AssemblySemVer]$ASM"
                 echo "##vso[task.setvariable variable=GitVersion.InformationalVersion]$INFO"
-                # Also expose generic variables for convenience
                 echo "##vso[task.setvariable variable=FullSemVer]$FULL"
                 echo "##vso[task.setvariable variable=AssemblySemVer]$ASM"
                 echo "##vso[task.setvariable variable=InformationalVersion]$INFO"
@@ -179,7 +184,7 @@ stages:
         dependsOn: TestJob
         condition: succeeded()
         services:
-          sqlserver: 
+          sqlserver:
             image: mcr.microsoft.com/mssql/server:2022-latest
             env:
               SA_PASSWORD: "YourStrong@Passw0rd"
@@ -254,7 +259,7 @@ stages:
               APP_PID=$!
               echo "Started application with PID: $APP_PID"
               echo $APP_PID > app.pid
-              
+
               # Wait for application to be ready
               echo "Waiting for application to start..."
               timeout=120
@@ -267,7 +272,7 @@ stages:
                 sleep 2
                 timeout=$((timeout-2))
               done
-              
+
               if [ $timeout -le 0 ]; then
                 echo "Application failed to start within timeout"
                 echo "Application logs:"
@@ -292,7 +297,7 @@ stages:
                 sleep 2
                 timeout=$((timeout-2))
               done
-              
+
               if [ $timeout -le 0 ]; then
                 echo "Application failed to start within timeout"
                 exit 1
@@ -303,33 +308,33 @@ stages:
               echo "=== Pre-test debugging ==="
               echo "Checking if UITests project built correctly..."
               ls -la ai-stock-trade-app.UITests/bin/Release/net9.0/ || echo "Build output directory not found"
-              
+
               echo "Checking for required assemblies..."
               ls -la ai-stock-trade-app.UITests/bin/Release/net9.0/*Playwright* || echo "Playwright assemblies not found"
               ls -la ai-stock-trade-app.UITests/bin/Release/net9.0/*NUnit* || echo "NUnit assemblies not found"
-              
+
               echo "Checking test.runsettings file..."
               cat test.runsettings || echo "test.runsettings not found"
-              
+
               echo "Environment variables:"
               echo "PLAYWRIGHT_BASE_URL: $PLAYWRIGHT_BASE_URL"
               echo "ASPNETCORE_ENVIRONMENT: $ASPNETCORE_ENVIRONMENT"
               echo "DISPLAY: $DISPLAY"
               echo "CI: $CI"
               echo "AZURE_PIPELINES: $AZURE_PIPELINES"
-              
+
               echo "Testing application accessibility..."
               curl -v http://localhost:5000 || echo "Application not responding"
-              
+
               echo "Skipping X11 display probe (not required for headless Chromium)"
-              
+
               echo "Checking Playwright installation (npx)..."
               (cd ai-stock-trade-app.UITests && npx playwright --version) || echo "Playwright CLI not available"
-              
+
               echo "Checking if Playwright browsers are installed..."
               ls -la /ms/playwright/ || echo "Playwright browser cache not found"
               find ~/.cache/ms-playwright -name "chromium*" -type d | head -5 || echo "Chromium browser not found"
-              
+
               echo "Testing simple browser launch..."
               echo "Testing simple browser launch via dotnet playwright (dry run using codegen list)..."
               (cd ai-stock-trade-app.UITests && npx playwright install chromium) || true
@@ -536,17 +541,24 @@ stages:
             inputs:
               targetType: inline
               script: |
+                set -e
                 if [ -n "$(GitVersion.FullSemVer)" ]; then
                   echo "GitVersion variables already present from previous stage/job: $(GitVersion.FullSemVer)"; exit 0; fi
+                echo "Ensuring full git history (unshallow + tags) for GitVersion (build stage)..."
+                git fetch --prune --unshallow --tags || git fetch --prune --tags || true
+                echo "Commit count: $(git rev-list --count HEAD 2>/dev/null || echo '?')"
+                git --no-pager log --oneline -n 5 || true
                 echo "Installing GitVersion CLI (build stage)..."
-                dotnet tool install --global GitVersion.Tool --version 5.* || {
-                  echo "Failed to install GitVersion.Tool"; exit 1; }
+                dotnet tool install --global GitVersion.Tool --version 5.* || { echo "Failed to install GitVersion.Tool"; exit 1; }
                 export PATH="$PATH:$HOME/.dotnet/tools"
-                RAW=$(dotnet-gitversion /config GitVersion.yml /output json || echo '')
-                if [ -z "$RAW" ]; then
-                  echo "GitVersion failed; using placeholder version"; FULL="0.0.0-local"; else
+                RAW=$(dotnet-gitversion /config GitVersion.yml /output json 2>&1 || true)
+                echo "Raw GitVersion output (first 40 lines):"; echo "$RAW" | head -40
+                if ! echo "$RAW" | grep -q '"FullSemVer"'; then
+                  echo "GitVersion failed or missing JSON; using placeholder version"; FULL="0.0.0-local";
+                else
                   if ! command -v jq >/dev/null 2>&1; then sudo apt-get update -y && sudo apt-get install -y jq; fi
-                  FULL=$(echo "$RAW" | jq -r '.FullSemVer')
+                  FULL=$(echo "$RAW" | jq -r '.FullSemVer // empty')
+                  [ -n "$FULL" ] || FULL="0.0.0-local"
                 fi
                 echo "FullSemVer (build)=$FULL"
                 echo "##vso[task.setvariable variable=GitVersion.FullSemVer]$FULL"
@@ -900,15 +912,15 @@ stages:
                     scriptLocation: "inlineScript"
                     inlineScript: |
                       echo "Getting Azure AD information for SQL Server administration..."
-                      
+
                       # Get the service principal information from the service connection
                       # The service connection provides authentication context
                       echo "Retrieving service principal information from connection context..."
-                      
+
                       # Get service principal details using Azure CLI context
                       SP_INFO=$(az account show)
                       TENANT_ID=$(echo "$SP_INFO" | jq -r '.tenantId')
-                      
+
                       # For Azure DevOps, we'll use a predefined service principal name or get it from variables
                       # This should be configured in your Azure DevOps variables
                       if [ -n "$(AZURE_CLIENT_ID)" ]; then
@@ -925,10 +937,10 @@ stages:
                         SP_OBJECT_ID=$(echo "$SUBSCRIPTION_INFO" | jq -r '.user.name')
                         SP_DISPLAY_NAME="Azure DevOps Service Principal"
                       fi
-                      
+
                       echo "Service principal object ID: $SP_OBJECT_ID"
                       echo "Service principal display name: $SP_DISPLAY_NAME"
-                      
+
                       echo "##vso[task.setvariable variable=azureAdAdminObjectId]$SP_OBJECT_ID"
                       echo "##vso[task.setvariable variable=azureAdAdminLogin]$SP_DISPLAY_NAME"
 
@@ -1129,16 +1141,16 @@ stages:
                     inlineScript: |
                       INSTANCE_NUM="$(instanceNum)"
                       RG_NAME="rg-aistock-prod-$(instanceNum)"
-                      
+
                       echo "🗄️ Checking database migration options..."
                       echo "Resource Group: ${RG_NAME}"
-                      
+
                       # Try to get connection string from Key Vault, but don't fail if access is denied
                       KEY_VAULT_NAME="kv-aistock-prod-$(instanceNum)"
                       echo "Attempting to retrieve connection string from Key Vault: ${KEY_VAULT_NAME}"
-                      
+
                       CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv 2>/dev/null || echo "")
-                      
+
                       if [ -z "${CONNECTION_STRING}" ]; then
                         echo "ℹ️ Could not retrieve connection string from Key Vault."
                         echo "This is expected for first-time deployments or when pipeline doesn't have Key Vault access."
@@ -1224,15 +1236,15 @@ stages:
                       WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
                       HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
                       BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
-                      
+
                       echo "🏥 Starting comprehensive health check..."
                       echo "Base URL: ${BASE_URL}"
                       echo "Health URL: ${HEALTH_URL}"
-                      
+
                       # Wait for initial deployment
                       echo "Waiting for deployment to be ready..."
                       sleep 60
-                      
+
                       # Check if the site is accessible at all
                       echo "Testing basic site accessibility..."
                       for i in {1..5}; do
@@ -1244,7 +1256,7 @@ stages:
                           sleep 30
                         fi
                       done
-                      
+
                       # Check health endpoint specifically
                       echo "Testing health endpoint..."
                       for i in {1..10}; do
@@ -1286,7 +1298,7 @@ stages:
                         
                         sleep 30
                       done
-                      
+
                       echo "❌ Health check failed - no successful response received"
                       exit 1
 

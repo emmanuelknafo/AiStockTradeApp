@@ -4,31 +4,31 @@ on:
   push:
     branches: [main, develop]
     paths-ignore:
-      - '**.md'
-      - '**/README.md'
-      - 'docs/**'
-      - '*.txt'
-      - '.gitignore'
-      - '.vscode/**'
-      - '.vs/**'
-      - '.azuredevops/**'
+      - "**.md"
+      - "**/README.md"
+      - "docs/**"
+      - "*.txt"
+      - ".gitignore"
+      - ".vscode/**"
+      - ".vs/**"
+      - ".azuredevops/**"
       #- '.github/**'
-      - 'AGENTS.md'
-      - 'LICENSE'
+      - "AGENTS.md"
+      - "LICENSE"
   pull_request:
     branches: [main]
     paths-ignore:
-      - '**.md'
-      - '**/README.md'
-      - 'docs/**'
-      - '*.txt'
-      - '.gitignore'
-      - '.vscode/**'
-      - '.vs/**'
-      - '.azuredevops/**'
+      - "**.md"
+      - "**/README.md"
+      - "docs/**"
+      - "*.txt"
+      - ".gitignore"
+      - ".vscode/**"
+      - ".vs/**"
+      - ".azuredevops/**"
       #- '.github/**'
-      - 'AGENTS.md'
-      - 'LICENSE'
+      - "AGENTS.md"
+      - "LICENSE"
   # CI triggers temporarily disabled; manual runs only
   workflow_dispatch:
     inputs:
@@ -41,9 +41,9 @@ on:
           - dev
           - prod
       instanceNumber:
-        description: 'Instance number for resource differentiation'
+        description: "Instance number for resource differentiation"
         required: true
-        default: '002'
+        default: "002"
         type: string
 
 env:
@@ -58,6 +58,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history so GitVersion can calculate properly
+          fetch-tags: true # Ensure tags are available for GitVersion
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -67,7 +70,7 @@ jobs:
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v0
         with:
-          versionSpec: '5.x'
+          versionSpec: "5.x"
 
       - name: Determine Version
         id: gitversion
@@ -79,7 +82,6 @@ jobs:
           echo "AssemblySemVer=${{ steps.gitversion.outputs.assemblySemVer }}"
           echo "InformationalVersion=${{ steps.gitversion.outputs.informationalVersion }}"
           echo "Version for downstream usage set"
-
 
       - name: Restore dependencies
         run: dotnet restore
@@ -119,12 +121,28 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for deterministic versioning & reproducible builds
+          fetch-tags: true # Include tags for GitVersion
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0
+        with:
+          versionSpec: "5.x"
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0
+
+      - name: Show GitVersion in build job
+        run: |
+          echo "FullSemVer=${{ steps.gitversion.outputs.fullSemVer }}"
+          echo "InformationalVersion=${{ steps.gitversion.outputs.informationalVersion }}"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-
 
       - name: Restore dependencies
         run: dotnet restore
@@ -154,7 +172,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: "18"
 
       - name: Install Playwright browsers
         run: |
@@ -187,7 +205,7 @@ jobs:
             sleep 2
             timeout=$((timeout-2))
           done
-          
+
           if [ $timeout -le 0 ]; then
             echo "Application failed to start within timeout"
             exit 1
@@ -227,7 +245,7 @@ jobs:
           else
             echo "Application is not running"
           fi
-          
+
           echo "=== RECENT SYSTEM LOGS ==="
           journalctl --since "10 minutes ago" | tail -50 || echo "No journalctl available"
 
@@ -279,21 +297,21 @@ jobs:
             INSTANCE_NUM="002"
             echo "Branch push detected - Using default instance: ${INSTANCE_NUM}"
           fi
-          
+
           # Always target dev resource group for container registry
           ENV="dev"
           RG_NAME="rg-aistock-${ENV}-${INSTANCE_NUM}"
-          
+
           echo "=== BUILD ENVIRONMENT INFO ==="
           echo "Container Registry Environment: ${ENV} (shared registry)"
           echo "Instance Number: ${INSTANCE_NUM}"
           echo "Registry Resource Group: ${RG_NAME}"
           echo "GitHub Ref: ${{ github.ref }}"
           echo "Event Name: ${{ github.event_name }}"
-          
+
           # Get container registry name from dev resource group
           REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
-          
+
           if [ -z "${REGISTRY_NAME}" ] || [ "${REGISTRY_NAME}" == "null" ]; then
             echo "ERROR: No container registry found in resource group ${RG_NAME}"
             echo "Available resource groups:"
@@ -302,7 +320,7 @@ jobs:
             echo "Please deploy dev environment first to create the shared container registry."
             exit 1
           fi
-          
+
           echo "Found shared registry: ${REGISTRY_NAME}"
           echo "registry_name=${REGISTRY_NAME}" >> $GITHUB_OUTPUT
           echo "resource_group=${RG_NAME}" >> $GITHUB_OUTPUT
@@ -314,14 +332,14 @@ jobs:
         run: |
           REGISTRY_NAME="${{ steps.registry.outputs.registry_name }}"
           RG_NAME="${{ steps.registry.outputs.resource_group }}"
-          
+
           # Get admin credentials
           REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
           REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
-          
+
           echo "Registry Username: ${REGISTRY_USERNAME}"
           echo "Password length: ${#REGISTRY_PASSWORD}"
-          
+
           echo "registry_username=${REGISTRY_USERNAME}" >> $GITHUB_OUTPUT
           echo "registry_password=${REGISTRY_PASSWORD}" >> $GITHUB_OUTPUT
 
@@ -389,27 +407,27 @@ jobs:
         run: |
           set -e  # Exit on any error
           echo "=== COMBINED EXTRACT AND OUTPUT STEP ==="
-          
+
           # Get tags from metadata step using heredoc to preserve newlines
           echo "Attempting to read metadata tags..."
           TAGS=$(cat << 'EOFTAGS'
           ${{ steps.meta.outputs.tags }}
           EOFTAGS
           )
-          
+
           echo "Raw TAGS captured:"
           echo "---START TAGS---"
           echo "${TAGS}"
           echo "---END TAGS---"
           echo "Number of tags: $(echo "${TAGS}" | wc -l)"
-          
+
           # Check if TAGS is empty or contains only whitespace
           if [ -z "$(echo "${TAGS}" | tr -d ' \t\n\r')" ]; then
             echo "ERROR: No tags received from metadata step or only whitespace!"
             echo "Meta step outputs: ${{ toJson(steps.meta.outputs) }}"
             exit 1
           fi
-          
+
           # Prefer semantic version tag, then sha, else first tag
           SEMVER_TAG=$(echo "${TAGS}" | grep -E ":[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.]+)?$" | head -1 | tr -d '\n\r' | xargs || true)
           SHA_TAG=$(echo "${TAGS}" | grep -E "sha-[a-f0-9]+" | head -1 | tr -d '\n\r' | xargs || true)
@@ -420,55 +438,55 @@ jobs:
           else
             DEPLOY_IMAGE=$(echo "${TAGS}" | head -1 | tr -d '\n\r' | xargs); echo "Fallback deploy image: $DEPLOY_IMAGE";
           fi
-          
+
           echo "=== SETTING OUTPUTS AND ARTIFACTS ==="
           echo "Final deployment image: '${DEPLOY_IMAGE}'"
           echo "DEPLOY_IMAGE length: ${#DEPLOY_IMAGE}"
-          
+
           # Check if DEPLOY_IMAGE is empty
           if [ -z "${DEPLOY_IMAGE}" ]; then
             echo "ERROR: DEPLOY_IMAGE is empty after processing!"
             echo "This means the tag processing failed"
             exit 1
           fi
-          
+
           # Write to artifact file for reliable transfer
           echo "=== CREATING ARTIFACT ==="
           mkdir -p build-outputs
           echo "${DEPLOY_IMAGE}" > build-outputs/container-image.txt
           echo "hello-from-combined-step" > build-outputs/test-output.txt
-          
+
           echo "Artifact files created:"
           ls -la build-outputs/
           echo "Container image file contents:"
           cat build-outputs/container-image.txt
           echo "Test output file contents:"
           cat build-outputs/test-output.txt
-          
+
           # Also try traditional GitHub outputs as backup
           echo "=== BACKUP GITHUB OUTPUT ==="
           echo "image=${DEPLOY_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "test_output=hello-from-combined-step" >> "$GITHUB_OUTPUT"
-          
+
           echo "GITHUB_OUTPUT contents:"
           cat "$GITHUB_OUTPUT"
-          
+
           echo "=== END COMBINED STEP ==="
-          
+
       - name: Upload build outputs as artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-outputs
           path: build-outputs/
           retention-days: 1
-          
+
       - name: Test final output
         run: |
           echo "=== FINAL OUTPUT TEST ==="
           echo "Can we read the final output immediately?"
           echo "Final step - Image: ${{ steps.final-output.outputs.image }}"
           echo "Final step - Test: ${{ steps.final-output.outputs.test_output }}"
-          
+
       - name: Final verification
         run: |
           echo "=== FINAL VERIFICATION ==="
@@ -573,13 +591,13 @@ jobs:
         run: |
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
-          
+
           echo "Getting SQL Server connection details..."
-          
+
           # Try to get connection string from Key Vault, but don't fail if access is denied
           KEY_VAULT_NAME="kv-aistock-dev-${INSTANCE_NUM}"
           CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv 2>/dev/null || echo "")
-          
+
           if [ -z "${CONNECTION_STRING}" ]; then
             echo "INFO: Could not retrieve connection string from Key Vault (permission may not be configured yet)."
             echo "Database migrations will run automatically on first app startup."
@@ -596,22 +614,22 @@ jobs:
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
           RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
-          
+
           # Get registry information from the same resource group
           REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
           REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
           REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
-          
+
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
           echo "Web App Name: ${WEBAPP_NAME}"
           echo "Resource Group: ${RG_NAME}"
           echo "Registry Name: ${REGISTRY_NAME}"
-          
+
           if [ -z "${{ steps.load-image.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
-          
+
           az webapp config container set \
             --name "${WEBAPP_NAME}" \
             --resource-group "${RG_NAME}" \
@@ -641,7 +659,6 @@ jobs:
       (needs.deploy-dev.result == 'success' || needs.deploy-dev.result == 'skipped') &&
       (github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'))
     environment: ${{ github.event_name == 'workflow_dispatch' && format('production-{0}', github.event.inputs.instanceNumber) || 'production-002' }}
-
     permissions:
       id-token: write
       contents: read
@@ -790,7 +807,7 @@ jobs:
             ENABLE_AAD_ONLY=false
             echo "⚠️ Azure AD admin does not match web app MI (adminLogin=$CURRENT_ADMIN_LOGIN, adminSid=$CURRENT_ADMIN_SID, mi=$WEBAPP_MI_PRINCIPAL) - skipping MI DB user creation."
           fi
-          
+
           echo "🔧 Setting up SQL Database access for Web App managed identity..."
           echo "Web App: ${WEBAPP_NAME}"
           echo "SQL Server: ${SQL_SERVER_NAME}"
@@ -801,32 +818,32 @@ jobs:
             echo "⚠️ Azure AD only auth disabled (no admin present). Skipping managed identity user creation step."
             exit 0
           fi
-          
+
           # First, verify the web app managed identity is enabled
           echo "🔍 Verifying web app managed identity..."
           MANAGED_IDENTITY=$(az webapp identity show --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" --query "principalId" --output tsv 2>/dev/null || echo "")
-          
+
           if [ -z "${MANAGED_IDENTITY}" ] || [ "${MANAGED_IDENTITY}" == "null" ]; then
             echo "⚠️ Web app managed identity not found. Enabling it..."
             az webapp identity assign --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}"
             sleep 10  # Wait for identity propagation
             MANAGED_IDENTITY=$(az webapp identity show --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" --query "principalId" --output tsv)
           fi
-          
+
           echo "✅ Web app managed identity ID: ${MANAGED_IDENTITY}"
-          
+
           # Get the SQL Server FQDN
           SQL_SERVER_FQDN="${SQL_SERVER_NAME}.database.windows.net"
-          
+
           echo "🔐 Attempting to create SQL user for managed identity..."
-          
+
           # Install sqlcmd tools
           echo "Installing sqlcmd..."
           curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
           curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list
           sudo apt-get update
           sudo apt-get install -y mssql-tools unixodbc-dev
-          
+
           echo "Testing basic connectivity to SQL Server..."
           if ! timeout 10 bash -c "</dev/tcp/${SQL_SERVER_NAME}.database.windows.net/1433" 2>/dev/null; then
             echo "❌ Cannot connect to SQL Server on port 1433. Check firewall rules."
@@ -834,7 +851,7 @@ jobs:
           else
             echo "✅ SQL Server is reachable on port 1433"
           fi
-          
+
           echo "Attempting to create managed identity user in SQL database (simplified)..."
 
           CREATE_USER_SQL="IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '${WEBAPP_NAME}') BEGIN PRINT 'Creating user ${WEBAPP_NAME}'; CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER; END ELSE PRINT 'User ${WEBAPP_NAME} already exists';"
@@ -894,16 +911,16 @@ jobs:
         run: |
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
-          
+
           echo "🗄️ Checking database migration options..."
           echo "Resource Group: ${RG_NAME}"
-          
+
           # Try to get connection string from Key Vault, but don't fail if access is denied
           KEY_VAULT_NAME="kv-aistock-prod-${INSTANCE_NUM}"
           echo "Attempting to retrieve connection string from Key Vault: ${KEY_VAULT_NAME}"
-          
+
           CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv 2>/dev/null || echo "")
-          
+
           if [ -z "${CONNECTION_STRING}" ]; then
             echo "ℹ️ Could not retrieve connection string from Key Vault."
             echo "This is expected for first-time deployments or when pipeline doesn't have Key Vault access."
@@ -945,24 +962,24 @@ jobs:
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
           RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
-          
+
           # Get registry information from DEV resource group (shared registry)
           DEV_RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
           REGISTRY_NAME=$(az acr list --resource-group "${DEV_RG_NAME}" --query '[0].name' --output tsv)
           REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
           REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
-          
+
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
           echo "Web App Name: ${WEBAPP_NAME}"
           echo "Prod Resource Group: ${RG_NAME}"
           echo "Dev Registry Resource Group: ${DEV_RG_NAME}"
           echo "Shared Registry Name: ${REGISTRY_NAME}"
-          
+
           if [ -z "${{ steps.load-image.outputs.container_image }}" ]; then
             echo "ERROR: Container image is empty!"
             exit 1
           fi
-          
+
           az webapp config container set \
             --name "${WEBAPP_NAME}" \
             --resource-group "${RG_NAME}" \
@@ -982,15 +999,15 @@ jobs:
           WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
           HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
           BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
-          
+
           echo "🏥 Starting comprehensive health check..."
           echo "Base URL: ${BASE_URL}"
           echo "Health URL: ${HEALTH_URL}"
-          
+
           # Wait for initial deployment
           echo "Waiting for deployment to be ready..."
           sleep 60
-          
+
           # Check if the site is accessible at all
           echo "Testing basic site accessibility..."
           for i in {1..5}; do
@@ -1002,7 +1019,7 @@ jobs:
               sleep 30
             fi
           done
-          
+
           # Check health endpoint specifically
           echo "Testing health endpoint..."
           for i in {1..10}; do
@@ -1044,7 +1061,7 @@ jobs:
             
             sleep 30
           done
-          
+
           echo "❌ Health check failed - no successful response received"
           exit 1
 
