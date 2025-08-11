@@ -657,45 +657,17 @@ jobs:
           echo "Subscription ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}"
           echo "Container Image: ${{ steps.load-image.outputs.container_image }}"
 
-      - name: Get Azure AD information for SQL Admin
-        id: azure-ad-info
-        run: |
-          echo "Getting Azure AD information for SQL Server administration..."
-          
-          # Get the service principal information using the client ID
-          CLIENT_ID="${{ vars.AZURE_CLIENT_ID }}"
-          echo "Looking up service principal with client ID: $CLIENT_ID"
-          
-          SP_INFO=$(az ad sp show --id "$CLIENT_ID")
-          SP_OBJECT_ID=$(echo "$SP_INFO" | jq -r '.id')
-          SP_DISPLAY_NAME=$(echo "$SP_INFO" | jq -r '.displayName')
-          
-          echo "Service principal object ID: $SP_OBJECT_ID"
-          echo "Service principal display name: $SP_DISPLAY_NAME"
-          
-          echo "azure_ad_admin_object_id=$SP_OBJECT_ID" >> "$GITHUB_OUTPUT"
-          echo "azure_ad_admin_login=$SP_DISPLAY_NAME" >> "$GITHUB_OUTPUT"
+      # Removed service principal-based SQL admin override. Infrastructure workflow already sets
+      # the SQL Server Azure AD admin to the web app managed identity. We keep that and detect
+      # Azure AD-only capability later.
 
-      - name: Derive Azure AD only authentication flag
-        id: aad-auth-flag
-        run: |
-          OBJ_ID="${{ steps.azure-ad-info.outputs.azure_ad_admin_object_id }}"
-          LOGIN="${{ steps.azure-ad-info.outputs.azure_ad_admin_login }}"
-          if [ -n "$OBJ_ID" ] && [ "$OBJ_ID" != "null" ] && [ -n "$LOGIN" ] && [ "$LOGIN" != "null" ]; then
-            echo "enable_aad_only_auth=true" >> "$GITHUB_OUTPUT"
-            echo "Azure AD only auth will be ENABLED (have admin object id & login)"
-          else
-            echo "enable_aad_only_auth=false" >> "$GITHUB_OUTPUT"
-            echo "Azure AD only auth will be DISABLED (missing admin info)"
-          fi
-
-      - name: Deploy Bicep template
+      - name: Deploy Bicep template (no SQL admin override)
         uses: azure/arm-deploy@v1
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
-          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} enableAzureAdOnlyAuth=${{ steps.aad-auth-flag.outputs.enable_aad_only_auth }} azureAdAdminObjectId=${{ steps.azure-ad-info.outputs.azure_ad_admin_object_id }} azureAdAdminLogin=${{ steps.azure-ad-info.outputs.azure_ad_admin_login }}
+          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
           failOnStdErr: false
 
       - name: Setup .NET for migrations
@@ -713,7 +685,18 @@ jobs:
           WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
           SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
           DATABASE_NAME="sqldb-aistock-prod-${INSTANCE_NUM}"
-          ENABLE_AAD_ONLY="${{ steps.aad-auth-flag.outputs.enable_aad_only_auth }}"
+          # Dynamically detect if Azure AD admin (web app MI) is present
+          echo "🔍 Detecting Azure AD admin (expect web app managed identity)..."
+          CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+          CURRENT_ADMIN_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+          WEBAPP_MI_PRINCIPAL=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+          if [ "$CURRENT_ADMIN_SID" = "$WEBAPP_MI_PRINCIPAL" ]; then
+            ENABLE_AAD_ONLY=true
+            echo "✅ Azure AD admin matches web app MI (login=$CURRENT_ADMIN_LOGIN)"
+          else
+            ENABLE_AAD_ONLY=false
+            echo "⚠️ Azure AD admin does not match web app MI (adminLogin=$CURRENT_ADMIN_LOGIN, adminSid=$CURRENT_ADMIN_SID, mi=$WEBAPP_MI_PRINCIPAL) - skipping MI DB user creation."
+          fi
           
           echo "🔧 Setting up SQL Database access for Web App managed identity..."
           echo "Web App: ${WEBAPP_NAME}"
