@@ -4,33 +4,28 @@
     <!-- Disable parallel execution to prevent Playwright concurrency issues -->
     <MaxCpuCount>1</MaxCpuCount>
     <DisableParallelization>true</DisableParallelization>
-    
     <!-- Set timeout for tests - increased to 20 minutes -->
     <TestSessionTimeout>1200000</TestSessionTimeout> <!-- 20 minutes -->
-    
-    <!-- Collect code coverage -->
-    <DataCollectionRunSettings>
-      <DataCollectors>
-        <DataCollector friendlyName="Code Coverage" uri="datacollector://Microsoft/CodeCoverage/2.0" assemblyQualifiedName="Microsoft.VisualStudio.Coverage.DynamicCoverageDataCollector, Microsoft.VisualStudio.TraceCollector, Version=11.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
-          <Configuration>
-            <CodeCoverage>
-              <!-- Match the test assembly names -->
-              <ModulePaths>
-                <Include>
-                  <ModulePath>.*ai-stock-trade-app\.dll$</ModulePath>
-                </Include>
-                <Exclude>
-                  <ModulePath>.*test.*\.dll$</ModulePath>
-                  <ModulePath>.*\.UITests\.dll$</ModulePath>
-                  <ModulePath>.*\.Tests\.dll$</ModulePath>
-                </Exclude>
-              </ModulePaths>
-            </CodeCoverage>
-          </Configuration>
-        </DataCollector>
-      </DataCollectors>
-    </DataCollectionRunSettings>
+    <ResultsDirectory>$(System.DefaultWorkingDirectory)/TestResults</ResultsDirectory>
+    <TargetPlatform>x64</TargetPlatform>
+    <TargetFrameworkVersion>net9.0</TargetFrameworkVersion>
   </RunConfiguration>
+
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+
+  <LoggerRunSettings>
+    <Loggers>
+      <Logger friendlyName="trx" enabled="true" />
+    </Loggers>
+  </LoggerRunSettings>
 
   <!-- NUnit specific settings -->
   <NUnit>
