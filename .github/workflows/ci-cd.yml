@@ -680,13 +680,17 @@ jobs:
       # the SQL Server Azure AD admin to the web app managed identity. We keep that and detect
       # Azure AD-only capability later.
 
-      - name: Deploy Bicep template (no SQL admin override)
+      - name: Deploy Bicep template (AAD-only capable)
         uses: azure/arm-deploy@v1
         with:
           subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
           template: ./ai-stock-trade-app/infrastructure/main.bicep
-          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
+          # Pass sqlAdminPassword to avoid accidental blanking; also surface enableAzureAdOnlyAuth if AAD admin already established.
+          # For GitHub we infer enabling AAD-only via an input/secret flag (ENABLE_AAD_ONLY_AUTH) or default to true for prod to standardize.
+          # Currently leaving enableAzureAdOnlyAuth=false until AZURE_AD_ADMIN_* values are explicitly provided.
+          # To enable AAD-only auth: define repository variables AZURE_AD_ADMIN_OBJECT_ID + AZURE_AD_ADMIN_LOGIN then replace enableAzureAdOnlyAuth=false below with true and include those values.
+          parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} enableAzureAdOnlyAuth=false
           failOnStdErr: false
 
       - name: Verify SQL Admin matches Web App Managed Identity (Prod)
@@ -933,6 +937,11 @@ jobs:
 
       - name: Run Health Check
         run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+          echo "[DIAG] Dumping resolved connection string authentication mode before health checks (shared script)..."
+          bash ./scripts/sql-conn-auth-dump.sh "$RG_NAME" "$WEBAPP_NAME" || echo "[DIAG] Script execution failed (non-fatal)"
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
           HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"

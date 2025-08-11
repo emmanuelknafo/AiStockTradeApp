@@ -115,6 +115,32 @@ public class Program
             // Extract server name from connection string
             var serverName = ExtractServerNameFromConnectionString(connectionString);
             var isAzureAd = connectionString.Contains("Authentication=Active Directory Default", StringComparison.OrdinalIgnoreCase);
+
+            // Diagnostic logging about authentication mode & potential misconfiguration
+            try
+            {
+                if (isAzureAd)
+                {
+                    logger.LogInformation("[MIGRATIONS] Detected Azure AD authentication mode in DefaultConnection (Authentication=Active Directory Default)");
+                }
+                else
+                {
+                    var lowered = connectionString.ToLowerInvariant();
+                    var hasSqlAdmin = lowered.Contains("user id=sqladmin") || lowered.Contains("uid=sqladmin");
+                    var passwordFragment = System.Text.RegularExpressions.Regex.Match(connectionString, @"Password=([^;]*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    var pwdValue = passwordFragment.Success ? passwordFragment.Groups[1].Value : "(absent)";
+                    var blankPwd = passwordFragment.Success && string.IsNullOrWhiteSpace(pwdValue);
+                    logger.LogInformation("[MIGRATIONS] Using SQL authentication (no AAD token). UserIdPresent={UserPresent} BlankPassword={BlankPwd}", hasSqlAdmin, blankPwd);
+                    if (hasSqlAdmin && blankPwd)
+                    {
+                        logger.LogWarning("[MIGRATIONS] Detected 'sqladmin' with blank password in connection string. Ensure pipeline passes sqlAdminPassword to Bicep or enable AAD-only auth.");
+                    }
+                }
+            }
+            catch (Exception diagEx)
+            {
+                logger.LogDebug(diagEx, "[MIGRATIONS] Connection string diagnostics failed (non-fatal)");
+            }
             
             var maxAttempts = isAzureAd ? 6 : 1; // up to ~ (0+5+10+20+30) seconds + work
             var delays = new[] { 0, 5, 10, 20, 30, 45 }; // seconds

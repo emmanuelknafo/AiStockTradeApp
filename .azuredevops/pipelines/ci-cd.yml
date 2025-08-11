@@ -866,7 +866,9 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./ai-stock-trade-app/infrastructure/main.bicep"
                     csmParametersFile: "./ai-stock-trade-app/infrastructure/parameters.prod.json"
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage)"
+                    # NOTE: Include sqlAdminPassword to avoid blank blank password; also pass enableAzureAdOnlyAuth flag if infra set MI admin.
+                    # We reuse the derived enableAdOnlyAuthFlag (true when azureAdAdmin* vars detected earlier) to flip template into AAD-only mode.
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth $(enableAdOnlyAuthFlag) -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)'"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
@@ -1108,6 +1110,10 @@ stages:
                     scriptType: "bash"
                     scriptLocation: "inlineScript"
                     inlineScript: |
+                      echo "[DIAG] Dumping resolved connection string authentication mode before health checks (shared script)..."
+                      WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      bash ./scripts/sql-conn-auth-dump.sh "$RG_NAME" "$WEBAPP_NAME" || echo "[DIAG] Script execution failed (non-fatal)"
                       WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
                       HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
                       BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
