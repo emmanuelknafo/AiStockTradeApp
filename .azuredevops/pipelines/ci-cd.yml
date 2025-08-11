@@ -244,13 +244,11 @@ stages:
                 # Expose directory path
                 echo "##vso[task.setvariable variable=CoverageReportDir]$OUT_DIR"
 
-          - task: PublishCodeCoverageResults@1
+          - task: PublishCodeCoverageResults@2
             displayName: "Publish code coverage"
             condition: and(succeeded(), ne(variables.CoverageFile, ''))
             inputs:
-              codeCoverageTool: Cobertura
-              summaryFileLocation: "$(CoverageFile)"
-              reportDirectory: "$(CoverageReportDir)"
+              summaryFileLocation: '$(CoverageFile)'
               failIfCoverageEmpty: true
               # additionalCodeCoverageFiles can be added if multiple assemblies produce separate files
 
