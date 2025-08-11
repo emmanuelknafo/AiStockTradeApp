@@ -103,8 +103,6 @@ stages:
                 echo "Commit count: $(git rev-list --count HEAD)"
                 echo "Recent commits:"; git --no-pager log --oneline -n 5 || true
                 echo "Existing tags (tail):"; git tag -l | tail -10 || true
-            fetchDepth: 0 # full history for GitVersion
-            persistCredentials: true
 
           - task: UseDotNet@2
             displayName: "Setup .NET"
@@ -209,6 +207,9 @@ stages:
         steps:
           - checkout: self
             displayName: "Checkout code"
+            fetchDepth: 0
+            persistCredentials: true
+            clean: true
 
           - task: UseDotNet@2
             displayName: "Setup .NET"
@@ -465,6 +466,9 @@ stages:
         steps:
           - checkout: self
             displayName: "Checkout code"
+            fetchDepth: 0
+            persistCredentials: true
+            clean: true
 
           - task: AzureCLI@2
             displayName: "Get Container Registry Information"
@@ -779,6 +783,9 @@ stages:
               steps:
                 - checkout: self
                   displayName: "Checkout code"
+                  fetchDepth: 0
+                  persistCredentials: true
+                  clean: true
 
                 - task: DownloadPipelineArtifact@2
                   displayName: "Download build outputs"
@@ -930,6 +937,9 @@ stages:
               steps:
                 - checkout: self
                   displayName: "Checkout code"
+                  fetchDepth: 0
+                  persistCredentials: true
+                  clean: true
 
                 - task: DownloadPipelineArtifact@2
                   displayName: "Download build outputs"
@@ -1380,6 +1390,9 @@ stages:
         steps:
           - checkout: self
             displayName: "Checkout code"
+            fetchDepth: 0
+            persistCredentials: true
+            clean: true
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download build outputs"
