@@ -186,8 +186,8 @@ stages:
             displayName: "Run tests"
             inputs:
               command: "test"
-              projects: "**/*Tests.csproj"
-              arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests" --collect "XPlat Code Coverage" --results-directory "$(System.DefaultWorkingDirectory)/TestResults"'
+              projects: "ai-stock-trade-app.Tests/ai-stock-trade-app.Tests.csproj"
+              arguments: '--no-build --configuration Release --verbosity normal --collect "XPlat Code Coverage" --results-directory $(System.DefaultWorkingDirectory)/TestResults --logger "trx;LogFileName=unit-tests.trx"'
             env:
               ASPNETCORE_ENVIRONMENT: "Testing"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
