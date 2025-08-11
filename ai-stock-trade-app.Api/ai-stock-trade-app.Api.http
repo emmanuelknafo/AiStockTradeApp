@@ -1,6 +1,20 @@
 @ai_stock_trade_app.Api_HostAddress = http://localhost:5256
 
+# Test the WeatherForecast API endpoint
 GET {{ai_stock_trade_app.Api_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+# Access Swagger UI (in browser)
+# GET {{ai_stock_trade_app.Api_HostAddress}}/
+
+###
+
+# Get OpenAPI specification
+GET {{ai_stock_trade_app.Api_HostAddress}}/swagger/v1/swagger.json
+Accept: application/json
+
+###
+
+# Response
