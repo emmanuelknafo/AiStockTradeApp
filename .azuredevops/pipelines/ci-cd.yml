@@ -88,7 +88,7 @@ stages:
         steps:
           - checkout: self
             displayName: "Checkout code"
-            fetchDepth: 0  # full history for GitVersion
+            fetchDepth: 0 # full history for GitVersion
             persistCredentials: true
 
           - task: UseDotNet@2
@@ -653,6 +653,25 @@ stages:
                 echo "Deploy tag will be: $(deployTag)"
 
           - task: Bash@3
+            displayName: "Create and push git semantic tag"
+            condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                VERSION="$(GitVersion.FullSemVer)"
+                if [ -z "$VERSION" ] || [ "$VERSION" = "0.0.0-local" ]; then
+                  echo "No valid semantic version available; skipping git tag."; exit 0; fi
+                if [[ "$VERSION" != v* ]]; then VERSION="v$VERSION"; fi
+                echo "Preparing to create tag $VERSION on commit $(Build.SourceVersion)"
+                git fetch --tags --prune || true
+                if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+                  echo "Tag $VERSION already exists; skipping."; exit 0; fi
+                git tag -a "$VERSION" -m "Release $VERSION (Azure DevOps CI)" $(Build.SourceVersion)
+                git push origin "$VERSION" || echo "Push failed (check permissions)"
+                echo "Tag operation complete"
+
+          - task: Bash@3
             displayName: "Extract and set container image for deployment"
             inputs:
               targetType: "inline"
@@ -696,6 +715,7 @@ stages:
         succeeded(),
         or(
           eq(variables['Build.SourceBranch'], 'refs/heads/develop'),
+          eq(variables['Build.SourceBranch'], 'refs/heads/main'),
           and(
             eq(variables['Build.Reason'], 'Manual'),
             eq('${{ parameters.environment }}', 'dev')

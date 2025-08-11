@@ -270,7 +270,7 @@ jobs:
 
     permissions:
       id-token: write
-      contents: read
+      contents: write # needed to push git tag
 
     steps:
       - name: Checkout code
@@ -402,6 +402,27 @@ jobs:
             org.opencontainers.image.version=${{ steps.gitversion.outputs.fullSemVer }}
             org.opencontainers.image.revision=${{ github.sha }}
 
+      - name: Create and push semantic git tag
+        if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
+        run: |
+          set -e
+          VERSION='${{ steps.gitversion.outputs.fullSemVer }}'
+          if [ -z "$VERSION" ] || [ "$VERSION" = "0.0.0-local" ]; then
+            echo "No valid semantic version computed; skipping tag push."; exit 0; fi
+          if [[ "$VERSION" != v* ]]; then VERSION="v$VERSION"; fi
+          git fetch --tags --depth=1 || true
+            if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "Tag $VERSION already exists; skipping creation."; exit 0; fi
+          echo "Creating annotated tag $VERSION"
+          git tag -a "$VERSION" -m "Release $VERSION (CI)"
+          git push origin "$VERSION"
+          echo "Tag $VERSION pushed successfully."
+        env:
+          GIT_AUTHOR_NAME: ci-bot
+          GIT_AUTHOR_EMAIL: ci-bot@users.noreply.github.com
+          GIT_COMMITTER_NAME: ci-bot
+          GIT_COMMITTER_EMAIL: ci-bot@users.noreply.github.com
+
       - name: Extract and set container image for deployment
         id: final-output
         run: |
@@ -501,9 +522,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     name: Deploy to Development
-    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    # Run for develop (normal dev flow) and main (promote immediately before prod)
+    if: ${{ github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev') }}
     environment: ${{ github.event_name == 'workflow_dispatch' && format('development-{0}', github.event.inputs.instanceNumber) || 'development-002' }}
-
     permissions:
       id-token: write
       contents: read
