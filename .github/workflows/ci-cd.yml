@@ -518,6 +518,25 @@ jobs:
           parameters: ./ai-stock-trade-app/infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
           failOnStdErr: false
 
+      - name: Verify SQL Admin matches Web App Managed Identity (Dev)
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+            WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
+          SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
+          echo "🔍 Verifying Dev SQL AD admin is web app MI"
+          MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+          if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "❌ Web app MI principalId not found"; exit 1; fi
+          ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+          ADMIN_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+          echo "Web App MI: $MI_PRINCIPAL_ID"; echo "Current Admin login: $ADMIN_LOGIN"; echo "Current Admin sid: $ADMIN_SID"
+          if [ -z "$ADMIN_SID" ] || [ "$ADMIN_SID" = "null" ]; then echo "❌ No Azure AD admin configured (expected MI)"; exit 1; fi
+          if [ "$ADMIN_SID" != "$MI_PRINCIPAL_ID" ]; then
+            echo "❌ Admin sid mismatch (expected=$MI_PRINCIPAL_ID, found=$ADMIN_SID)";
+            echo "Remediation: Run infra workflow or manually: az sql server ad-admin delete --server $SQL_SERVER_NAME --resource-group $RG_NAME && az sql server ad-admin create --server $SQL_SERVER_NAME --resource-group $RG_NAME --display-name $WEBAPP_NAME --object-id $MI_PRINCIPAL_ID"; exit 1; fi
+          echo "✅ Dev SQL admin matches web app MI."
+
       - name: Setup .NET for migrations
         uses: actions/setup-dotnet@v4
         with:
@@ -669,6 +688,40 @@ jobs:
           template: ./ai-stock-trade-app/infrastructure/main.bicep
           parameters: ./ai-stock-trade-app/infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
           failOnStdErr: false
+
+      - name: Verify SQL Admin matches Web App Managed Identity (Prod)
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+          WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
+          SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
+
+          echo "🔍 Verifying Azure SQL Server AD admin is web app managed identity"
+          MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+          if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then
+            echo "❌ Managed identity principalId not found for web app $WEBAPP_NAME"; exit 1; fi
+
+          ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+          ADMIN_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+
+          echo "Web App MI principalId: $MI_PRINCIPAL_ID"
+          echo "Current SQL Admin login: $ADMIN_LOGIN"
+          echo "Current SQL Admin sid:   $ADMIN_SID"
+
+          if [ -z "$ADMIN_SID" ] || [ "$ADMIN_SID" = "null" ]; then
+            echo "❌ No Azure AD admin configured on SQL server (expected web app MI)."; exit 1; fi
+
+          if [ "$ADMIN_SID" != "$MI_PRINCIPAL_ID" ]; then
+            echo "❌ SQL admin sid does not match web app MI."
+            echo "   Expected: $MI_PRINCIPAL_ID"
+            echo "   Found:    $ADMIN_SID (login=$ADMIN_LOGIN)"
+            echo "💡 Remediation: Re-run infrastructure workflow to enforce MI admin or manually:"
+            echo "   az sql server ad-admin delete --server $SQL_SERVER_NAME --resource-group $RG_NAME || true"
+            echo "   az sql server ad-admin create --server $SQL_SERVER_NAME --resource-group $RG_NAME --display-name $WEBAPP_NAME --object-id $MI_PRINCIPAL_ID"
+            exit 1
+          fi
+          echo "✅ SQL admin sid matches web app MI (login=$ADMIN_LOGIN)."
 
       - name: Setup .NET for migrations
         uses: actions/setup-dotnet@v4

@@ -661,7 +661,7 @@ stages:
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
-                  displayName: "Set Web App Managed Identity as SQL Admin (Dev)"
+                  displayName: "Verify SQL Admin matches Web App Managed Identity (Dev)"
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
                     scriptType: bash
@@ -671,27 +671,17 @@ stages:
                       RG_NAME="rg-aistock-dev-$(instanceNum)"
                       WEBAPP_NAME="app-aistock-dev-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-dev-$(instanceNum)"
-                      echo "[DEV] Retrieving web app managed identity principalId..."
-                      PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv)
-                      if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then
-                        echo "[DEV] Enabling managed identity on web app..."
-                        az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null
-                        sleep 8
-                        PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv)
-                      fi
-                      echo "[DEV] Web app MI objectId(principalId): $PRINCIPAL_ID"
-                      echo "[DEV] Setting SQL Server Entra admin to web app MI..."
-                      # Remove existing admin if present (avoid conflict)
-                      if az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?name=='ActiveDirectory']" -o tsv | grep -q ActiveDirectory; then
-                        echo "[DEV] Existing Entra admin found - removing before reassigning..."
-                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-                        sleep 5
-                      fi
-                      az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
-                      echo "[DEV] Confirming admin assignment (list)..."
-                      az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o table
-                      echo "[DEV] Waiting 20s for admin propagation..."; sleep 20
-                      echo "[DEV] Admin assignment complete."
+                      echo "[VERIFY-DEV] Checking SQL AD admin vs web app MI..."
+                      MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[VERIFY-DEV][ERROR] Web app MI principalId not found"; exit 1; fi
+                      ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+                      ADMIN_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+                      echo "[VERIFY-DEV] Web App MI: $MI_PRINCIPAL_ID"; echo "[VERIFY-DEV] Admin login: $ADMIN_LOGIN"; echo "[VERIFY-DEV] Admin sid: $ADMIN_SID"
+                      if [ -z "$ADMIN_SID" ] || [ "$ADMIN_SID" = "null" ]; then echo "[VERIFY-DEV][ERROR] No SQL AD admin configured (expected MI)"; exit 1; fi
+                      if [ "$ADMIN_SID" != "$MI_PRINCIPAL_ID" ]; then
+                        echo "[VERIFY-DEV][ERROR] SQL AD admin sid does not match MI (expected=$MI_PRINCIPAL_ID, found=$ADMIN_SID login=$ADMIN_LOGIN)";
+                        echo "Remediation: Run infra pipeline or execute: az sql server ad-admin delete --server $SQL_SERVER_NAME --resource-group $RG_NAME && az sql server ad-admin create --server $SQL_SERVER_NAME --resource-group $RG_NAME --display-name $WEBAPP_NAME --object-id $MI_PRINCIPAL_ID"; exit 1; fi
+                      echo "[VERIFY-DEV] ✅ SQL admin matches web app MI."
 
                 - task: AzureCLI@2
                   displayName: "Update Web App Container"
@@ -865,7 +855,7 @@ stages:
                       echo "enableAdOnlyAuthFlag=$enableAdOnlyAuthFlag"
 
                 - task: AzureResourceManagerTemplateDeployment@3
-                  displayName: "Deploy Bicep template"
+                  displayName: "Deploy Bicep template (no SQL admin override)"
                   inputs:
                     deploymentScope: "Resource Group"
                     azureResourceManagerConnection: "$(AZURE_SERVICE_CONNECTION)"
@@ -876,12 +866,11 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./ai-stock-trade-app/infrastructure/main.bicep"
                     csmParametersFile: "./ai-stock-trade-app/infrastructure/parameters.prod.json"
-                    # Only pass parameters that differ from parameter file defaults to prevent empty value issues
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -enableAzureAdOnlyAuth $(enableAdOnlyAuthFlag) -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)'"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage)"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
-                  displayName: "Set Web App Managed Identity as SQL Admin (Prod)"
+                  displayName: "Verify SQL Admin matches Web App Managed Identity (Prod)"
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
                     scriptType: bash
@@ -891,26 +880,19 @@ stages:
                       RG_NAME="rg-aistock-prod-$(instanceNum)"
                       WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
-                      echo "[PROD] Retrieving web app managed identity principalId..."
-                      PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv)
-                      if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then
-                        echo "[PROD] Enabling managed identity on web app..."
-                        az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null
-                        sleep 8
-                        PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv)
-                      fi
-                      echo "[PROD] Web app MI objectId(principalId): $PRINCIPAL_ID"
-                      echo "[PROD] Setting SQL Server Entra admin to web app MI..."
-                      if az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?name=='ActiveDirectory']" -o tsv | grep -q ActiveDirectory; then
-                        echo "[PROD] Existing Entra admin found - removing before reassigning..."
-                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-                        sleep 5
-                      fi
-                      az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
-                      echo "[PROD] Confirming admin assignment (list)..."
-                      az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o table
-                      echo "[PROD] Waiting 20s for admin propagation..."; sleep 20
-                      echo "[PROD] Admin assignment complete."
+                      echo "[VERIFY] Checking SQL AD admin vs web app MI..."
+                      MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[VERIFY][ERROR] Web app MI principalId not found"; exit 1; fi
+                      ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+                      ADMIN_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+                      echo "[VERIFY] Web App MI: $MI_PRINCIPAL_ID"; echo "[VERIFY] Admin login: $ADMIN_LOGIN"; echo "[VERIFY] Admin sid: $ADMIN_SID"
+                      if [ -z "$ADMIN_SID" ] || [ "$ADMIN_SID" = "null" ]; then echo "[VERIFY][ERROR] No SQL AD admin configured (expected MI)"; exit 1; fi
+                      if [ "$ADMIN_SID" != "$MI_PRINCIPAL_ID" ]; then
+                        echo "[VERIFY][ERROR] SQL AD admin sid does not match MI (expected=$MI_PRINCIPAL_ID, found=$ADMIN_SID login=$ADMIN_LOGIN)";
+                        echo "Remediation: Run infra pipeline or execute: az sql server ad-admin delete --server $SQL_SERVER_NAME --resource-group $RG_NAME && az sql server ad-admin create --server $SQL_SERVER_NAME --resource-group $RG_NAME --display-name $WEBAPP_NAME --object-id $MI_PRINCIPAL_ID"; exit 1; fi
+                      echo "[VERIFY] ✅ SQL admin matches web app MI."
+
+                # Removed re-assignment of SQL admin here; infra pipeline owns that responsibility.
 
                 - task: AzureCLI@2
                   displayName: "Setup Web App SQL Database Access (Azure AD)"
