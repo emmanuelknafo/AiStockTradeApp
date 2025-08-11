@@ -187,10 +187,51 @@ stages:
             inputs:
               command: "test"
               projects: "**/*.csproj"
-              arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests"'
+              arguments: '--no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests" --collect "XPlat Code Coverage"'
             env:
               ASPNETCORE_ENVIRONMENT: "Testing"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+
+          - task: Bash@3
+            displayName: "Locate coverage file"
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                echo "Searching for coverage.cobertura.xml files..."
+                FOUND=$(find $(System.DefaultWorkingDirectory) -type f -name 'coverage.cobertura.xml' | head -1 || true)
+                if [ -z "$FOUND" ]; then
+                  echo "No coverage file found."; exit 0; fi
+                echo "Found coverage file: $FOUND"
+                echo "##vso[task.setvariable variable=CoverageFile]$FOUND"
+
+          - task: Bash@3
+            displayName: "Generate HTML coverage report"
+            condition: and(succeeded(), ne(variables.CoverageFile, ''))
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                echo "Installing reportgenerator tool..."
+                dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.* || true
+                export PATH="$PATH:$HOME/.dotnet/tools"
+                OUT_DIR="$(System.DefaultWorkingDirectory)/CodeCoverageReport"
+                mkdir -p "$OUT_DIR"
+                echo "Running reportgenerator..."
+                reportgenerator -reports:"$(CoverageFile)" -targetdir:"$OUT_DIR" -reporttypes:HtmlSummary;HtmlInline_AzurePipelines || echo "Report generation failed (continuing)"
+                echo "Report directory contents:"; ls -la "$OUT_DIR" || true
+                # Expose directory path
+                echo "##vso[task.setvariable variable=CoverageReportDir]$OUT_DIR"
+
+          - task: PublishCodeCoverageResults@1
+            displayName: "Publish code coverage"
+            condition: and(succeeded(), ne(variables.CoverageFile, ''))
+            inputs:
+              codeCoverageTool: Cobertura
+              summaryFileLocation: "$(CoverageFile)"
+              reportDirectory: "$(CoverageReportDir)"
+              failIfCoverageEmpty: true
+              # additionalCodeCoverageFiles can be added if multiple assemblies produce separate files
 
       - job: UITestJob
         displayName: "UI Tests with Playwright"

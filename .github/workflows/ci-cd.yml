@@ -118,10 +118,54 @@ jobs:
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 
       - name: Run tests
-        run: dotnet test --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName!~UITests"
+        run: |
+          mkdir -p unit-test-results
+          dotnet test --no-build --configuration Release --verbosity normal \
+            --filter "FullyQualifiedName!~UITests" \
+            --logger "trx;LogFileName=unit-test-results.trx" \
+            --results-directory ./unit-test-results \
+            /p:CollectCoverage=true \
+            /p:CoverletOutput=./unit-test-results/coverage/ \
+            /p:CoverletOutputFormat=cobertura,opencover \
+            /p:MergeWith="$(pwd)/unit-test-results/coverage/coverage.json" || true
+          echo "Listing coverage output:"; ls -R unit-test-results/coverage || true
         env:
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
           APP_VERSION: ${{ steps.gitversion.outputs.fullSemVer }}
+
+      - name: Generate coverage summary (ReportGenerator)
+        if: always()
+        run: |
+          if ls unit-test-results/coverage/*.cobertura.xml 1> /dev/null 2>&1; then
+            dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.* || true
+            export PATH="${PATH}:${HOME}/.dotnet/tools"
+            reportgenerator \
+              -reports:unit-test-results/coverage/*.cobertura.xml \
+              -targetdir:unit-test-results/coverage-report \
+              -reporttypes:HtmlSummary;TextSummary || true
+            echo "Coverage summary:"; cat unit-test-results/coverage-report/Summary.txt || true
+          else
+            echo "No cobertura coverage files found; skipping report generation.";
+          fi
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-coverage
+          path: |
+            unit-test-results/coverage/**
+            unit-test-results/coverage-report/**
+          retention-days: 5
+
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: |
+            unit-test-results/**/*.trx
+          retention-days: 5
 
   ui-test:
     runs-on: ubuntu-latest
