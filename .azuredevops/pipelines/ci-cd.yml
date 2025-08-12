@@ -187,7 +187,7 @@ stages:
             inputs:
               command: "test"
               projects: "ai-stock-trade-app.Tests/ai-stock-trade-app.Tests.csproj"
-              arguments: "--no-build --configuration Release --verbosity normal --settings ./test.runsettings --logger trx --results-directory \"$(Agent.TempDirectory)\""
+              arguments: '--no-build --configuration Release --verbosity normal --settings ./test.runsettings --logger "trx;LogFileName=unit-tests.trx"'
             env:
               ASPNETCORE_ENVIRONMENT: "Testing"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
