@@ -20,6 +20,16 @@ public class Program
 
         // Add Entity Framework with optional in-memory provider for UI tests
         var useInMemory = string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
+        var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+        var isProdLike = builder.Environment.IsProduction() || (isAzureAppService && !builder.Environment.IsDevelopment());
+
+        // Enforce external SQL when hosted in Azure App Service or Production-like environments
+        if (isProdLike && useInMemory)
+        {
+            // Do not allow in-memory DB when hosted; force external SQL
+            useInMemory = false;
+        }
+
         if (useInMemory)
         {
             builder.Services.AddDbContext<StockDataContext>(options =>
@@ -32,8 +42,16 @@ public class Program
                 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
                 if (string.IsNullOrEmpty(connectionString))
                 {
-                    // Fallback for development - using local default instance
-                    connectionString = "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+                    if (isProdLike)
+                    {
+                        // Fail fast in hosted/prod if no connection string is configured
+                        throw new InvalidOperationException("DefaultConnection is not configured. In hosted/production environments, an external Azure SQL connection string is required.");
+                    }
+                    else
+                    {
+                        // Fallback for local development only
+                        connectionString = "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+                    }
                 }
 
                 // Configure SQL connection with Azure AD authentication support
@@ -91,7 +109,7 @@ public class Program
             options.Cookie.IsEssential = true;
         });
 
-        var app = builder.Build();
+    var app = builder.Build();
 
     // Ensure database is created and migrated with resilient Azure AD handling
         using (var scope = app.Services.CreateScope())
@@ -100,6 +118,15 @@ public class Program
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
             var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
             var useInMemoryRuntime = string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
+            var isAzureHostedRuntime = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+
+            // Database mode summary logging
+            logger.LogInformation("[DB] Environment: {Env} | AzureHosted: {AzureHosted} | USE_INMEMORY_DB={UseInMemory}", app.Environment.EnvironmentName, isAzureHostedRuntime, useInMemoryRuntime);
+            if (isAzureHostedRuntime && useInMemoryRuntime)
+            {
+                logger.LogWarning("[DB] USE_INMEMORY_DB=true detected on Azure hosted environment – in-memory will be ignored; external SQL is required.");
+                useInMemoryRuntime = false;
+            }
             if (useInMemoryRuntime)
             {
                 logger.LogInformation("[MIGRATIONS] Skipping migrations – using in-memory provider (USE_INMEMORY_DB=true)");
@@ -109,11 +136,27 @@ public class Program
             var connectionString = configuration.GetConnectionString("DefaultConnection");
             if (string.IsNullOrEmpty(connectionString))
             {
-                connectionString = "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+                if (app.Environment.IsDevelopment() && !isAzureHostedRuntime)
+                {
+                    connectionString = "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+                    logger.LogWarning("[DB] DefaultConnection not set; using local development fallback connection string.");
+                }
+                else
+                {
+                    logger.LogCritical("[DB] DefaultConnection is missing in a hosted/production environment. Configure Azure SQL connection in application settings.");
+                    throw new InvalidOperationException("DefaultConnection is not configured in hosted/production environment.");
+                }
             }
             
             // Extract server name from connection string
             var serverName = ExtractServerNameFromConnectionString(connectionString);
+            string databaseName = "Unknown";
+            try
+            {
+                var csb = new SqlConnectionStringBuilder(connectionString);
+                databaseName = csb.InitialCatalog;
+            }
+            catch { /* ignore */ }
             var isAzureAd = connectionString.Contains("Authentication=Active Directory Default", StringComparison.OrdinalIgnoreCase);
 
             // Diagnostic logging about authentication mode & potential misconfiguration
@@ -121,10 +164,12 @@ public class Program
             {
                 if (isAzureAd)
                 {
+                    logger.LogInformation("[DB] Mode: External SQL (AAD). Server={Server} Database={Database}", serverName, databaseName);
                     logger.LogInformation("[MIGRATIONS] Detected Azure AD authentication mode in DefaultConnection (Authentication=Active Directory Default)");
                 }
                 else
                 {
+                    logger.LogInformation("[DB] Mode: External SQL (SQL Auth). Server={Server} Database={Database}", serverName, databaseName);
                     var lowered = connectionString.ToLowerInvariant();
                     var hasSqlAdmin = lowered.Contains("user id=sqladmin") || lowered.Contains("uid=sqladmin");
                     var passwordFragment = System.Text.RegularExpressions.Regex.Match(connectionString, @"Password=([^;]*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
