@@ -187,7 +187,7 @@ stages:
             inputs:
               command: "test"
               projects: "ai-stock-trade-app.Tests/ai-stock-trade-app.Tests.csproj"
-              arguments: "--no-build --configuration Release --verbosity normal --settings ./test.runsettings"
+              arguments: "--no-build --configuration Release --verbosity normal --settings ./test.runsettings --logger trx"
             env:
               ASPNETCORE_ENVIRONMENT: "Testing"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
@@ -199,11 +199,32 @@ stages:
               script: |
                 echo "Listing TestResults directories..."
                 find $(System.DefaultWorkingDirectory) -type d -name TestResults | head -50
+                echo "Listing TRX files..."
+                find $(System.DefaultWorkingDirectory) -type f -name '*.trx' | head -80
                 echo "Listing coverage candidates (xml/json)..."
                 find $(System.DefaultWorkingDirectory) -type f \( -name 'coverage.cobertura.xml' -o -name 'coverage.opencover.xml' -o -name 'coverage.xml' -o -name 'coverage.json' \) | head -80
                 echo "Agent temp coverage candidates..."
                 find $(Agent.TempDirectory) -type f \( -name 'coverage.cobertura.xml' -o -name 'coverage.opencover.xml' -o -name 'coverage.xml' -o -name 'coverage.json' \) 2>/dev/null | head -40 || true
                 echo "Disk usage for test project directories:"; du -sh */*Tests 2>/dev/null || true
+
+          - task: Bash@3
+            displayName: "Collect TRX files to a known directory"
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                OUT_DIR="$(System.DefaultWorkingDirectory)/TestResults/collected"
+                mkdir -p "$OUT_DIR"
+                echo "Collecting TRX files under workspace into $OUT_DIR"
+                count=0
+                while IFS= read -r -d '' f; do
+                  base=$(basename "$f")
+                  dest="$OUT_DIR/${count}-${base}"
+                  cp "$f" "$dest" || true
+                  echo "Copied: $f -> $dest"
+                  count=$((count+1))
+                done < <(find "$(System.DefaultWorkingDirectory)" -type f -name '*.trx' -print0)
+                echo "Collected $count TRX files"
 
           - task: Bash@3
             displayName: "Locate coverage file"
@@ -231,8 +252,8 @@ stages:
             condition: always()
             inputs:
               testResultsFormat: "VSTest"
-              testResultsFiles: "**/TestResults/*.trx"
-              searchFolder: "$(System.DefaultWorkingDirectory)"
+              testResultsFiles: "*.trx"
+              searchFolder: "$(System.DefaultWorkingDirectory)/TestResults/collected"
               mergeTestResults: true
               testRunTitle: "Unit Tests"
 

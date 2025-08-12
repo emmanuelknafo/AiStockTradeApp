@@ -6,6 +6,8 @@ USER $APP_UID
 WORKDIR /app
 EXPOSE 8080
 EXPOSE 8081
+# Use in-memory database for container environments
+ENV USE_INMEMORY_DB=true
 
 
 # This stage is used to build the service project
@@ -54,5 +56,7 @@ FROM base AS final
 WORKDIR /app
 ARG APP_VERSION
 ENV APP_VERSION=${APP_VERSION}
+# Use in-memory database for container environments
+ENV USE_INMEMORY_DB=true
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "ai-stock-trade-app.dll"]
