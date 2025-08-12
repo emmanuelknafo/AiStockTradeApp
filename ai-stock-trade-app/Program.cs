@@ -20,11 +20,12 @@ public class Program
 
         // Add Entity Framework with optional in-memory provider for UI tests
         var useInMemory = string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
-        var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
-        var isProdLike = builder.Environment.IsProduction() || (isAzureAppService && !builder.Environment.IsDevelopment());
+    var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+    // Enforce external SQL for any Azure App Service host (dev/prod), or any Production environment
+    var enforceExternalSql = isAzureAppService || builder.Environment.IsProduction();
 
         // Enforce external SQL when hosted in Azure App Service or Production-like environments
-        if (isProdLike && useInMemory)
+    if (enforceExternalSql && useInMemory)
         {
             // Do not allow in-memory DB when hosted; force external SQL
             useInMemory = false;
@@ -42,7 +43,7 @@ public class Program
                 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
                 if (string.IsNullOrEmpty(connectionString))
                 {
-                    if (isProdLike)
+                    if (enforceExternalSql)
                     {
                         // Fail fast in hosted/prod if no connection string is configured
                         throw new InvalidOperationException("DefaultConnection is not configured. In hosted/production environments, an external Azure SQL connection string is required.");
