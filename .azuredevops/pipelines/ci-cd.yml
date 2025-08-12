@@ -191,6 +191,7 @@ stages:
             env:
               ASPNETCORE_ENVIRONMENT: "Testing"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+              VSTEST_RESULTS_DIRECTORY: "$(System.DefaultWorkingDirectory)/TestResults"
 
           - task: Bash@3
             displayName: "Diagnostics: List TestResults artifacts"
@@ -201,6 +202,8 @@ stages:
                 find $(System.DefaultWorkingDirectory) -type d -name TestResults | head -50
                 echo "Listing TRX files..."
                 find $(System.DefaultWorkingDirectory) -type f -name '*.trx' | head -80
+                echo "Agent temp TRX files..."
+                find $(Agent.TempDirectory) -type f -name '*.trx' 2>/dev/null | head -40 || true
                 echo "Listing coverage candidates (xml/json)..."
                 find $(System.DefaultWorkingDirectory) -type f \( -name 'coverage.cobertura.xml' -o -name 'coverage.opencover.xml' -o -name 'coverage.xml' -o -name 'coverage.json' \) | head -80
                 echo "Agent temp coverage candidates..."
@@ -223,7 +226,7 @@ stages:
                   cp "$f" "$dest" || true
                   echo "Copied: $f -> $dest"
                   count=$((count+1))
-                done < <(find "$(System.DefaultWorkingDirectory)" -type f -name '*.trx' -print0)
+                done < <( (find "$(System.DefaultWorkingDirectory)" -type f -name '*.trx' -print0; find "$(Agent.TempDirectory)" -type f -name '*.trx' -print0 2>/dev/null) )
                 echo "Collected $count TRX files"
 
           - task: Bash@3
