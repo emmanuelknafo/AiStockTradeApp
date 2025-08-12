@@ -188,6 +188,7 @@ stages:
               command: "test"
               projects: "ai-stock-trade-app.Tests/ai-stock-trade-app.Tests.csproj"
               arguments: '--no-build --configuration Release --verbosity normal --settings ./test.runsettings --logger "trx;LogFileName=unit-tests.trx"'
+              publishTestResults: false
             env:
               ASPNETCORE_ENVIRONMENT: "Testing"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
@@ -241,7 +242,26 @@ stages:
               testResultsFiles: "*.trx"
               searchFolder: "$(Agent.TempDirectory)"
               mergeTestResults: true
-              testRunTitle: "Unit Tests"
+              testRunTitle: "Unit Tests_$(Build.BuildId)"
+
+          - task: Bash@3
+            displayName: "Collect Unit TRX for artifact"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                DEST="$(Pipeline.Workspace)/test-results/unit"
+                mkdir -p "$DEST"
+                echo "Collecting TRX from $(Agent.TempDirectory) to $DEST"
+                find "$(Agent.TempDirectory)" -type f -name '*.trx' -print -exec cp {} "$DEST/" \; 2>/dev/null || true
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Upload Unit Test TRX"
+            condition: always()
+            inputs:
+              targetPath: "$(Pipeline.Workspace)/test-results/unit"
+              artifactName: "unit-test-results"
 
           - task: Bash@3
             displayName: "Generate HTML coverage report"
@@ -469,6 +489,7 @@ stages:
               command: "test"
               projects: "ai-stock-trade-app.UITests/ai-stock-trade-app.UITests.csproj"
               arguments: '--no-build --configuration Release --verbosity diagnostic --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings --logger "console;verbosity=diagnostic"'
+              publishTestResults: false
             env:
               ASPNETCORE_ENVIRONMENT: "Development"
               PLAYWRIGHT_BASE_URL: "http://localhost:5000"
@@ -500,9 +521,28 @@ stages:
               testResultsFormat: "VSTest"
               testResultsFiles: "*.trx"
               searchFolder: "$(Agent.TempDirectory)"
-              testRunTitle: "Playwright UI Tests"
+              testRunTitle: "Playwright UI Tests_$(Build.BuildId)"
               mergeTestResults: true
             condition: succeededOrFailed()
+
+          - task: Bash@3
+            displayName: "Collect UI TRX for artifact"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                DEST="$(Pipeline.Workspace)/test-results/ui"
+                mkdir -p "$DEST"
+                echo "Collecting TRX from $(Agent.TempDirectory) to $DEST"
+                find "$(Agent.TempDirectory)" -type f -name '*ui-test-results.trx' -print -exec cp {} "$DEST/" \; 2>/dev/null || true
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Upload UI Test TRX"
+            condition: always()
+            inputs:
+              targetPath: "$(Pipeline.Workspace)/test-results/ui"
+              artifactName: "ui-test-results"
 
           - script: |
               echo "Capturing application logs for debugging..."
