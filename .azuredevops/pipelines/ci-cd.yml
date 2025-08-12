@@ -187,7 +187,7 @@ stages:
             inputs:
               command: "test"
               projects: "ai-stock-trade-app.Tests/ai-stock-trade-app.Tests.csproj"
-              arguments: '--no-build --configuration Release --verbosity normal --settings ./test.runsettings --logger "trx;LogFileName=unit-tests.trx"'
+              arguments: '--no-build --configuration Release --verbosity normal --settings ./test.runsettings --logger "trx;LogFileName=unit-tests.trx" --results-directory "$(Agent.TempDirectory)"'
               publishTestResults: false
             env:
               ASPNETCORE_ENVIRONMENT: "Testing"
@@ -210,6 +210,27 @@ stages:
                 echo "Agent temp coverage candidates..."
                 find $(Agent.TempDirectory) -type f \( -name 'coverage.cobertura.xml' -o -name 'coverage.opencover.xml' -o -name 'coverage.xml' -o -name 'coverage.json' \) 2>/dev/null | head -40 || true
                 echo "Disk usage for test project directories:"; du -sh */*Tests 2>/dev/null || true
+
+          - task: Bash@3
+            displayName: "Fallback: Copy TRX from workspace TestResults to Agent.TempDirectory"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                SRC_DIR="$(System.DefaultWorkingDirectory)/TestResults"
+                DEST_DIR="$(Agent.TempDirectory)"
+                if [ -d "$SRC_DIR" ]; then
+                  FOUND=$(find "$SRC_DIR" -type f -name '*.trx' | wc -l)
+                  if [ "$FOUND" -gt 0 ]; then
+                    echo "Found $FOUND TRX in $SRC_DIR. Copying to $DEST_DIR..."
+                    find "$SRC_DIR" -type f -name '*.trx' -exec cp {} "$DEST_DIR/" \;
+                  else
+                    echo "No TRX in $SRC_DIR"
+                  fi
+                else
+                  echo "No workspace TestResults directory present"
+                fi
 
           # Removed TRX collection step; publish directly from Agent.TempDirectory to retain attachments referenced in TRX
 
@@ -488,7 +509,7 @@ stages:
             inputs:
               command: "test"
               projects: "ai-stock-trade-app.UITests/ai-stock-trade-app.UITests.csproj"
-              arguments: '--no-build --configuration Release --verbosity diagnostic --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings --logger "console;verbosity=diagnostic"'
+              arguments: '--no-build --configuration Release --verbosity diagnostic --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings --logger "console;verbosity=diagnostic" --results-directory "$(Agent.TempDirectory)"'
               publishTestResults: false
             env:
               ASPNETCORE_ENVIRONMENT: "Development"
@@ -514,6 +535,27 @@ stages:
                 echo "Agent temp TRX files (UI):"
                 find $(Agent.TempDirectory) -type f -name '*.trx' 2>/dev/null | head -40 || true
             condition: always()
+
+          - task: Bash@3
+            displayName: "Fallback: Copy UI TRX from workspace TestResults to Agent.TempDirectory"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                SRC_DIR="$(System.DefaultWorkingDirectory)/TestResults"
+                DEST_DIR="$(Agent.TempDirectory)"
+                if [ -d "$SRC_DIR" ]; then
+                  FOUND=$(find "$SRC_DIR" -type f -name '*ui-test-results.trx' | wc -l)
+                  if [ "$FOUND" -gt 0 ]; then
+                    echo "Found $FOUND UI TRX in $SRC_DIR. Copying to $DEST_DIR..."
+                    find "$SRC_DIR" -type f -name '*ui-test-results.trx' -exec cp {} "$DEST_DIR/" \;
+                  else
+                    echo "No UI TRX in $SRC_DIR"
+                  fi
+                else
+                  echo "No workspace TestResults directory present"
+                fi
 
           - task: PublishTestResults@2
             displayName: "Publish UI Test Results"
