@@ -115,8 +115,12 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
   name: sqlServerName
   location: location
   properties: {
-    administratorLogin: enableAzureAdOnlyAuth ? null : sqlAdminUsername
-    administratorLoginPassword: enableAzureAdOnlyAuth ? null : sqlAdminPassword
+    // Only include SQL admin credentials when NOT using Azure AD only authentication
+    // Using object spread to avoid sending nulls which can cause deployment errors in AAD-only mode
+    ...(enableAzureAdOnlyAuth ? {} : {
+      administratorLogin: sqlAdminUsername
+      administratorLoginPassword: sqlAdminPassword
+    })
     version: '12.0'
     publicNetworkAccess: 'Enabled'
   }

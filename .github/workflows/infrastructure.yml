@@ -72,7 +72,8 @@ jobs:
           --parameters containerImage="ai-stock-trade-app:latest" \
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+          --parameters enableAzureAdOnlyAuth=true
 
     - name: Deploy Dev Infrastructure
       if: github.event.inputs.destroy != 'true'
@@ -87,7 +88,8 @@ jobs:
           --parameters containerImage="ai-stock-trade-app:latest" \
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+          --parameters enableAzureAdOnlyAuth=true
 
     - name: Set Web App Managed Identity as SQL Admin (Dev)
       if: github.event.inputs.destroy != 'true'
@@ -300,7 +302,8 @@ jobs:
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
           --parameters deployContainerRegistry=false \
-          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+          --parameters enableAzureAdOnlyAuth=true
 
     - name: Deploy Prod Infrastructure
       if: github.event.inputs.destroy != 'true'
@@ -316,7 +319,8 @@ jobs:
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
           --parameters deployContainerRegistry=false \
-          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+          --parameters enableAzureAdOnlyAuth=true
 
     - name: Set Web App Managed Identity as SQL Admin (Prod)
       if: github.event.inputs.destroy != 'true'
