@@ -4,23 +4,23 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - '.github/workflows/**'
-      - '**/appsettings*.json'
-      - '**/*.config'
-      - 'Dockerfile*'
-      - '.dockerignore'
-      - '**/*.bicep'
-      - '**/parameters*.json'
+      - ".github/workflows/**"
+      - "**/appsettings*.json"
+      - "**/*.config"
+      - "Dockerfile*"
+      - ".dockerignore"
+      - "**/*.bicep"
+      - "**/parameters*.json"
   pull_request:
     branches: [main]
     paths:
-      - '.github/workflows/**'
-      - '**/appsettings*.json'
-      - '**/*.config'
-      - 'Dockerfile*'
-      - '.dockerignore'
-      - '**/*.bicep'
-      - '**/parameters*.json'
+      - ".github/workflows/**"
+      - "**/appsettings*.json"
+      - "**/*.config"
+      - "Dockerfile*"
+      - ".dockerignore"
+      - "**/*.bicep"
+      - "**/parameters*.json"
 
 jobs:
   validate-config:
@@ -31,60 +31,100 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate JSON files
+      - name: Validate JSON files (BOM-safe)
         run: |
-          echo "Validating JSON configuration files..."
-          find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*" | while read -r file; do
-            echo "Validating: $file"
-            if ! python -m json.tool "$file" > /dev/null; then
-              echo "ERROR: Invalid JSON in $file"
-              exit 1
-            fi
-          done
-          echo "All JSON files are valid!"
+          echo "Validating JSON configuration files (BOM-safe)..."
+          python3 - <<'PY'
+          import os, io, json, sys
+          skip_dirs = {'.git', 'node_modules'}
+          ok = True
+          for root, dirs, files in os.walk('.'):
+              dirs[:] = [d for d in dirs if d not in skip_dirs]
+              for fname in files:
+                  if not fname.endswith('.json'):
+                      continue
+                  path = os.path.join(root, fname)
+                  print(f"Validating: {path}")
+                  try:
+                      with io.open(path, 'r', encoding='utf-8-sig') as f:
+                          json.load(f)
+                  except Exception as e:
+                      print(f"ERROR: Invalid JSON in {path}\n{e}")
+                      ok = False
+          if not ok:
+              sys.exit(1)
+          print("All JSON files are valid!")
+          PY
 
       - name: Validate Bicep templates
-        if: contains(github.event.head_commit.modified, '.bicep') || contains(github.event.pull_request.changed_files, '.bicep')
         run: |
-          echo "Installing Azure CLI..."
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-          
           echo "Validating Bicep templates..."
-          find . -name "*.bicep" | while read -r file; do
+          count=$(find . -type f -name "*.bicep" | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "No Bicep files found; skipping."
+            exit 0
+          fi
+          if ! command -v az >/dev/null 2>&1; then
+            echo "Installing Azure CLI..."
+            curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          fi
+          while IFS= read -r file; do
             echo "Validating: $file"
             az bicep build --file "$file" --stdout > /dev/null
             if [ $? -ne 0 ]; then
               echo "ERROR: Invalid Bicep template in $file"
               exit 1
             fi
-          done
+          done < <(find . -type f -name "*.bicep")
           echo "All Bicep templates are valid!"
 
-      - name: Validate Dockerfile
-        if: contains(github.event.head_commit.modified, 'Dockerfile') || contains(github.event.pull_request.changed_files, 'Dockerfile')
+      - name: Validate Dockerfiles
         run: |
-          echo "Validating Dockerfile..."
-          find . -name "Dockerfile*" -not -name "*.md" | while read -r file; do
+          echo "Validating Dockerfiles..."
+          found=0
+          while IFS= read -r file; do
+            found=1
             echo "Validating: $file"
-            # Basic Dockerfile validation - check for FROM instruction
             if ! grep -q "^FROM" "$file"; then
               echo "ERROR: $file is missing FROM instruction"
               exit 1
             fi
-            echo "$file appears to be valid"
-          done
-          echo "Dockerfile validation completed!"
+          done < <(find . -type f -name "Dockerfile*" ! -name "*.md")
+          if [ "$found" -eq 0 ]; then
+            echo "No Dockerfiles found; skipping."
+          else
+            echo "Dockerfile validation completed!"
+          fi
 
       - name: Validate GitHub Actions workflows
         run: |
           echo "Validating GitHub Actions workflow files..."
-          find .github/workflows -name "*.yml" -o -name "*.yaml" | while read -r file; do
-            echo "Validating: $file"
-            # Basic YAML syntax check
-            python -c "import yaml; yaml.safe_load(open('$file'))" 2>/dev/null
-            if [ $? -ne 0 ]; then
-              echo "ERROR: Invalid YAML syntax in $file"
-              exit 1
-            fi
-          done
-          echo "All workflow files have valid YAML syntax!"
+          files=$(find .github/workflows -type f \( -name "*.yml" -o -name "*.yaml" \) | wc -l)
+          if [ "$files" -eq 0 ]; then
+            echo "No workflow files found; skipping."
+            exit 0
+          fi
+          python3 - <<'PY'
+          import os, sys
+          try:
+              import yaml
+          except Exception:
+              import subprocess
+              subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'pyyaml'])
+              import yaml
+          ok = True
+          for root, _, files in os.walk('.github/workflows'):
+              for fname in files:
+                  if fname.endswith(('.yml', '.yaml')):
+                      path = os.path.join(root, fname)
+                      print(f"Validating: {path}")
+                      try:
+                          with open(path, 'r', encoding='utf-8') as f:
+                              yaml.safe_load(f)
+                      except Exception as e:
+                          print(f"ERROR: Invalid YAML in {path}\n{e}")
+                          ok = False
+          if not ok:
+              sys.exit(1)
+          print("All workflow files have valid YAML syntax!")
+          PY
