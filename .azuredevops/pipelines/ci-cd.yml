@@ -37,6 +37,17 @@ pr:
       - ".github/**"
       - "AGENTS.md"
       - "LICENSE"
+resources:
+  pipelines:
+    - pipeline: infrastructurePipeline
+      source: emmanuelknafo.ai-stock-trade-app.infrastructure
+      trigger:
+        branches:
+          include:
+            - main
+            - develop
+        stages: []
+
 # trigger: none  # CI temporarily disabled
 
 # pr: none  # PR validation temporarily disabled
