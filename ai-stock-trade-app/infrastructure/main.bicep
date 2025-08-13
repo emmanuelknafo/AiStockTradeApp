@@ -52,6 +52,9 @@ param enableAzureAdOnlyAuth bool = false
 @description('Enable private endpoint for Azure SQL and disable public network access (requires App Service Plan SKU that supports VNet integration e.g. S1 or above). When true, a VNet, subnets, private endpoint and DNS zone are provisioned.')
 param enablePrivateSql bool = true
 
+@description('If false, networking resources (VNet, subnets, private endpoint, DNS) are not created/updated. Use in app-only CI/CD to avoid touching in-use subnets.')
+param manageNetworking bool = true
+
 @description('Address space for the virtual network (only used when enablePrivateSql = true)')
 param vnetAddressSpace string = '10.20.0.0/16'
 
@@ -305,7 +308,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
 }
 
 // Networking (only when private SQL requested)
-resource vnet 'Microsoft.Network/virtualNetworks@2024-03-01' = if (enablePrivateSql) {
+resource vnet 'Microsoft.Network/virtualNetworks@2024-03-01' = if (enablePrivateSql && manageNetworking) {
   name: vnetName
   location: location
   properties: {
@@ -344,13 +347,13 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-03-01' = if (enablePrivate
 }
 
 // Private DNS Zone for SQL
-resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (enablePrivateSql) {
+resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (enablePrivateSql && manageNetworking) {
   name: privateSqlPrivateDnsZoneName
   location: 'global'
 }
 
 // Link VNet to Private DNS Zone
-resource privateDnsVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (enablePrivateSql) {
+resource privateDnsVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (enablePrivateSql && manageNetworking) {
   name: 'vnet-link'
   parent: privateDnsZone
   location: 'global'
@@ -363,7 +366,7 @@ resource privateDnsVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLin
 }
 
 // Private Endpoint for SQL Server
-resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if (enablePrivateSql) {
+resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if (enablePrivateSql && manageNetworking) {
   name: 'pe-${sqlServerName}'
   location: location
   properties: {
@@ -383,7 +386,7 @@ resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if
 }
 
 // Associate Private Endpoint with DNS Zone (creates A record)
-resource sqlPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = if (enablePrivateSql) {
+resource sqlPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = if (enablePrivateSql && manageNetworking) {
   name: 'pdzg-sql'
   parent: sqlPrivateEndpoint
   properties: {
