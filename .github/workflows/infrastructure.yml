@@ -73,7 +73,11 @@ jobs:
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
           --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
-          --parameters enableAzureAdOnlyAuth=true
+          --parameters enableAzureAdOnlyAuth=true \
+          --parameters enablePrivateSql=true \
+          --parameters vnetAddressSpace="10.40.0.0/16" \
+          --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
+          --parameters privateEndpointSubnetPrefix="10.40.2.0/28"
 
     - name: Deploy Dev Infrastructure
       if: github.event.inputs.destroy != 'true'
@@ -89,7 +93,11 @@ jobs:
           --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
           --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
-          --parameters enableAzureAdOnlyAuth=true
+          --parameters enableAzureAdOnlyAuth=true \
+          --parameters enablePrivateSql=true \
+          --parameters vnetAddressSpace="10.40.0.0/16" \
+          --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
+          --parameters privateEndpointSubnetPrefix="10.40.2.0/28"
 
     - name: Set Web App Managed Identity as SQL Admin (Dev)
       if: github.event.inputs.destroy != 'true'
@@ -303,7 +311,11 @@ jobs:
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
           --parameters deployContainerRegistry=false \
           --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
-          --parameters enableAzureAdOnlyAuth=true
+          --parameters enableAzureAdOnlyAuth=true \
+          --parameters enablePrivateSql=true \
+          --parameters vnetAddressSpace="10.41.0.0/16" \
+          --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
+          --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
 
     - name: Deploy Prod Infrastructure
       if: github.event.inputs.destroy != 'true'
@@ -320,7 +332,11 @@ jobs:
           --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
           --parameters deployContainerRegistry=false \
           --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
-          --parameters enableAzureAdOnlyAuth=true
+          --parameters enableAzureAdOnlyAuth=true \
+          --parameters enablePrivateSql=true \
+          --parameters vnetAddressSpace="10.41.0.0/16" \
+          --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
+          --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
 
     - name: Set Web App Managed Identity as SQL Admin (Prod)
       if: github.event.inputs.destroy != 'true'

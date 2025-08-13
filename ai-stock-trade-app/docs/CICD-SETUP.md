@@ -129,55 +129,72 @@ The Bicep templates create:
 - Securely stores API keys
 - Accessed by Web App using managed identity
 
-### Application Insights
+### Application Insights (Overview)
 - Application performance monitoring
 - Connected to Log Analytics workspace
 
 ### Log Analytics Workspace
 - Centralized logging for all components
 
+### (New) Virtual Network & Private Endpoint (Optional but Enabled by Default)
+
+Network resources (created when `enablePrivateSql=true`):
+
+  - App Integration subnet (delegated to Microsoft.Web) for Web App regional VNet integration
+  - Private Endpoints subnet (network policies disabled) hosting the Azure SQL private endpoint
+- Private DNS Zone for Azure SQL (privatelink.[platform suffix]) linked to the VNet
+Effects when enabled:
+
+
+Key new Bicep parameters:
+
+| `enablePrivateSql` | `true` | Enables VNet, private endpoint, and disables public network access |
+| `vnetAddressSpace` | `10.20.0.0/16` | CIDR for created VNet |
+| `appIntegrationSubnetPrefix` | `10.20.1.0/27` | Subnet for Web App VNet integration (must be /27 or larger) |
+Separate non-overlapping address ranges are used per environment / pipeline (see workflow & pipeline definitions) to avoid conflicts.
+
 ## Monitoring and Troubleshooting
+* Navigate to Azure Portal → Application Insights
+* Monitor application performance, errors, and usage
 
-### Application Insights
-- Navigate to Azure Portal ? Application Insights
-- Monitor application performance, errors, and usage
-
-### Container Logs
-```bash
 # View Web App logs
 az webapp log tail --name "ai-stock-tracker-dev-webapp" \
   --resource-group "ai-stock-tracker-dev-rg"
-```
 
-### Health Checks
-- Application exposes `/health` endpoint
-- Automatically monitored by Azure Web App
-- Used in GitHub Actions for deployment verification
+* Application exposes `/health` endpoint
+* Automatically monitored by Azure Web App
+* Used in GitHub Actions for deployment verification
 
 ## Cost Optimization
 
 ### Development Environment
-- Uses B1 App Service Plan (Basic tier)
-- Basic Container Registry
-- Minimal Log Analytics retention (30 days)
+
+* Uses B1 App Service Plan (Basic tier)
+* Basic Container Registry
+* Minimal Log Analytics retention (30 days)
 
 ### Production Environment
-- Uses P1V3 App Service Plan (Premium tier)
-- Can be scaled based on requirements
-- Consider upgrading Container Registry to Standard/Premium for geo-replication
+
+* Uses P1V3 App Service Plan (Premium tier)
+* Can be scaled based on requirements
+* Consider upgrading Container Registry to Standard/Premium for geo-replication
 
 ## Security Features
 
 ### Container Security
-- Trivy vulnerability scanning in pull requests
-- Results uploaded to GitHub Security tab
-- Non-root user in container
+
+* Trivy vulnerability scanning in pull requests
+* Results uploaded to GitHub Security tab
+* Non-root user in container
 
 ### Azure Security
 - HTTPS only enforcement
 - Managed identity for Key Vault access
 - TLS 1.2 minimum
 - RBAC for resource access
+- Azure SQL public access disabled via private endpoint (when `enablePrivateSql=true`)
+- Private DNS zone ensures name resolution inside VNet only
+- Managed identity + Azure AD only auth supported (`enableAzureAdOnlyAuth=true`)
 
 ### Application Security
 - API keys stored in Key Vault
@@ -216,11 +233,16 @@ az webapp log tail --name "ai-stock-tracker-dev-webapp" \
 1. Verify Azure credentials and permissions
 2. Check resource group existence
 3. Review Bicep template parameters
+4. If SQL connectivity errors show `Deny Public Network Access is set to Yes`, ensure:
+  - You are connecting from inside the VNet (e.g., from Web App)
+  - The private endpoint finished provisioning (check `provisioningState`)
+  - DNS resolves `<sql-server>.database.windows.net` to a private IP (use `nslookup` inside an Azure resource in the VNet)
 
 ### Runtime Issues
 1. Check Application Insights for errors
 2. Review Web App logs
 3. Verify API key configuration in Key Vault
+4. For database login failures with AAD only auth: confirm managed identity was added as server admin and database user was created (see post-deploy notes in `main.bicep`).
 
 ### Container Issues
 1. Test container locally with Docker
