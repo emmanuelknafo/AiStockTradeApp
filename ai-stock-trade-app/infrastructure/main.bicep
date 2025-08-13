@@ -61,8 +61,8 @@ param appIntegrationSubnetPrefix string = '10.20.1.0/27'
 @description('Subnet CIDR for private endpoints (at least /28 recommended). Only used when enablePrivateSql = true')
 param privateEndpointSubnetPrefix string = '10.20.2.0/28'
 
-@description('Private DNS zone name for Azure SQL private endpoints (override for sovereign clouds). Default derived from sqlServerHostname suffix.')
-param privateSqlPrivateDnsZoneName string = 'privatelink.${az.environment().suffixes.sqlServerHostname}'
+@description('Private DNS zone name for Azure SQL private endpoints (override for sovereign clouds). Default derived from sqlServerHostname suffix (handles leading dot).')
+param privateSqlPrivateDnsZoneName string = 'privatelink${az.environment().suffixes.sqlServerHostname}'
 
 // Variables
 var resourceNamePrefix = '${appName}-${environment}'
@@ -77,6 +77,8 @@ var sqlDatabaseName = 'sqldb-${resourceNamePrefix}-${instanceNumber}'
 var vnetName = 'vnet-${resourceNamePrefix}-${instanceNumber}'
 var appIntegrationSubnetName = 'snet-appintegration'
 var privateEndpointSubnetName = 'snet-private-endpoints'
+// Use Azure AD auth only if explicitly enabled AND admin values provided
+var useAzureAdAuth = enableAzureAdOnlyAuth && !empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin)
 
 // Validate that when private SQL is enabled we are not using a Basic plan (Basic does not support VNet integration)
 @sys.description('Ensure App Service Plan SKU supports VNet integration when enablePrivateSql is true')
@@ -139,7 +141,8 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
   properties: {
     // Only include SQL admin credentials when NOT using Azure AD only authentication
     // Using object spread to avoid sending nulls which can cause deployment errors in AAD-only mode
-    ...(enableAzureAdOnlyAuth ? {} : {
+  // Fallback: if AD-only requested but admin values missing, still provision SQL admin login to avoid deployment failure
+  ...(useAzureAdAuth ? {} : {
       administratorLogin: sqlAdminUsername
       administratorLoginPassword: sqlAdminPassword
     })
@@ -149,7 +152,7 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
 }
 
 // SQL Server Azure AD Administrator (deploy only when all required values provided)
-resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = if (enableAzureAdOnlyAuth && !empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin)) {
+resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = if (useAzureAdAuth) {
   parent: sqlServer
   name: 'ActiveDirectory'
   properties: {
@@ -191,7 +194,7 @@ resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01
   parent: keyVault
   name: 'SqlConnectionString'
   properties: {
-    value: enableAzureAdOnlyAuth 
+  value: useAzureAdAuth 
       ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
       : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
   }
@@ -289,7 +292,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
       connectionStrings: [
         {
           name: 'DefaultConnection'
-          connectionString: enableAzureAdOnlyAuth 
+          connectionString: useAzureAdAuth 
             ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
             : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
