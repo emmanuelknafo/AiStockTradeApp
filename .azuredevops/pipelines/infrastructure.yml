@@ -83,7 +83,12 @@ stages:
                         --parameters containerImage="ai-stock-trade-app:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
-                        --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)"
+                        --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
+                        --parameters enableAzureAdOnlyAuth=true \
+                        --parameters enablePrivateSql=true \
+                        --parameters vnetAddressSpace="10.60.0.0/16" \
+                        --parameters appIntegrationSubnetPrefix="10.60.1.0/27" \
+                        --parameters privateEndpointSubnetPrefix="10.60.2.0/28"
 
                 - task: AzureCLI@2
                   displayName: "Deploy Dev Infrastructure"
@@ -103,7 +108,12 @@ stages:
                         --parameters containerImage="ai-stock-trade-app:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
-                        --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)"
+                        --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
+                        --parameters enableAzureAdOnlyAuth=true \
+                        --parameters enablePrivateSql=true \
+                        --parameters vnetAddressSpace="10.60.0.0/16" \
+                        --parameters appIntegrationSubnetPrefix="10.60.1.0/27" \
+                        --parameters privateEndpointSubnetPrefix="10.60.2.0/28"
 
                 - task: AzureCLI@2
                   displayName: "Set Web App Managed Identity as SQL Admin (Dev)"
@@ -333,7 +343,12 @@ stages:
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters deployContainerRegistry=false \
-                        --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)"
+                        --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
+                        --parameters enableAzureAdOnlyAuth=true \
+                        --parameters enablePrivateSql=true \
+                        --parameters vnetAddressSpace="10.61.0.0/16" \
+                        --parameters appIntegrationSubnetPrefix="10.61.1.0/27" \
+                        --parameters privateEndpointSubnetPrefix="10.61.2.0/28"
 
                 - task: AzureCLI@2
                   displayName: "Deploy Prod Infrastructure"
@@ -354,7 +369,12 @@ stages:
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters deployContainerRegistry=false \
-                        --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)"
+                        --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
+                        --parameters enableAzureAdOnlyAuth=true \
+                        --parameters enablePrivateSql=true \
+                        --parameters vnetAddressSpace="10.61.0.0/16" \
+                        --parameters appIntegrationSubnetPrefix="10.61.1.0/27" \
+                        --parameters privateEndpointSubnetPrefix="10.61.2.0/28"
 
                 - task: AzureCLI@2
                   displayName: "Set Web App Managed Identity as SQL Admin (Prod)"
