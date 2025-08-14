@@ -1,6 +1,9 @@
-using ai_stock_trade_app.Services;
+using AiStockTradeApp.DataAccess.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-namespace ai_stock_trade_app.Services
+namespace AiStockTradeApp.Services.BackgroundServices
 {
     public class CacheCleanupService : BackgroundService
     {

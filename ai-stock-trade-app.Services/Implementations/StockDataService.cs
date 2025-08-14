@@ -1,27 +1,25 @@
-using ai_stock_trade_app.Models;
+using AiStockTradeApp.Services.Interfaces;
+using AiStockTradeApp.DataAccess.Interfaces;
+using AiStockTradeApp.Entities;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
-namespace ai_stock_trade_app.Services
+namespace AiStockTradeApp.Services.Implementations
 {
-    public interface IStockDataService
-    {
-        Task<StockQuoteResponse> GetStockQuoteAsync(string symbol);
-        Task<List<string>> GetStockSuggestionsAsync(string query);
-        Task<List<ChartDataPoint>> GetHistoricalDataAsync(string symbol, int days = 30);
-    }
-
     public class StockDataService : IStockDataService
     {
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _configuration;
         private readonly ILogger<StockDataService> _logger;
         private readonly IStockDataRepository _repository;
-    // Rate limiting (simple global limiter to avoid hammering public APIs). Previous implementation
-    // used an unsynchronized dictionary which allowed concurrent callers to both see no prior request
-    // and skip the delay, making timing-based tests flaky. Use a semaphore for serialization.
-    private static readonly TimeSpan _rateLimitDelay = TimeSpan.FromSeconds(1);
-    private static readonly SemaphoreSlim _rateLimitSemaphore = new(1, 1);
-    private static DateTime _lastRequestTimeUtc = DateTime.MinValue;
+        
+        // Rate limiting (simple global limiter to avoid hammering public APIs). Previous implementation
+        // used an unsynchronized dictionary which allowed concurrent callers to both see no prior request
+        // and skip the delay, making timing-based tests flaky. Use a semaphore for serialization.
+        private static readonly TimeSpan _rateLimitDelay = TimeSpan.FromSeconds(1);
+        private static readonly SemaphoreSlim _rateLimitSemaphore = new(1, 1);
+        private static DateTime _lastRequestTimeUtc = DateTime.MinValue;
 
         public StockDataService(
             HttpClient httpClient, 

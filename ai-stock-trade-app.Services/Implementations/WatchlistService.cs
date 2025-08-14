@@ -1,22 +1,11 @@
-using ai_stock_trade_app.Models;
+using AiStockTradeApp.Services.Interfaces;
+using AiStockTradeApp.Entities;
+using AiStockTradeApp.Entities.ViewModels;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
-namespace ai_stock_trade_app.Services
+namespace AiStockTradeApp.Services.Implementations
 {
-    public interface IWatchlistService
-    {
-        Task<List<WatchlistItem>> GetWatchlistAsync(string sessionId);
-        Task AddToWatchlistAsync(string sessionId, string symbol);
-        Task RemoveFromWatchlistAsync(string sessionId, string symbol);
-        Task ClearWatchlistAsync(string sessionId);
-        Task<PortfolioSummary> CalculatePortfolioSummaryAsync(List<WatchlistItem> watchlist);
-        Task<List<PriceAlert>> GetAlertsAsync(string sessionId);
-        Task AddAlertAsync(string sessionId, PriceAlert alert);
-        Task RemoveAlertAsync(string sessionId, string symbol, decimal targetPrice);
-        Task<ExportData> GetExportDataAsync(string sessionId);
-        Task ImportDataAsync(string sessionId, ExportData data);
-    }
-
     public class WatchlistService : IWatchlistService
     {
         private readonly ILogger<WatchlistService> _logger;

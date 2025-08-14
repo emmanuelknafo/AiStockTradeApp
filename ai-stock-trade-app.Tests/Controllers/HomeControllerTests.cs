@@ -1,4 +1,5 @@
 using ai_stock_trade_app.Controllers;
+using AiStockTradeApp.Entities.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -63,9 +64,9 @@ namespace ai_stock_trade_app.Tests.Controllers
             result.Should().BeOfType<ViewResult>();
             var viewResult = result as ViewResult;
             viewResult!.Model.Should().NotBeNull();
-            viewResult.Model.Should().BeOfType<ai_stock_trade_app.Models.ErrorViewModel>();
+            viewResult.Model.Should().BeOfType<ErrorViewModel>();
             
-            var errorModel = viewResult.Model as ai_stock_trade_app.Models.ErrorViewModel;
+            var errorModel = viewResult.Model as ErrorViewModel;
             errorModel!.RequestId.Should().Be("test-trace-id");
         }
 
@@ -82,9 +83,9 @@ namespace ai_stock_trade_app.Tests.Controllers
             result.Should().BeOfType<ViewResult>();
             var viewResult = result as ViewResult;
             viewResult!.Model.Should().NotBeNull();
-            viewResult.Model.Should().BeOfType<ai_stock_trade_app.Models.ErrorViewModel>();
+            viewResult.Model.Should().BeOfType<ErrorViewModel>();
             
-            var errorModel = viewResult.Model as ai_stock_trade_app.Models.ErrorViewModel;
+            var errorModel = viewResult.Model as ErrorViewModel;
             // The RequestId will use Activity.Current?.Id if TraceIdentifier is empty
             errorModel.Should().NotBeNull();
         }

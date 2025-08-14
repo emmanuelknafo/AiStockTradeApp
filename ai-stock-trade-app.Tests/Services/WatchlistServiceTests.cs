@@ -1,5 +1,7 @@
-using ai_stock_trade_app.Models;
-using ai_stock_trade_app.Services;
+using AiStockTradeApp.Entities;
+using AiStockTradeApp.Entities.ViewModels;
+using AiStockTradeApp.Services.Interfaces;
+using AiStockTradeApp.Services.Implementations;
 using Microsoft.Extensions.Logging;
 
 namespace ai_stock_trade_app.Tests.Services

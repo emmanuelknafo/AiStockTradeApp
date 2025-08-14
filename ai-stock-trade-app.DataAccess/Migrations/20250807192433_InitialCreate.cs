@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace ai_stock_trade_app.Migrations
+namespace AiStockTradeApp.DataAccess.Migrations
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration

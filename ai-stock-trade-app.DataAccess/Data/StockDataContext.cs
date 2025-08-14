@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using ai_stock_trade_app.Models;
+using AiStockTradeApp.Entities;
 
-namespace ai_stock_trade_app.Data
+namespace AiStockTradeApp.DataAccess
 {
     public class StockDataContext : DbContext
     {

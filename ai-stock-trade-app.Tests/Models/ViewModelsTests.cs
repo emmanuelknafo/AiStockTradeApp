@@ -1,4 +1,5 @@
-using ai_stock_trade_app.Models;
+using AiStockTradeApp.Entities;
+using AiStockTradeApp.Entities.ViewModels;
 
 namespace ai_stock_trade_app.Tests.Models
 {

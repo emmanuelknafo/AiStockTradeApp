@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
 
-namespace ai_stock_trade_app.Models
+namespace AiStockTradeApp.Entities
 {
     public class StockData
     {

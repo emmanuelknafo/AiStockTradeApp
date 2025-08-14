@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using ai_stock_trade_app.Models;
-using ai_stock_trade_app.Services;
+using AiStockTradeApp.Entities;
+using AiStockTradeApp.Entities.ViewModels;
+using AiStockTradeApp.Services.Interfaces;
 using System.Text.Json;
 
 namespace ai_stock_trade_app.Controllers

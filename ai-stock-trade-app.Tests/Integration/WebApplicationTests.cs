@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
-using ai_stock_trade_app.Services;
+using AiStockTradeApp.Services.Interfaces;
 using System.Net;
 using System.Text;
 using System.Text.Json;

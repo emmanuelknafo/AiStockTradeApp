@@ -1,5 +1,7 @@
-using ai_stock_trade_app.Models;
-using ai_stock_trade_app.Services;
+using AiStockTradeApp.Entities;
+using AiStockTradeApp.Services.Interfaces;
+using AiStockTradeApp.Services.Implementations;
+using AiStockTradeApp.DataAccess.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Net;

@@ -1,5 +1,9 @@
-using ai_stock_trade_app.Services;
-using ai_stock_trade_app.Data;
+using AiStockTradeApp.Services.Interfaces;
+using AiStockTradeApp.Services.Implementations;
+using AiStockTradeApp.Services.BackgroundServices;
+using AiStockTradeApp.DataAccess;
+using AiStockTradeApp.DataAccess.Interfaces;
+using AiStockTradeApp.DataAccess.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Azure.Identity;
 using Microsoft.Data.SqlClient;
@@ -20,12 +24,12 @@ public class Program
 
         // Add Entity Framework with optional in-memory provider for UI tests
         var useInMemory = string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
-    var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
-    // Enforce external SQL for any Azure App Service host (dev/prod), or any Production environment
-    var enforceExternalSql = isAzureAppService || builder.Environment.IsProduction();
+        var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+        // Enforce external SQL for any Azure App Service host (dev/prod), or any Production environment
+        var enforceExternalSql = isAzureAppService || builder.Environment.IsProduction();
 
         // Enforce external SQL when hosted in Azure App Service or Production-like environments
-    if (enforceExternalSql && useInMemory)
+        if (enforceExternalSql && useInMemory)
         {
             // Do not allow in-memory DB when hosted; force external SQL
             useInMemory = false;
@@ -110,9 +114,9 @@ public class Program
             options.Cookie.IsEssential = true;
         });
 
-    var app = builder.Build();
+        var app = builder.Build();
 
-    // Ensure database is created and migrated with resilient Azure AD handling
+        // Ensure database is created and migrated with resilient Azure AD handling
         using (var scope = app.Services.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<StockDataContext>();

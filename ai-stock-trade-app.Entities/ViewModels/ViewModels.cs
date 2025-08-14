@@ -1,4 +1,4 @@
-namespace ai_stock_trade_app.Models
+namespace AiStockTradeApp.Entities.ViewModels
 {
     public class DashboardViewModel
     {
@@ -25,5 +25,12 @@ namespace ai_stock_trade_app.Models
         public PortfolioSummary Portfolio { get; set; } = new();
         public DateTime ExportDate { get; set; } = DateTime.UtcNow;
         public string Version { get; set; } = "1.0";
+    }
+
+    public class ErrorViewModel
+    {
+        public string? RequestId { get; set; }
+
+        public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
     }
 }

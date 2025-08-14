@@ -30,6 +30,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ai-stock-trade-app\ai-stock-trade-app.csproj" />
+    <ProjectReference Include="..\ai-stock-trade-app.Entities\ai-stock-trade-app.Entities.csproj" />
+    <ProjectReference Include="..\ai-stock-trade-app.DataAccess\ai-stock-trade-app.DataAccess.csproj" />
+    <ProjectReference Include="..\ai-stock-trade-app.Services\ai-stock-trade-app.Services.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,7 @@
-using ai_stock_trade_app.Data;
-using ai_stock_trade_app.Models;
-using ai_stock_trade_app.Services;
+using AiStockTradeApp.DataAccess;
+using AiStockTradeApp.DataAccess.Interfaces;
+using AiStockTradeApp.DataAccess.Repositories;
+using AiStockTradeApp.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 

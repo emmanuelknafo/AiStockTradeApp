@@ -1,17 +1,10 @@
-using ai_stock_trade_app.Data;
-using ai_stock_trade_app.Models;
+using AiStockTradeApp.DataAccess.Interfaces;
+using AiStockTradeApp.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
-namespace ai_stock_trade_app.Services
+namespace AiStockTradeApp.DataAccess.Repositories
 {
-    public interface IStockDataRepository
-    {
-        Task<StockData?> GetCachedStockDataAsync(string symbol);
-        Task<StockData> SaveStockDataAsync(StockData stockData);
-        Task<List<StockData>> GetRecentStockDataAsync(string symbol, int days = 7);
-        Task CleanupExpiredCacheAsync();
-    }
-
     public class StockDataRepository : IStockDataRepository
     {
         private readonly StockDataContext _context;
