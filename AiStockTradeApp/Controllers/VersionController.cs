@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Reflection;
 
-namespace ai_stock_trade_app.Controllers;
+namespace AiStockTradeApp.Controllers;
 
 [ApiController]
 [Route("version")] // /version

@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using AiStockTradeApp.Entities.ViewModels;
 
-namespace ai_stock_trade_app.Controllers;
+namespace AiStockTradeApp.Controllers;
 
 public class HomeController : Controller
 {

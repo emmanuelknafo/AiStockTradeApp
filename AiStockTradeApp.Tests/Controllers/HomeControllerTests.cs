@@ -1,4 +1,4 @@
-using ai_stock_trade_app.Controllers;
+using AiStockTradeApp.Controllers;
 using AiStockTradeApp.Entities.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
@@ -7,7 +7,7 @@ using Moq;
 using FluentAssertions;
 using Xunit;
 
-namespace ai_stock_trade_app.Tests.Controllers
+namespace AiStockTradeApp.Tests.Controllers
 {
     public class HomeControllerTests
     {

@@ -3,7 +3,7 @@ using NUnit.Framework;
 using System.Net.Http;
 using System.Diagnostics;
 
-namespace ai_stock_trade_app.UITests;
+namespace AiStockTradeApp.UITests;
 
 /// <summary>
 /// Helper class to ensure the application is running before tests execute
@@ -63,7 +63,7 @@ public static class TestSetupHelper
                 return; // another thread already started it
 
             var solutionDir = GetSolutionRoot();
-            var projectPath = Path.Combine(solutionDir, "ai-stock-trade-app", "ai-stock-trade-app.csproj");
+            var projectPath = Path.Combine(solutionDir, "AiStockTradeApp", "AiStockTradeApp.csproj");
             if (!File.Exists(projectPath))
             {
                 Assert.Fail($"Cannot auto-start application. Project file not found at {projectPath}");

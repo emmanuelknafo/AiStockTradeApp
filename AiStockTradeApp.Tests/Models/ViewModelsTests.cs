@@ -1,7 +1,7 @@
 using AiStockTradeApp.Entities;
 using AiStockTradeApp.Entities.ViewModels;
 
-namespace ai_stock_trade_app.Tests.Models
+namespace AiStockTradeApp.Tests.Models
 {
     public class ViewModelsTests
     {

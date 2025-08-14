@@ -5,7 +5,7 @@ This directory contains comprehensive unit and integration tests for the AI Stoc
 ## Test Structure
 
 ```
-ai-stock-trade-app.Tests/
+AiStockTradeApp.Tests/
 ├── Controllers/
 │   ├── StockControllerTests.cs    # Tests for StockController endpoints
 │   └── HomeControllerTests.cs     # Tests for HomeController

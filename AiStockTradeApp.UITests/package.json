@@ -1,5 +1,5 @@
 {
-  "name": "ai-stock-trade-app-uitests-helper",
+  "name": "AiStockTradeApp-uitests-helper",
   "private": true,
   "devDependencies": {
     "playwright": "1.54.2"

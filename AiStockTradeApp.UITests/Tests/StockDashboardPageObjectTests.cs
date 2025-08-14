@@ -1,8 +1,8 @@
-using ai_stock_trade_app.UITests.PageObjects;
+using AiStockTradeApp.UITests.PageObjects;
 using FluentAssertions;
 using NUnit.Framework;
 
-namespace ai_stock_trade_app.UITests.Tests;
+namespace AiStockTradeApp.UITests.Tests;
 
 [TestFixture]
 public class StockDashboardPageObjectTests : BaseUITest

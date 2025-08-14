@@ -14,7 +14,7 @@ Before running the tests for the first time, you need to install the Playwright 
 
 ```powershell
 # Navigate to the UI tests project directory
-cd ai-stock-trade-app.UITests
+cd AiStockTradeApp.UITests
 
 # Build the project first
 dotnet build
@@ -42,11 +42,11 @@ protected string BaseUrl = "https://localhost:7043"; // Matches launchSettings.j
 
 ```powershell
 # Start your application first (in a separate terminal)
-cd ai-stock-trade-app
+cd AiStockTradeApp
 dotnet run
 
 # Then run UI tests (in another terminal)
-cd ai-stock-trade-app.UITests
+cd AiStockTradeApp.UITests
 dotnet test
 
 # Run specific test class
@@ -65,7 +65,7 @@ SLOWMO=1000 dotnet test  # Run with slow motion
 
 ### Visual Studio
 
-1. **Start the main application** by right-clicking `ai-stock-trade-app` project ? Debug ? Start New Instance
+1. **Start the main application** by right-clicking `AiStockTradeApp` project ? Debug ? Start New Instance
 2. Open **Test Explorer** (Test ? Test Explorer)
 3. Build the solution
 4. All UI tests should appear in the test explorer
@@ -73,7 +73,7 @@ SLOWMO=1000 dotnet test  # Run with slow motion
 
 ### VS Code
 
-1. **Start the main application** in a terminal: `cd ai-stock-trade-app && dotnet run`
+1. **Start the main application** in a terminal: `cd AiStockTradeApp && dotnet run`
 2. Install the **.NET Test Explorer** extension
 3. Open the Command Palette (Ctrl+Shift+P)
 4. Run **.NET: Test Explorer** 
@@ -156,7 +156,7 @@ HEADED=1 dotnet test
 ```yaml
 - name: Start Application
   run: |
-    cd ai-stock-trade-app
+    cd AiStockTradeApp
     dotnet run &
     sleep 10  # Wait for application to start
   
@@ -164,7 +164,7 @@ HEADED=1 dotnet test
   run: playwright install --with-deps
 
 - name: Run UI Tests
-  run: dotnet test ai-stock-trade-app.UITests --logger trx --results-directory TestResults
+  run: dotnet test AiStockTradeApp.UITests --logger trx --results-directory TestResults
 
 - name: Upload Test Results
   uses: actions/upload-artifact@v3
@@ -181,7 +181,7 @@ HEADED=1 dotnet test
   displayName: 'Start Application'
   inputs:
     command: 'run'
-    projects: 'ai-stock-trade-app'
+    projects: 'AiStockTradeApp'
     arguments: '--no-build'
   condition: succeededOrFailed()
   continueOnError: true
@@ -197,7 +197,7 @@ HEADED=1 dotnet test
   displayName: 'Run UI Tests'
   inputs:
     command: 'test'
-    projects: 'ai-stock-trade-app.UITests'
+    projects: 'AiStockTradeApp.UITests'
     arguments: '--logger trx --results-directory $(Agent.TempDirectory)'
 ```
 
@@ -223,9 +223,9 @@ HEADED=1 dotnet test
 ### Quick Start Checklist
 
 1. ? Install Playwright browsers: `playwright install`
-2. ? Start your application: `cd ai-stock-trade-app && dotnet run`
+2. ? Start your application: `cd AiStockTradeApp && dotnet run`
 3. ? Wait for application to fully load (check https://localhost:7043 in browser)
-4. ? Run tests: `cd ai-stock-trade-app.UITests && dotnet test`
+4. ? Run tests: `cd AiStockTradeApp.UITests && dotnet test`
 
 ### Support
 

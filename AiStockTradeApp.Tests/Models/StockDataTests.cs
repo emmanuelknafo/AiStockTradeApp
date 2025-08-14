@@ -1,6 +1,6 @@
 using AiStockTradeApp.Entities;
 
-namespace ai_stock_trade_app.Tests.Models
+namespace AiStockTradeApp.Tests.Models
 {
     public class StockDataTests
     {

@@ -1,12 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
-using ai_stock_trade_app.Controllers;
+using AiStockTradeApp.Controllers;
 using AiStockTradeApp.Entities;
 using AiStockTradeApp.Entities.ViewModels;
 using AiStockTradeApp.Services.Interfaces;
 using Microsoft.Extensions.Logging;
 
-namespace ai_stock_trade_app.Tests.Controllers
+namespace AiStockTradeApp.Tests.Controllers
 {
     public class StockControllerTests
     {

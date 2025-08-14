@@ -5,7 +5,7 @@ using AiStockTradeApp.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace ai_stock_trade_app.Tests.Services
+namespace AiStockTradeApp.Tests.Services
 {
     public class StockDataRepositoryTests : IDisposable
     {

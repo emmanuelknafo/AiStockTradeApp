@@ -32,7 +32,7 @@ dotnet test
 # Opt-out of auto-start (e.g., if you want to run the app yourself)
 $env:DISABLE_UI_TEST_AUTOSTART = "true"  # PowerShell
 export DISABLE_UI_TEST_AUTOSTART=true     # bash
-dotnet run --project ./ai-stock-trade-app/ai-stock-trade-app.csproj
+dotnet run --project ./AiStockTradeApp/AiStockTradeApp.csproj
 dotnet test
 ```
 

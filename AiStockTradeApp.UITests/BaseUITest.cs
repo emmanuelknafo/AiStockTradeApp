@@ -2,7 +2,7 @@ using Microsoft.Playwright;
 using Microsoft.Playwright.NUnit;
 using NUnit.Framework;
 
-namespace ai_stock_trade_app.UITests;
+namespace AiStockTradeApp.UITests;
 
 [Parallelizable(ParallelScope.None)] // Disable parallelization to prevent Playwright concurrency issues
 [TestFixture]
@@ -131,7 +131,7 @@ public class BaseUITest : PageTest
         catch (PlaywrightException ex) when (ex.Message.Contains("ERR_CONNECTION_REFUSED"))
         {
             Assert.Fail($"Cannot connect to application at {BaseUrl}. Please ensure the application is running.\n" +
-                       "Start the application with: cd ai-stock-trade-app && dotnet run\n" +
+                       "Start the application with: cd AiStockTradeApp && dotnet run\n" +
                        "Then run the tests again.");
         }
     }
@@ -148,7 +148,7 @@ public class BaseUITest : PageTest
         catch (PlaywrightException ex) when (ex.Message.Contains("ERR_CONNECTION_REFUSED"))
         {
             Assert.Fail($"Cannot connect to application at {BaseUrl}/Stock/Dashboard. Please ensure the application is running.\n" +
-                       "Start the application with: cd ai-stock-trade-app && dotnet run\n" +
+                       "Start the application with: cd AiStockTradeApp && dotnet run\n" +
                        "Then run the tests again.");
         }
     }

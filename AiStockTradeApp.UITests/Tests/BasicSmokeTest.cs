@@ -1,7 +1,7 @@
 using NUnit.Framework;
 using Microsoft.Playwright;
 
-namespace ai_stock_trade_app.UITests.Tests;
+namespace AiStockTradeApp.UITests.Tests;
 
 [TestFixture]
 public class BasicSmokeTest : BaseUITest

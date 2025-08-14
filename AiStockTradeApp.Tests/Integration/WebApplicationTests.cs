@@ -6,7 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Reflection;
 
-namespace ai_stock_trade_app.Tests.Integration
+namespace AiStockTradeApp.Tests.Integration
 {
     public class WebApplicationTests : IClassFixture<WebApplicationFactory<Program>>
     {

@@ -46,7 +46,7 @@ This application combines traditional stock market data with artificial intellig
 
 ### Project Structure
 ```
-ai-stock-trade-app/
+AiStockTradeApp/
 ├── Controllers/
 │   ├── StockController.cs    # Main stock operations
 │   └── HomeController.cs     # Dashboard redirects
@@ -74,8 +74,8 @@ ai-stock-trade-app/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/emmanuelknafo/ai-stock-trade-app.git
-   cd ai-stock-trade-app/ai-stock-trade-app
+   git clone https://github.com/emmanuelknafo/AiStockTradeApp.git
+   cd AiStockTradeApp/AiStockTradeApp
    ```
 
 2. **Configure API Keys** (Optional but recommended)
@@ -99,14 +99,14 @@ ai-stock-trade-app/
 ### Running the Application
 
 #### Using Visual Studio
-1. Open `ai-stock-trade-app.sln`
-2. Set `ai-stock-trade-app` as startup project
+1. Open `AiStockTradeApp.sln`
+2. Set `AiStockTradeApp` as startup project
 3. Press F5 or click "Start Debugging"
 
 #### Using Command Line
 ```bash
 dotnet restore
-dotnet run --project ai-stock-trade-app.csproj
+dotnet run --project AiStockTradeApp.csproj
 ```
 
 #### Using Docker
@@ -173,7 +173,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/emmanuelknafo/ai-stock-trade-app/issues)
+- **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/emmanuelknafo/AiStockTradeApp/issues)
 - **Documentation**: Check the `/docs` folder for detailed guides
 - **API Limits**: Be aware of rate limits on free API tiers
 

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Net;
 
-namespace ai_stock_trade_app.Tests.Services
+namespace AiStockTradeApp.Tests.Services
 {
     public class StockDataServiceTests
     {

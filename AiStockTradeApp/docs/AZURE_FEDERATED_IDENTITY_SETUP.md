@@ -31,7 +31,7 @@ Federated identity provides several advantages over storing service principal cr
 4. Select "GitHub Actions deploying Azure resources"
 5. Fill in the details:
    - **Organization**: `emmanuelknafo`
-   - **Repository**: `ai-stock-trade-app`
+   - **Repository**: `AiStockTradeApp`
    - **Entity type**: `Branch`
    - **Branch**: `main`
    - **Name**: `ai-stock-tracker-main-branch`
