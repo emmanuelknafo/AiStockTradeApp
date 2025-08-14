@@ -1,0 +1,16 @@
+# Reduce build context size for docker compose builds at repo root
+**/bin/
+**/obj/
+**/TestResults/
+**/node_modules/
+.git/
+.vs/
+.vscode/
+**/*.user
+**/*.suo
+**/*.swp
+**/*.swo
+**/*.tmp
+**/*.temp
+.DS_Store
+Thumbs.db

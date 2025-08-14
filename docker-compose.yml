@@ -1,8 +1,9 @@
 services:
   AiStockTradeApp:
+    image: aistocktradeapp-aistocktradeapp:latest
     build:
-      context: ./AiStockTradeApp
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: AiStockTradeApp/Dockerfile
     ports:
       - "8080:8080"
       - "8081:8081"
