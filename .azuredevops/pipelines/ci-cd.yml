@@ -407,7 +407,7 @@ stages:
             env:
               ASPNETCORE_ENVIRONMENT: "Development"
               ASPNETCORE_URLS: "http://localhost:5000"
-              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+              USE_INMEMORY_DB: "true"
 
           - script: |
               echo "Waiting for application to start..."

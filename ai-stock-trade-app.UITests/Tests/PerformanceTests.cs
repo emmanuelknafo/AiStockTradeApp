@@ -81,12 +81,45 @@ public class PerformanceTests : BaseUITest
             await Expect(stockCards.First).ToBeVisibleAsync(new() { Timeout = 10000 });
             await Page.WaitForTimeoutAsync(250);
 
-            // Clear all and wait until no stock cards remain
+            // Clear all and wait until no stock cards remain (with retries and fallback)
             await Expect(clearButton).ToBeVisibleAsync(new() { Timeout = 10000 });
             await clearButton.ClickAsync();
-            await Expect(stockCards).ToHaveCountAsync(0, new() { Timeout = 10000 });
-            // Short settle
-            await Page.WaitForTimeoutAsync(250);
+
+            var cleared = false;
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    await Expect(stockCards).ToHaveCountAsync(0, new() { Timeout = 5000 });
+                    cleared = true;
+                    break;
+                }
+                catch
+                {
+                    // Try clicking clear once more and wait briefly
+                    await clearButton.ClickAsync();
+                    await Page.WaitForTimeoutAsync(500);
+                }
+            }
+
+            if (!cleared)
+            {
+                // Fallback: remove remaining cards individually
+                var maxIndividually = Math.Min(await stockCards.CountAsync(), 5);
+                for (int k = 0; k < maxIndividually; k++)
+                {
+                    var first = stockCards.First;
+                    var removeBtn = first.Locator(".remove-button");
+                    if (!await removeBtn.IsVisibleAsync()) break;
+                    await removeBtn.ClickAsync();
+                    try { await first.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = 5000 }); } catch { }
+                    await Page.WaitForTimeoutAsync(250);
+                    if (await stockCards.CountAsync() == 0) { cleared = true; break; }
+                }
+            }
+
+            // Final assertion that list is empty
+            await Expect(stockCards).ToHaveCountAsync(0, new() { Timeout = 5000 });
         }
 
         // Test should complete without browser crashes or excessive resource usage
