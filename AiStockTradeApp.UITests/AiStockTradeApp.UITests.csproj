@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ai-stock-trade-app\ai-stock-trade-app.csproj" />
+    <ProjectReference Include="..\AiStockTradeApp\AiStockTradeApp.csproj" />
   </ItemGroup>
 
 </Project>

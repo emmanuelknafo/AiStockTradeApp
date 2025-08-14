@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -8,15 +8,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ai-stock-trade-app.Entities\ai-stock-trade-app.Entities.csproj" />
-    <ProjectReference Include="..\ai-stock-trade-app.DataAccess\ai-stock-trade-app.DataAccess.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.8" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.8" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.8" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AiStockTradeApp.DataAccess\AiStockTradeApp.DataAccess.csproj" />
+    <ProjectReference Include="..\AiStockTradeApp.Entities\AiStockTradeApp.Entities.csproj" />
   </ItemGroup>
 
 </Project>

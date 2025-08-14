@@ -29,10 +29,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ai-stock-trade-app\ai-stock-trade-app.csproj" />
-    <ProjectReference Include="..\ai-stock-trade-app.Entities\ai-stock-trade-app.Entities.csproj" />
-    <ProjectReference Include="..\ai-stock-trade-app.DataAccess\ai-stock-trade-app.DataAccess.csproj" />
-    <ProjectReference Include="..\ai-stock-trade-app.Services\ai-stock-trade-app.Services.csproj" />
+    <ProjectReference Include="..\AiStockTradeApp.DataAccess\AiStockTradeApp.DataAccess.csproj" />
+    <ProjectReference Include="..\AiStockTradeApp.Entities\AiStockTradeApp.Entities.csproj" />
+    <ProjectReference Include="..\AiStockTradeApp.Services\AiStockTradeApp.Services.csproj" />
+    <ProjectReference Include="..\AiStockTradeApp\AiStockTradeApp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
