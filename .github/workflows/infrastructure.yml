@@ -65,8 +65,8 @@ jobs:
         run: |
           az deployment group validate \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
-            --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-            --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
+            --template-file ./infrastructure/main.bicep \
+            --parameters ./infrastructure/parameters.dev.json \
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
             --parameters containerImage="ai-stock-trade-app:latest" \
@@ -85,8 +85,8 @@ jobs:
           echo "Deploying dev infrastructure with container registry..."
           az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
-            --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-            --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
+            --template-file ./infrastructure/main.bicep \
+            --parameters ./infrastructure/parameters.dev.json \
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
             --parameters containerImage="ai-stock-trade-app:latest" \
@@ -302,8 +302,8 @@ jobs:
         run: |
           az deployment group validate \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
-            --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-            --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+            --template-file ./infrastructure/main.bicep \
+            --parameters ./infrastructure/parameters.prod.json \
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
             --parameters containerImage="ai-stock-trade-app:latest" \
@@ -323,8 +323,8 @@ jobs:
           echo "Deploying prod infrastructure WITHOUT container registry..."
           az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
-            --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-            --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+            --template-file ./infrastructure/main.bicep \
+            --parameters ./infrastructure/parameters.prod.json \
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
             --parameters containerImage="ai-stock-trade-app:latest" \

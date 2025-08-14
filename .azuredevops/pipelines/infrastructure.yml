@@ -83,8 +83,8 @@ stages:
                     inlineScript: |
                       az deployment group validate \
                         --resource-group $(azureResourceGroupDev) \
-                        --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-                        --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
+                        --template-file ./infrastructure/main.bicep \
+                        --parameters ./infrastructure/parameters.dev.json \
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
                         --parameters containerImage="ai-stock-trade-app:latest" \
@@ -108,8 +108,8 @@ stages:
                       echo "Deploying dev infrastructure with container registry..."
                       az deployment group create \
                         --resource-group $(azureResourceGroupDev) \
-                        --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-                        --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
+                        --template-file ./infrastructure/main.bicep \
+                        --parameters ./infrastructure/parameters.dev.json \
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
                         --parameters containerImage="ai-stock-trade-app:latest" \
@@ -349,8 +349,8 @@ stages:
                     inlineScript: |
                       az deployment group validate \
                         --resource-group $(azureResourceGroupProd) \
-                        --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-                        --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+                        --template-file ./infrastructure/main.bicep \
+                        --parameters ./infrastructure/parameters.prod.json \
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
                         --parameters containerImage="ai-stock-trade-app:latest" \
@@ -375,8 +375,8 @@ stages:
                       echo "Deploying prod infrastructure WITHOUT container registry..."
                       az deployment group create \
                         --resource-group $(azureResourceGroupProd) \
-                        --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-                        --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+                        --template-file ./infrastructure/main.bicep \
+                        --parameters ./infrastructure/parameters.prod.json \
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
                         --parameters containerImage="ai-stock-trade-app:latest" \

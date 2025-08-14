@@ -148,7 +148,7 @@ If the primary API fails, the application automatically switches to backup sourc
 
 ### Azure Deployment
 The application includes Azure deployment scripts and Bicep templates:
-- Infrastructure as Code with `infrastructure/main.bicep`
+- Infrastructure as Code with `../infrastructure/main.bicep`
 - CI/CD workflows for automated deployment
 - Container support with included Dockerfile
 

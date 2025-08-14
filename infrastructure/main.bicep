@@ -1,4 +1,5 @@
-// Moved: Use ../../infrastructure/main.bicep
+@description('SQL Server admin username')
+param sqlAdminUsername string = 'sqladmin'
 
 @description('SQL Server admin password (ignored when enableAzureAdOnlyAuth = true). Left blank when using Azure AD only auth.')
 @secure()
