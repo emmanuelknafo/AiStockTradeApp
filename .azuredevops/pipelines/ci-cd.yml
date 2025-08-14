@@ -88,14 +88,6 @@ stages:
     jobs:
       - job: TestJob
         displayName: "Test Application"
-        services:
-          sqlserver:
-            image: mcr.microsoft.com/mssql/server:2022-latest
-            env:
-              SA_PASSWORD: "YourStrong@Passw0rd"
-              ACCEPT_EULA: "Y"
-            ports:
-              - 1433:1433
         steps:
           - checkout: self
             displayName: "Checkout code"
@@ -185,34 +177,7 @@ stages:
               projects: "**/*.csproj"
               arguments: "--no-restore --configuration Release"
 
-          - script: |
-              set -e
-              echo "Waiting for SQL Server (container) to start and open port 1433..."
-              echo "Docker ps (first 5):"
-              docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}" | head -5 || true
-
-              READY=0
-              for i in $(seq 1 60); do
-                if timeout 1 bash -c ">/dev/tcp/127.0.0.1/1433" 2>/dev/null; then
-                  echo "Port 1433 is open (attempt $i)."
-                  READY=1
-                  break
-                fi
-                echo "Waiting for SQL Server port... ($i/60)"
-                sleep 2
-              done
-
-              if [ "$READY" -ne 1 ]; then
-                echo "SQL Server port did not open in time. Dumping container logs..."
-                CID=$(docker ps -a --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest" --format "{{.ID}}" | head -1)
-                [ -n "$CID" ] && echo "Container ID: $CID" && docker logs "$CID" --tail 200 || echo "No SQL container found"
-                exit 1
-              fi
-
-              # Give SQL a few more seconds to finish initialization after port opens
-              sleep 15
-              echo "SQL Server ready."
-            displayName: "Wait for SQL Server to start"
+          # SQL Server container not required for unit tests; using in-memory DB
 
           # Removed EF Core database update: migrations will run at application startup in deployed environment
 
@@ -351,14 +316,6 @@ stages:
         displayName: "UI Tests with Playwright"
         dependsOn: TestJob
         condition: succeeded()
-        services:
-          sqlserver:
-            image: mcr.microsoft.com/mssql/server:2022-latest
-            env:
-              SA_PASSWORD: "YourStrong@Passw0rd"
-              ACCEPT_EULA: "Y"
-            ports:
-              - 1433:1433
         steps:
           - checkout: self
             displayName: "Checkout code"
@@ -399,34 +356,7 @@ stages:
               custom: "tool"
               arguments: "install --global dotnet-ef"
 
-          - script: |
-              set -e
-              echo "Waiting for SQL Server (container) to start and open port 1433..."
-              echo "Docker ps (first 5):"
-              docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}" | head -5 || true
-
-              READY=0
-              for i in $(seq 1 60); do
-                if timeout 1 bash -c ">/dev/tcp/127.0.0.1/1433" 2>/dev/null; then
-                  echo "Port 1433 is open (attempt $i)."
-                  READY=1
-                  break
-                fi
-                echo "Waiting for SQL Server port... ($i/60)"
-                sleep 2
-              done
-
-              if [ "$READY" -ne 1 ]; then
-                echo "SQL Server port did not open in time. Dumping container logs..."
-                CID=$(docker ps -a --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest" --format "{{.ID}}" | head -1)
-                [ -n "$CID" ] && echo "Container ID: $CID" && docker logs "$CID" --tail 200 || echo "No SQL container found"
-                exit 1
-              fi
-
-              # Give SQL a few more seconds to finish initialization after port opens
-              sleep 15
-              echo "SQL Server ready."
-            displayName: "Wait for SQL Server to start"
+          # SQL Server container not required for UI tests; using in-memory DB
 
           # Removed EF Core database update for UI tests: app handles migrations on startup (post-deployment)
 
@@ -669,12 +599,7 @@ stages:
             displayName: "Stop application"
             condition: always()
 
-          - script: |
-              echo "Cleaning up SQL Server container..."
-              docker stop sqlserver-ui-test || true
-              docker rm sqlserver-ui-test || true
-            displayName: "Cleanup SQL Server"
-            condition: always()
+          # No SQL container used; cleanup not required
 
   - stage: Build
     displayName: "Build and Push Container"
