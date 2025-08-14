@@ -62,7 +62,10 @@ public class PerformanceTests : BaseUITest
         var tickerInput = Page.Locator("#ticker-input");
         var addButton = Page.Locator("#add-button");
         var clearButton = Page.Locator("#clear-all");
-        var firstCard = Page.Locator("#watchlist .stock-card").First;
+    var stockCards = Page.Locator("#watchlist .stock-card");
+
+    // Ensure we accept the Clear All confirmation dialog
+    Page.Dialog += async (_, dialog) => await dialog.AcceptAsync();
 
         for (int i = 0; i < 3; i++)
         {
@@ -70,21 +73,18 @@ public class PerformanceTests : BaseUITest
             await tickerInput.FillAsync("AAPL");
             await addButton.ClickAsync();
             // Wait until at least one stock card is rendered
-            await Expect(firstCard).ToBeVisibleAsync(new() { Timeout = 10000 });
+            await Expect(stockCards.First).ToBeVisibleAsync(new() { Timeout = 10000 });
             await Page.WaitForTimeoutAsync(250);
 
             await tickerInput.FillAsync("GOOGL");
             await addButton.ClickAsync();
-            await Expect(firstCard).ToBeVisibleAsync(new() { Timeout = 10000 });
+            await Expect(stockCards.First).ToBeVisibleAsync(new() { Timeout = 10000 });
             await Page.WaitForTimeoutAsync(250);
 
-            // Clear all
+            // Clear all and wait until no stock cards remain
             await Expect(clearButton).ToBeVisibleAsync(new() { Timeout = 10000 });
-            // Click and concurrently wait for DOM to reflect clearing without tying to navigation
-            await Task.WhenAll(
-                clearButton.ClickAsync(),
-                firstCard.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = 10000 })
-            );
+            await clearButton.ClickAsync();
+            await Expect(stockCards).ToHaveCountAsync(0, new() { Timeout = 10000 });
             // Short settle
             await Page.WaitForTimeoutAsync(250);
         }
