@@ -86,8 +86,9 @@ var sqlDatabaseName = 'sqldb-${resourceNamePrefix}-${instanceNumber}'
 var vnetName = 'vnet-${resourceNamePrefix}-${instanceNumber}'
 var appIntegrationSubnetName = 'snet-appintegration'
 var privateEndpointSubnetName = 'snet-private-endpoints'
-// Use Azure AD auth only if explicitly enabled AND admin values provided
-var useAzureAdAuth = enableAzureAdOnlyAuth && !empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin)
+// Use Azure AD auth for connection strings and to omit SQL admin credentials when explicitly enabled by policy/params
+// Even if azureAdAdmin* values are not provided here, a later pipeline step can set the server's Entra admin.
+var useAzureAdAuth = enableAzureAdOnlyAuth
 
 // Whether any private networking is required for the app
 var requireVNetIntegration = enablePrivateSql || enablePrivateKeyVault
@@ -158,7 +159,6 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
   properties: {
     // Only include SQL admin credentials when NOT using Azure AD only authentication
     // Using object spread to avoid sending nulls which can cause deployment errors in AAD-only mode
-    // Fallback: if AD-only requested but admin values missing, still provision SQL admin login to avoid deployment failure
     ...(useAzureAdAuth
       ? {}
       : {
@@ -175,7 +175,7 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
 }
 
 // SQL Server Azure AD Administrator (deploy only when all required values provided)
-resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2024-11-01-preview' = if (useAzureAdAuth) {
+resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2024-11-01-preview' = if (!empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin)) {
   parent: sqlServer
   name: 'ActiveDirectory'
   properties: {
