@@ -110,6 +110,11 @@ jobs:
           sa-password: "YourStrong@Passw0rd"
           show-log: true
 
+      - name: Docker post-clean (SQL)
+        if: always()
+        run: |
+          docker rm -f sql 2>/dev/null || true
+
       - name: Wait for SQL Server to start
         run: sleep 30
 
@@ -246,6 +251,14 @@ jobs:
       - name: Build application
         run: dotnet build --no-restore --configuration Release
 
+      - name: Docker pre-clean (SQL)
+        if: always()
+        run: |
+          docker rm -f sql 2>/dev/null || true
+          # Safety check that no stray sql container remains
+          if docker ps -a --format '{{.Names}}' | grep -Eq '^sql$'; then
+            echo "A container named 'sql' still exists; failing early to avoid conflict."; exit 1; fi
+
       - name: Setup SQL Server for UI testing
         uses: potatoqualitee/mssqlsuite@v1.7
         with:
@@ -253,6 +266,11 @@ jobs:
           version: 2022
           sa-password: "YourStrong@Passw0rd"
           show-log: true
+
+      - name: Docker post-clean (SQL)
+        if: always()
+        run: |
+          docker rm -f sql 2>/dev/null || true
 
       - name: Wait for SQL Server to start
         run: sleep 30

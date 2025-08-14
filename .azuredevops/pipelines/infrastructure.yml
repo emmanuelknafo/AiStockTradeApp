@@ -53,6 +53,13 @@ stages:
               steps:
                 - checkout: self
                   displayName: "Checkout code"
+                - task: Bash@3
+                  displayName: "Docker pre-clean (global)"
+                  inputs:
+                    targetType: inline
+                    script: |
+                      docker ps -aq | xargs -r docker rm -f || true
+                      docker image prune -af || true
 
                 - task: AzureCLI@2
                   displayName: "Azure Login and Create Dev Resource Group"
@@ -191,11 +198,11 @@ stages:
                       INSTANCE_NUM="${{ parameters.instanceNumber }}"
                       SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
                       DATABASE_NAME="sqldb-aistock-dev-${INSTANCE_NUM}"
-                      
+
                       echo "🔍 Verifying SQL Server setup for dev environment..."
                       echo "SQL Server: ${SQL_SERVER_NAME}.database.windows.net"
                       echo "Database: ${DATABASE_NAME}"
-                      
+
                       # Test basic connectivity to SQL Server
                       echo "Testing SQL Server connectivity..."
                       if az sql server show --name "${SQL_SERVER_NAME}" --resource-group $(azureResourceGroupDev) >/dev/null 2>&1; then
@@ -216,7 +223,7 @@ stages:
                 - task: AzureCLI@2
                   displayName: "Destroy Dev Infrastructure"
                   condition: eq('${{ parameters.destroy }}', true)
-                  continueOnError: true  # Don't fail the pipeline if dev destruction has issues
+                  continueOnError: true # Don't fail the pipeline if dev destruction has issues
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
                     scriptType: "bash"
@@ -225,11 +232,11 @@ stages:
                       RG_NAME="$(azureResourceGroupDev)"
                       INSTANCE_NUM="${{ parameters.instanceNumber }}"
                       KV_NAME="kv-aistock-dev-${INSTANCE_NUM}"
-                      
+
                       echo "=== Destroying dev infrastructure ==="
                       echo "Resource Group: $RG_NAME"
                       echo "Key Vault: $KV_NAME"
-                      
+
                       # First, check if resource group exists
                       echo "Checking if resource group exists: $RG_NAME"
                       if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
@@ -237,9 +244,9 @@ stages:
                         echo "✅ Dev infrastructure destruction completed (nothing to destroy)"
                         exit 0
                       fi
-                      
+
                       echo "✅ Resource group found. Proceeding with destruction..."
-                      
+
                       # Check if Key Vault exists
                       echo "Checking for Key Vault: $KV_NAME"
                       KV_EXISTS=false
@@ -249,7 +256,7 @@ stages:
                       else
                         echo "ℹ️ Key Vault not found or already deleted."
                       fi
-                      
+
                       # Delete the resource group (this will soft-delete the Key Vault)
                       echo "🗑️ Deleting resource group: $RG_NAME"
                       if az group delete --name "$RG_NAME" --yes --no-wait; then
@@ -258,7 +265,7 @@ stages:
                         echo "⚠️ Failed to delete resource group, but continuing..."
                         exit 0
                       fi
-                      
+
                       # Only attempt Key Vault purge if it existed
                       if [ "$KV_EXISTS" = true ]; then
                         echo "⏳ Waiting 60 seconds for deletion to propagate..."
@@ -295,7 +302,7 @@ stages:
                           echo "This is normal if the Key Vault was already purged or if soft-delete is disabled"
                         fi
                       fi
-                      
+
                       echo "✅ Dev infrastructure destruction process completed"
 
   - stage: DeployProd
@@ -312,6 +319,13 @@ stages:
               steps:
                 - checkout: self
                   displayName: "Checkout code"
+                - task: Bash@3
+                  displayName: "Docker pre-clean (global)"
+                  inputs:
+                    targetType: inline
+                    script: |
+                      docker ps -aq | xargs -r docker rm -f || true
+                      docker image prune -af || true
 
                 - task: AzureCLI@2
                   displayName: "Create Prod Resource Group"
@@ -458,11 +472,11 @@ stages:
                       INSTANCE_NUM="${{ parameters.instanceNumber }}"
                       SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
                       DATABASE_NAME="sqldb-aistock-prod-${INSTANCE_NUM}"
-                      
+
                       echo "🔍 Verifying SQL Server setup for production environment..."
                       echo "SQL Server: ${SQL_SERVER_NAME}.database.windows.net"
                       echo "Database: ${DATABASE_NAME}"
-                      
+
                       # Test basic connectivity to SQL Server
                       echo "Testing SQL Server connectivity..."
                       if az sql server show --name "${SQL_SERVER_NAME}" --resource-group $(azureResourceGroupProd) >/dev/null 2>&1; then
@@ -506,11 +520,11 @@ stages:
                       RG_NAME="$(azureResourceGroupProd)"
                       INSTANCE_NUM="${{ parameters.instanceNumber }}"
                       KV_NAME="kv-aistock-prod-${INSTANCE_NUM}"
-                      
+
                       echo "=== Destroying prod infrastructure ==="
                       echo "Resource Group: $RG_NAME"
                       echo "Key Vault: $KV_NAME"
-                      
+
                       # First, check if resource group exists
                       echo "Checking if resource group exists: $RG_NAME"
                       if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
@@ -518,9 +532,9 @@ stages:
                         echo "✅ Prod infrastructure destruction completed (nothing to destroy)"
                         exit 0
                       fi
-                      
+
                       echo "✅ Resource group found. Proceeding with destruction..."
-                      
+
                       # Check if Key Vault exists
                       echo "Checking for Key Vault: $KV_NAME"
                       KV_EXISTS=false
@@ -530,7 +544,7 @@ stages:
                       else
                         echo "ℹ️ Key Vault not found or already deleted."
                       fi
-                      
+
                       # Delete the resource group (this will soft-delete the Key Vault)
                       echo "🗑️ Deleting resource group: $RG_NAME"
                       if az group delete --name "$RG_NAME" --yes --no-wait; then
@@ -539,7 +553,7 @@ stages:
                         echo "⚠️ Failed to delete resource group, but continuing..."
                         exit 0
                       fi
-                      
+
                       # Only attempt Key Vault purge if it existed
                       if [ "$KV_EXISTS" = true ]; then
                         echo "⏳ Waiting 60 seconds for deletion to propagate..."
@@ -576,7 +590,7 @@ stages:
                           echo "This is normal if the Key Vault was already purged or if soft-delete is disabled"
                         fi
                       fi
-                      
+
                       echo "✅ Prod infrastructure destruction process completed"
 
   - stage: DeploymentSummary

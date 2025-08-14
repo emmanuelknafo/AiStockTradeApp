@@ -102,6 +102,13 @@ stages:
             fetchDepth: 0 # full history for GitVersion
             persistCredentials: true
             clean: true
+          - task: Bash@3
+            displayName: "Docker pre-clean (global)"
+            inputs:
+              targetType: inline
+              script: |
+                docker ps -aq | xargs -r docker rm -f || true
+                docker image prune -af || true
 
           - task: Bash@3
             displayName: "Debug git state (pre-version)"
@@ -341,6 +348,13 @@ stages:
             fetchDepth: 0
             persistCredentials: true
             clean: true
+          - task: Bash@3
+            displayName: "Docker pre-clean (global)"
+            inputs:
+              targetType: inline
+              script: |
+                docker ps -aq | xargs -r docker rm -f || true
+                docker image prune -af || true
 
           - task: UseDotNet@2
             displayName: "Setup .NET"
@@ -652,6 +666,13 @@ stages:
             fetchDepth: 0
             persistCredentials: true
             clean: true
+          - task: Bash@3
+            displayName: "Docker pre-clean (global)"
+            inputs:
+              targetType: inline
+              script: |
+                docker ps -aq | xargs -r docker rm -f || true
+                docker image prune -af || true
 
           - task: AzureCLI@2
             displayName: "Get Container Registry Information"
