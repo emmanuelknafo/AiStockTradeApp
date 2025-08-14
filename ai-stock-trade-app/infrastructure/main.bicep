@@ -138,24 +138,26 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
 }
 
 // SQL Server
-resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
+resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
   name: sqlServerName
   location: location
   properties: {
     // Only include SQL admin credentials when NOT using Azure AD only authentication
     // Using object spread to avoid sending nulls which can cause deployment errors in AAD-only mode
-  // Fallback: if AD-only requested but admin values missing, still provision SQL admin login to avoid deployment failure
-  ...(useAzureAdAuth ? {} : {
-      administratorLogin: sqlAdminUsername
-      administratorLoginPassword: sqlAdminPassword
-    })
-  version: '12.0'
-  publicNetworkAccess: enablePrivateSql ? 'Disabled' : 'Enabled'
+    // Fallback: if AD-only requested but admin values missing, still provision SQL admin login to avoid deployment failure
+    ...(useAzureAdAuth
+      ? {}
+      : {
+          administratorLogin: sqlAdminUsername
+          administratorLoginPassword: sqlAdminPassword
+        })
+    version: '12.0'
+    publicNetworkAccess: enablePrivateSql ? 'Disabled' : 'Enabled'
   }
 }
 
 // SQL Server Azure AD Administrator (deploy only when all required values provided)
-resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-preview' = if (useAzureAdAuth) {
+resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2024-11-01-preview' = if (useAzureAdAuth) {
   parent: sqlServer
   name: 'ActiveDirectory'
   properties: {
@@ -167,7 +169,7 @@ resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2023-08-01-
 }
 
 // SQL Database
-resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
+resource sqlDatabase 'Microsoft.Sql/servers/databases@2024-11-01-preview' = {
   parent: sqlServer
   name: sqlDatabaseName
   location: location
@@ -183,7 +185,7 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
 }
 
 // SQL Server Firewall Rule for Azure Services
-resource sqlServerFirewallRuleAzure 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = if (!enablePrivateSql) {
+resource sqlServerFirewallRuleAzure 'Microsoft.Sql/servers/firewallRules@2024-11-01-preview' = if (!enablePrivateSql) {
   parent: sqlServer
   name: 'AllowAzureServices'
   properties: {
@@ -197,7 +199,7 @@ resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01
   parent: keyVault
   name: 'SqlConnectionString'
   properties: {
-  value: useAzureAdAuth 
+    value: useAzureAdAuth
       ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
       : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
   }
@@ -229,7 +231,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
     reserved: true
   }
   sku: {
-  name: appServicePlanSkuEffective
+    name: appServicePlanSkuEffective
   }
 }
 
@@ -242,10 +244,20 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
   }
   properties: {
     serverFarmId: appServicePlan.id
-  // Attach to VNet integration subnet when private SQL enabled
-  ...(enablePrivateSql ? { virtualNetworkSubnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, appIntegrationSubnetName) } : {})
+    // Attach to VNet integration subnet when private SQL enabled
+    ...(enablePrivateSql
+      ? {
+          virtualNetworkSubnetId: resourceId(
+            'Microsoft.Network/virtualNetworks/subnets',
+            vnetName,
+            appIntegrationSubnetName
+          )
+        }
+      : {})
     siteConfig: {
-      linuxFxVersion: deployContainerRegistry ? 'DOCKER|${containerRegistry!.properties.loginServer}/${containerImage}' : 'DOCKER|${containerImage}'
+      linuxFxVersion: deployContainerRegistry
+        ? 'DOCKER|${containerRegistry!.properties.loginServer}/${containerImage}'
+        : 'DOCKER|${containerImage}'
       alwaysOn: true
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
@@ -295,7 +307,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
       connectionStrings: [
         {
           name: 'DefaultConnection'
-          connectionString: useAzureAdAuth 
+          connectionString: useAzureAdAuth
             ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
             : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
@@ -308,7 +320,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
 }
 
 // Networking (only when private SQL requested)
-resource vnet 'Microsoft.Network/virtualNetworks@2024-03-01' = if (enablePrivateSql && manageNetworking) {
+resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = if (enablePrivateSql && manageNetworking) {
   name: vnetName
   location: location
   properties: {
@@ -347,13 +359,13 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-03-01' = if (enablePrivate
 }
 
 // Private DNS Zone for SQL
-resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (enablePrivateSql && manageNetworking) {
+resource privateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (enablePrivateSql && manageNetworking) {
   name: privateSqlPrivateDnsZoneName
   location: 'global'
 }
 
 // Link VNet to Private DNS Zone
-resource privateDnsVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (enablePrivateSql && manageNetworking) {
+resource privateDnsVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (enablePrivateSql && manageNetworking) {
   name: 'vnet-link'
   parent: privateDnsZone
   location: 'global'
@@ -366,7 +378,7 @@ resource privateDnsVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLin
 }
 
 // Private Endpoint for SQL Server
-resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if (enablePrivateSql && manageNetworking) {
+resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if (enablePrivateSql && manageNetworking) {
   name: 'pe-${sqlServerName}'
   location: location
   properties: {
@@ -377,7 +389,7 @@ resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if
       {
         name: 'plsc-sql'
         properties: {
-          groupIds: [ 'sqlServer' ]
+          groupIds: ['sqlServer']
           privateLinkServiceId: sqlServer.id
         }
       }
@@ -386,7 +398,7 @@ resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-11-01' = if
 }
 
 // Associate Private Endpoint with DNS Zone (creates A record)
-resource sqlPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = if (enablePrivateSql && manageNetworking) {
+resource sqlPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = if (enablePrivateSql && manageNetworking) {
   name: 'pdzg-sql'
   parent: sqlPrivateEndpoint
   properties: {
@@ -406,7 +418,10 @@ resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-0
   scope: keyVault
   name: guid(keyVault.id, webApp.id, 'Key Vault Secrets User')
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '4633458b-17de-408a-b874-0445c86b69e6'
+    ) // Key Vault Secrets User
     principalId: webApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
@@ -427,7 +442,9 @@ output sqlServerName string = sqlServer.name
 output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
 output sqlDatabaseName string = sqlDatabaseName
 output containerRegistryName string = deployContainerRegistry ? containerRegistry!.name : 'not-deployed'
-output containerRegistryLoginServer string = deployContainerRegistry ? containerRegistry!.properties.loginServer : 'not-deployed'
+output containerRegistryLoginServer string = deployContainerRegistry
+  ? containerRegistry!.properties.loginServer
+  : 'not-deployed'
 output keyVaultName string = keyVault.name
 output applicationInsightsName string = applicationInsights.name
 output vnetName string = enablePrivateSql ? vnetName : 'not-deployed'

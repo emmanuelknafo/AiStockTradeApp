@@ -62,21 +62,31 @@ public class PerformanceTests : BaseUITest
         var tickerInput = Page.Locator("#ticker-input");
         var addButton = Page.Locator("#add-button");
         var clearButton = Page.Locator("#clear-all");
+        var firstCard = Page.Locator("#watchlist .stock-card").First;
 
         for (int i = 0; i < 3; i++)
         {
             // Add some stocks
             await tickerInput.FillAsync("AAPL");
             await addButton.ClickAsync();
-            await Page.WaitForTimeoutAsync(1000);
+            // Wait until at least one stock card is rendered
+            await Expect(firstCard).ToBeVisibleAsync(new() { Timeout = 10000 });
+            await Page.WaitForTimeoutAsync(250);
 
             await tickerInput.FillAsync("GOOGL");
             await addButton.ClickAsync();
-            await Page.WaitForTimeoutAsync(1000);
+            await Expect(firstCard).ToBeVisibleAsync(new() { Timeout = 10000 });
+            await Page.WaitForTimeoutAsync(250);
 
             // Clear all
-            await clearButton.ClickAsync();
-            await Page.WaitForTimeoutAsync(1000);
+            await Expect(clearButton).ToBeVisibleAsync(new() { Timeout = 10000 });
+            // Click and concurrently wait for DOM to reflect clearing without tying to navigation
+            await Task.WhenAll(
+                clearButton.ClickAsync(),
+                firstCard.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = 10000 })
+            );
+            // Short settle
+            await Page.WaitForTimeoutAsync(250);
         }
 
         // Test should complete without browser crashes or excessive resource usage
