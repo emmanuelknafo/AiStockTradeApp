@@ -18,8 +18,8 @@ $ErrorActionPreference = "Stop"
 # Get script directory
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
-$AppDir = Join-Path $ProjectRoot "ai-stock-trade-app"
-$UITestDir = Join-Path $ProjectRoot "ai-stock-trade-app.UITests"
+$AppDir = Join-Path $ProjectRoot "AiStockTradeApp"
+$UITestDir = Join-Path $ProjectRoot "AiStockTradeApp.UITests"
 
 Write-Host "=== AI Stock Trade App - UI Test Runner ===" -ForegroundColor Green
 Write-Host "Project Root: $ProjectRoot" -ForegroundColor Yellow
@@ -130,7 +130,7 @@ function Cleanup {
     
     # Kill any remaining dotnet processes for this app
     Get-Process -Name "dotnet" -ErrorAction SilentlyContinue | 
-        Where-Object { $_.MainModule.FileName -like "*ai-stock-trade-app*" } |
+        Where-Object { $_.MainModule.FileName -like "*AiStockTradeApp*" } |
         ForEach-Object { 
             Write-Host "Killing remaining dotnet process: $($_.Id)" -ForegroundColor Yellow
             Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue 

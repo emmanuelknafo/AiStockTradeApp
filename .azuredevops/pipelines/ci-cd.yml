@@ -40,7 +40,7 @@ pr:
 resources:
   pipelines:
     - pipeline: infrastructurePipeline
-      source: emmanuelknafo.ai-stock-trade-app.infrastructure
+      source: emmanuelknafo.AiStockTradeApp.infrastructure
       trigger:
         branches:
           include:
@@ -67,7 +67,7 @@ parameters:
     default: "003"
 
 variables:
-  - group: "ai-stock-trade-app" # Variable group for shared variables
+  - group: "AiStockTradeApp" # Variable group for shared variables
   - name: AZURE_SERVICE_CONNECTION
     value: "svc_CSA_sub" # Replace with your Azure service connection name
   - name: AZURE_SUBSCRIPTION_ID
@@ -185,7 +185,7 @@ stages:
             displayName: "Run tests"
             inputs:
               command: "test"
-              projects: "ai-stock-trade-app.Tests/ai-stock-trade-app.Tests.csproj"
+              projects: "AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj"
               arguments: '--no-build --configuration Release --verbosity normal --settings ./test.runsettings --logger "trx;LogFileName=unit-tests.trx" --results-directory "$(Agent.TempDirectory)"'
               publishTestResults: false
             env:
@@ -367,7 +367,7 @@ stages:
 
           - script: |
               echo "Installing Playwright via npm (JS driver used by .NET binding)..."
-              cd ai-stock-trade-app.UITests
+              cd AiStockTradeApp.UITests
               npm ci || npm install
               npx playwright install --with-deps chromium
               npx playwright --version
@@ -378,7 +378,7 @@ stages:
           - script: |
               # Start application in background
               echo "Starting application in background..."
-              cd ai-stock-trade-app
+              cd AiStockTradeApp
               nohup dotnet run --no-build --configuration Release --no-launch-profile > app.log 2>&1 &
               APP_PID=$!
               echo "Started application with PID: $APP_PID"
@@ -431,11 +431,11 @@ stages:
           - script: |
               echo "=== Pre-test debugging ==="
               echo "Checking if UITests project built correctly..."
-              ls -la ai-stock-trade-app.UITests/bin/Release/net9.0/ || echo "Build output directory not found"
+              ls -la AiStockTradeApp.UITests/bin/Release/net9.0/ || echo "Build output directory not found"
 
               echo "Checking for required assemblies..."
-              ls -la ai-stock-trade-app.UITests/bin/Release/net9.0/*Playwright* || echo "Playwright assemblies not found"
-              ls -la ai-stock-trade-app.UITests/bin/Release/net9.0/*NUnit* || echo "NUnit assemblies not found"
+              ls -la AiStockTradeApp.UITests/bin/Release/net9.0/*Playwright* || echo "Playwright assemblies not found"
+              ls -la AiStockTradeApp.UITests/bin/Release/net9.0/*NUnit* || echo "NUnit assemblies not found"
 
               echo "Checking test.runsettings file..."
               cat test.runsettings || echo "test.runsettings not found"
@@ -453,7 +453,7 @@ stages:
               echo "Skipping X11 display probe (not required for headless Chromium)"
 
               echo "Checking Playwright installation (npx)..."
-              (cd ai-stock-trade-app.UITests && npx playwright --version) || echo "Playwright CLI not available"
+              (cd AiStockTradeApp.UITests && npx playwright --version) || echo "Playwright CLI not available"
 
               echo "Checking if Playwright browsers are installed..."
               ls -la /ms/playwright/ || echo "Playwright browser cache not found"
@@ -461,7 +461,7 @@ stages:
 
               echo "Testing simple browser launch..."
               echo "Testing simple browser launch via dotnet playwright (dry run using codegen list)..."
-              (cd ai-stock-trade-app.UITests && npx playwright install chromium) || true
+              (cd AiStockTradeApp.UITests && npx playwright install chromium) || true
               # Quick launch validation using a minimal script
                 echo "Installing dotnet-script for inline launch probe..."
                 dotnet tool install --global dotnet-script || true
@@ -489,14 +489,14 @@ stages:
 
           - script: |
               echo "Listing all tests in UITests project..."
-              dotnet test ai-stock-trade-app.UITests --list-tests --verbosity normal
+              dotnet test AiStockTradeApp.UITests --list-tests --verbosity normal
             displayName: "List UI Tests to be executed"
 
           - task: DotNetCoreCLI@2
             displayName: "Run Playwright UI Tests"
             inputs:
               command: "test"
-              projects: "ai-stock-trade-app.UITests/ai-stock-trade-app.UITests.csproj"
+              projects: "AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj"
               arguments: '--no-build --configuration Release --verbosity diagnostic --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings --logger "console;verbosity=diagnostic" --results-directory "$(Agent.TempDirectory)"'
               publishTestResults: false
             env:
@@ -509,7 +509,7 @@ stages:
               DEBUG: "pw:api"
               CI: "true"
               AZURE_PIPELINES: "true"
-              NODE_PATH: "$(System.DefaultWorkingDirectory)/ai-stock-trade-app.UITests/node_modules"
+              NODE_PATH: "$(System.DefaultWorkingDirectory)/AiStockTradeApp.UITests/node_modules"
               USE_INMEMORY_DB: "true" # In-memory DB accelerates UI tests
               VSTEST_RESULTS_DIRECTORY: "$(Agent.TempDirectory)"
             condition: succeededOrFailed()
@@ -576,9 +576,9 @@ stages:
 
           - script: |
               echo "Capturing application logs for debugging..."
-              if [ -f "ai-stock-trade-app/app.log" ]; then
+              if [ -f "AiStockTradeApp/app.log" ]; then
                 echo "=== Application Logs ==="
-                cat ai-stock-trade-app/app.log
+                cat AiStockTradeApp/app.log
                 echo "=== End Application Logs ==="
               else
                 echo "No application log file found"
@@ -588,14 +588,14 @@ stages:
 
           - script: |
               echo "Stopping application..."
-              if [ -f "ai-stock-trade-app/app.pid" ]; then
-                APP_PID=$(cat ai-stock-trade-app/app.pid)
+              if [ -f "AiStockTradeApp/app.pid" ]; then
+                APP_PID=$(cat AiStockTradeApp/app.pid)
                 echo "Stopping application with PID: $APP_PID"
                 kill $APP_PID || true
                 sleep 5
               fi
               # Cleanup any remaining dotnet processes
-              pkill -f "dotnet.*ai-stock-trade-app" || true
+              pkill -f "dotnet.*AiStockTradeApp" || true
             displayName: "Stop application"
             condition: always()
 
@@ -768,7 +768,7 @@ stages:
                 fi
                 # Generate tags similar to docker/metadata-action
                 REGISTRY_URL="$(registryName).azurecr.io"
-                IMAGE_NAME="${REGISTRY_URL}/ai-stock-trade-app"
+                IMAGE_NAME="${REGISTRY_URL}/AiStockTradeApp"
 
                 # Branch-based tag
                 BRANCH_NAME=$(echo "$(Build.SourceBranchName)" | sed 's/[^a-zA-Z0-9._-]/-/g')
@@ -828,10 +828,10 @@ stages:
                   echo "Using semantic version build arg APP_VERSION=$(GitVersion.FullSemVer)"
                   docker build \
                     --build-arg APP_VERSION=$(GitVersion.FullSemVer) \
-                    -t temp-build-image ./ai-stock-trade-app
+                    -t temp-build-image ./AiStockTradeApp
                 else
                   echo "No valid semantic version found; building without APP_VERSION build-arg"
-                  docker build -t temp-build-image ./ai-stock-trade-app
+                  docker build -t temp-build-image ./AiStockTradeApp
                 fi
 
                 # Tag and push each tag
@@ -844,7 +844,7 @@ stages:
                   docker tag temp-build-image "$clean_tag"
                   
                   # Push using az acr
-                  az acr repository show --name "$(registryName)" --repository ai-stock-trade-app || echo "Repository doesn't exist yet, will be created on first push"
+                  az acr repository show --name "$(registryName)" --repository AiStockTradeApp || echo "Repository doesn't exist yet, will be created on first push"
                   docker push "$clean_tag"
                 done
 
@@ -1230,7 +1230,7 @@ stages:
                     csmFile: "./infrastructure/main.bicep"
                     csmParametersFile: "./infrastructure/parameters.prod.json"
                     # Use containerImage variable if provided; prefer GitVersion FullSemVer tag if available
-                    # containerImage variable expected to be ai-stock-trade-app:<tag>
+                    # containerImage variable expected to be AiStockTradeApp:<tag>
                     overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)' -appVersion $(appVersion)"
                     deploymentMode: "Incremental"
 
@@ -1425,7 +1425,7 @@ stages:
                         fi
                         
                         echo "Running database migrations manually..."
-                        cd ai-stock-trade-app
+                        cd AiStockTradeApp
                         export ConnectionStrings__DefaultConnection="${CONNECTION_STRING}"
                         
                         # Run with verbose output

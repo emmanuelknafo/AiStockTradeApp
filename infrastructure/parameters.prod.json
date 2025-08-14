@@ -15,7 +15,7 @@
       "value": "aistocktracker"
     },
     "containerImage": {
-      "value": "ai-stock-trade-app:latest"
+      "value": "AiStockTradeApp:latest"
     },
     "enablePrivateKeyVault": {
       "value": true

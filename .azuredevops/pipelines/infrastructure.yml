@@ -28,7 +28,7 @@ parameters:
     default: false
 
 variables:
-  - group: "ai-stock-trade-app" # Variable group for shared variables
+  - group: "AiStockTradeApp" # Variable group for shared variables
   - name: AZURE_SERVICE_CONNECTION
     value: "svc_CSA_sub" # Replace with your Azure service connection name
   - name: azureResourceGroupDev
@@ -87,7 +87,7 @@ stages:
                         --parameters ./infrastructure/parameters.dev.json \
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
-                        --parameters containerImage="ai-stock-trade-app:latest" \
+                        --parameters containerImage="AiStockTradeApp:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
@@ -113,7 +113,7 @@ stages:
                         --parameters ./infrastructure/parameters.dev.json \
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
-                        --parameters containerImage="ai-stock-trade-app:latest" \
+                        --parameters containerImage="AiStockTradeApp:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
@@ -355,7 +355,7 @@ stages:
                         --parameters ./infrastructure/parameters.prod.json \
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
-                        --parameters containerImage="ai-stock-trade-app:latest" \
+                        --parameters containerImage="AiStockTradeApp:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters deployContainerRegistry=false \
@@ -382,7 +382,7 @@ stages:
                         --parameters ./infrastructure/parameters.prod.json \
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
-                        --parameters containerImage="ai-stock-trade-app:latest" \
+                        --parameters containerImage="AiStockTradeApp:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters deployContainerRegistry=false \

@@ -35,7 +35,7 @@ jobs:
           echo "=== DOCKER SIMULATION ==="
           # Simulate what docker/metadata-action would produce
           REGISTRY="aistocktrackerprod"
-          APP_NAME="ai-stock-trade-app"
+          APP_NAME="AiStockTradeApp"
           SHA="bf0a8b4"
           
           # Create simulated tags like the real workflow

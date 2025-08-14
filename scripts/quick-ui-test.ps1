@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 # Get script directory and project paths
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
-$AppDir = Join-Path $ProjectRoot "ai-stock-trade-app"
+$AppDir = Join-Path $ProjectRoot "AiStockTradeApp"
 
 Write-Host "=== Quick UI Test Runner ===" -ForegroundColor Green
 Write-Host "Using LocalDB for testing" -ForegroundColor Yellow
@@ -28,7 +28,7 @@ function Cleanup {
     
     # Kill any remaining dotnet processes for this app
     Get-Process -Name "dotnet" -ErrorAction SilentlyContinue | 
-        Where-Object { $_.MainModule.FileName -like "*ai-stock-trade-app*" } |
+        Where-Object { $_.MainModule.FileName -like "*AiStockTradeApp*" } |
         Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
@@ -85,7 +85,7 @@ try {
         
         $env:PLAYWRIGHT_BASE_URL = "http://localhost:5000"
         
-        dotnet test ai-stock-trade-app.UITests --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --settings test.runsettings
+        dotnet test AiStockTradeApp.UITests --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --settings test.runsettings
         
         if ($LASTEXITCODE -eq 0) {
             Write-Host "`nAll tests passed!" -ForegroundColor Green

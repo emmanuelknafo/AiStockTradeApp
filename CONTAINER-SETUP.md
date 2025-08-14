@@ -8,8 +8,8 @@ The simplest way to run the application in a container is using the in-memory da
 
 ```bash
 # Build and run with Docker
-docker build -t ai-stock-trade-app ./ai-stock-trade-app
-docker run -p 8080:8080 -p 8081:8081 ai-stock-trade-app
+docker build -t AiStockTradeApp ./AiStockTradeApp
+docker run -p 8080:8080 -p 8081:8081 AiStockTradeApp
 ```
 
 The application will be available at:
@@ -25,7 +25,7 @@ For a more production-like setup with persistent data, use Docker Compose:
 docker-compose up -d
 
 # View logs
-docker-compose logs -f ai-stock-trade-app
+docker-compose logs -f AiStockTradeApp
 
 # Stop the stack
 docker-compose down
@@ -33,7 +33,7 @@ docker-compose down
 
 ### Docker Compose Services
 
-- **ai-stock-trade-app**: The main application
+- **AiStockTradeApp**: The main application
 - **sqlserver**: Microsoft SQL Server 2022 Express
 
 ### Environment Variables
@@ -70,7 +70,7 @@ Set the connection string via environment variable:
 docker run -p 8080:8080 \
   -e USE_INMEMORY_DB=false \
   -e "ConnectionStrings__DefaultConnection=Server=your-sql-server;Database=StockTraderDb;User Id=your-user;Password=your-password;TrustServerCertificate=true" \
-  ai-stock-trade-app
+  AiStockTradeApp
 ```
 
 ## Troubleshooting
@@ -98,14 +98,14 @@ View application logs:
 docker logs <container-id>
 
 # Docker Compose
-docker-compose logs ai-stock-trade-app
+docker-compose logs AiStockTradeApp
 ```
 
 ## Development vs Production
 
 ### Development (In-Memory)
 ```bash
-docker run -p 8080:8080 -e USE_INMEMORY_DB=true ai-stock-trade-app
+docker run -p 8080:8080 -e USE_INMEMORY_DB=true AiStockTradeApp
 ```
 
 ### Production (With SQL Server)

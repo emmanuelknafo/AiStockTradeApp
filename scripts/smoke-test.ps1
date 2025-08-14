@@ -37,7 +37,7 @@ $script:appProcess = $null
 $script:sqlServerProcess = $null
 $script:appPort = 5000
 $script:appUrl = "http://localhost:$appPort"
-$script:testProject = "ai-stock-trade-app.UITests"
+$script:testProject = "AiStockTradeApp.UITests"
 
 function Write-Status {
     param([string]$Message, [string]$Status = "Info")
@@ -96,7 +96,7 @@ function Start-Application {
     
     try {
         # Update launch settings for test port
-        $launchSettingsPath = "ai-stock-trade-app\Properties\launchSettings.json"
+        $launchSettingsPath = "AiStockTradeApp\Properties\launchSettings.json"
         if (Test-Path $launchSettingsPath) {
             $launchSettings = Get-Content $launchSettingsPath | ConvertFrom-Json
             if ($launchSettings.profiles.http) {
@@ -112,7 +112,7 @@ function Start-Application {
         # Start application in background
         $startInfo = New-Object System.Diagnostics.ProcessStartInfo
         $startInfo.FileName = "dotnet"
-        $startInfo.Arguments = "run --project ai-stock-trade-app\ai-stock-trade-app.csproj"
+        $startInfo.Arguments = "run --project AiStockTradeApp\AiStockTradeApp.csproj"
         $startInfo.UseShellExecute = $false
         $startInfo.RedirectStandardOutput = $true
         $startInfo.RedirectStandardError = $true

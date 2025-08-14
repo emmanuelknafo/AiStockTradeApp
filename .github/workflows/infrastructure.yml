@@ -69,7 +69,7 @@ jobs:
             --parameters ./infrastructure/parameters.dev.json \
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
-            --parameters containerImage="ai-stock-trade-app:latest" \
+            --parameters containerImage="AiStockTradeApp:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
@@ -90,7 +90,7 @@ jobs:
             --parameters ./infrastructure/parameters.dev.json \
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
-            --parameters containerImage="ai-stock-trade-app:latest" \
+            --parameters containerImage="AiStockTradeApp:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
@@ -308,7 +308,7 @@ jobs:
             --parameters ./infrastructure/parameters.prod.json \
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
-            --parameters containerImage="ai-stock-trade-app:latest" \
+            --parameters containerImage="AiStockTradeApp:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \
@@ -330,7 +330,7 @@ jobs:
             --parameters ./infrastructure/parameters.prod.json \
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
-            --parameters containerImage="ai-stock-trade-app:latest" \
+            --parameters containerImage="AiStockTradeApp:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \

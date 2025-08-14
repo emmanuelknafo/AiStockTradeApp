@@ -139,7 +139,7 @@ A lightweight script for quick local testing.
    - Scripts automatically handle cleanup
    - Manually kill processes if needed:
    ```powershell
-   Get-Process -Name "dotnet" | Where-Object { $_.MainModule.FileName -like "*ai-stock-trade-app*" } | Stop-Process -Force
+   Get-Process -Name "dotnet" | Where-Object { $_.MainModule.FileName -like "*AiStockTradeApp*" } | Stop-Process -Force
    ```
 
 ### Test Configuration:

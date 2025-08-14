@@ -8,7 +8,7 @@
 			"args": [
 				"run",
 				"--project",
-				"ai-stock-trade-app.csproj"
+				"AiStockTradeApp.csproj"
 			],
 			"group": "build",
 			"isBackground": true,

@@ -142,7 +142,7 @@ jobs:
 
       - name: Warm up EF Core (ensure context can connect without migrations)
         run: |
-          cd ai-stock-trade-app
+          cd AiStockTradeApp
           export ConnectionStrings__DefaultConnection="Server=127.0.0.1;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false;IP Address Preference=IPv4First"
           dotnet exec /usr/share/dotnet/sdk/$(dotnet --version)/Roslyn/builtins/../csc.dll >/dev/null 2>&1 || true
         env:
@@ -322,7 +322,7 @@ jobs:
 
       - name: Warm up EF Core (UI test DB no migrations)
         run: |
-          cd ai-stock-trade-app
+          cd AiStockTradeApp
           export ConnectionStrings__DefaultConnection="Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
           dotnet --info > /dev/null
         env:
@@ -340,7 +340,7 @@ jobs:
 
       - name: Start application in background
         run: |
-          cd ai-stock-trade-app
+          cd AiStockTradeApp
           dotnet run --no-build --configuration Release --no-launch-profile &
           APP_PID=$!
           echo "APP_PID=${APP_PID}" >> $GITHUB_ENV
@@ -371,12 +371,12 @@ jobs:
           fi
 
       - name: List UI Tests to be executed
-        run: dotnet test ai-stock-trade-app.UITests --list-tests --verbosity normal --filter "FullyQualifiedName~UITests"
+        run: dotnet test AiStockTradeApp.UITests --list-tests --verbosity normal --filter "FullyQualifiedName~UITests"
 
       - name: Run Playwright UI Tests
         run: |
           echo "Starting UI test execution..."
-          dotnet test ai-stock-trade-app.UITests --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings
+          dotnet test AiStockTradeApp.UITests --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings
           echo "UI test execution completed with exit code: $?"
         timeout-minutes: 25
         env:
@@ -398,7 +398,7 @@ jobs:
         run: |
           echo "=== APPLICATION LOGS (last 100 lines) ==="
           # Check if the application is still running
-          if pgrep -f "dotnet.*ai-stock-trade-app" > /dev/null; then
+          if pgrep -f "dotnet.*AiStockTradeApp" > /dev/null; then
             echo "Application is still running"
             ps aux | grep dotnet
           else
@@ -417,7 +417,7 @@ jobs:
             sleep 5
           fi
           # Cleanup any remaining dotnet processes
-          pkill -f "dotnet.*ai-stock-trade-app" || true
+          pkill -f "dotnet.*AiStockTradeApp" || true
 
   build:
     runs-on: [self-hosted, linux, x64]
@@ -560,7 +560,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/ai-stock-trade-app
+          images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/AiStockTradeApp
           tags: |
             type=raw,value=${{ steps.gitversion.outputs.fullSemVer }}
             type=raw,value=v${{ steps.gitversion.outputs.fullSemVer }}
@@ -580,8 +580,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./ai-stock-trade-app
-          file: ./ai-stock-trade-app/Dockerfile
+          context: ./AiStockTradeApp
+          file: ./AiStockTradeApp/Dockerfile
           push: true
           build-args: |
             APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }}
@@ -817,7 +817,7 @@ jobs:
             echo "This is normal for first-time deployments."
           else
             echo "Running database migrations manually..."
-            cd ai-stock-trade-app
+            cd AiStockTradeApp
             export ConnectionStrings__DefaultConnection="${CONNECTION_STRING}"
             dotnet ef database update --verbose
           fi
@@ -1158,7 +1158,7 @@ jobs:
             fi
             
             echo "Running database migrations manually..."
-            cd ai-stock-trade-app
+            cd AiStockTradeApp
             export ConnectionStrings__DefaultConnection="${CONNECTION_STRING}"
             
             # Run with verbose output
