@@ -768,7 +768,7 @@ stages:
                 fi
                 # Generate tags similar to docker/metadata-action
                 REGISTRY_URL="$(registryName).azurecr.io"
-                IMAGE_NAME="${REGISTRY_URL}/AiStockTradeApp"
+                IMAGE_NAME="${REGISTRY_URL}/aistocktradeapp"
 
                 # Branch-based tag
                 BRANCH_NAME=$(echo "$(Build.SourceBranchName)" | sed 's/[^a-zA-Z0-9._-]/-/g')
@@ -828,10 +828,13 @@ stages:
                   echo "Using semantic version build arg APP_VERSION=$(GitVersion.FullSemVer)"
                   docker build \
                     --build-arg APP_VERSION=$(GitVersion.FullSemVer) \
-                    -t temp-build-image ./AiStockTradeApp
+                    -f ./AiStockTradeApp/Dockerfile \
+                    -t temp-build-image .
                 else
                   echo "No valid semantic version found; building without APP_VERSION build-arg"
-                  docker build -t temp-build-image ./AiStockTradeApp
+                  docker build \
+                    -f ./AiStockTradeApp/Dockerfile \
+                    -t temp-build-image .
                 fi
 
                 # Tag and push each tag
@@ -844,7 +847,7 @@ stages:
                   docker tag temp-build-image "$clean_tag"
                   
                   # Push using az acr
-                  az acr repository show --name "$(registryName)" --repository AiStockTradeApp || echo "Repository doesn't exist yet, will be created on first push"
+                  az acr repository show --name "$(registryName)" --repository aistocktradeapp || echo "Repository doesn't exist yet, will be created on first push"
                   docker push "$clean_tag"
                 done
 

@@ -560,7 +560,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/AiStockTradeApp
+          images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/aistocktradeapp
           tags: |
             type=raw,value=${{ steps.gitversion.outputs.fullSemVer }}
             type=raw,value=v${{ steps.gitversion.outputs.fullSemVer }}
@@ -580,7 +580,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./AiStockTradeApp
+          context: .
           file: ./AiStockTradeApp/Dockerfile
           push: true
           build-args: |
