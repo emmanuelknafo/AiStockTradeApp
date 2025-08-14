@@ -118,21 +118,51 @@ jobs:
           sa-password: "YourStrong@Passw0rd"
           show-log: true
 
-      - name: Docker post-clean (SQL)
-        if: always()
-        run: |
-          docker rm -f sql 2>/dev/null || true
-
       - name: Wait for SQL Server to start
-        run: sleep 30
+        run: |
+          set -e
+          echo "Waiting for SQL Server container to open port 1433..."
+          echo "docker ps (top 5):"; docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}" | head -5 || true
+          READY=0
+          for i in $(seq 1 60); do
+            if timeout 1 bash -c ">/dev/tcp/127.0.0.1/1433" 2>/dev/null; then
+              echo "Port 1433 open (attempt $i)."; READY=1; break
+            fi
+            echo "Waiting for SQL Server port... ($i/60)"; sleep 2
+          done
+          if [ "$READY" -ne 1 ]; then
+            echo "Port did not open in time. Dumping SQL container logs..."
+            CID=$(docker ps -a --filter "name=^/sql$" --format "{{.ID}}" | head -1)
+            if [ -z "$CID" ]; then CID=$(docker ps -a --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest" --format "{{.ID}}" | head -1); fi
+            [ -n "$CID" ] && echo "Container ID: $CID" && docker logs "$CID" --tail 200 || echo "No SQL container found"
+            exit 1
+          fi
+          echo "Waiting extra 15s for SQL to finish initialization..."; sleep 15
+          echo "SQL is ready."
 
       - name: Warm up EF Core (ensure context can connect without migrations)
         run: |
           cd ai-stock-trade-app
-          export ConnectionStrings__DefaultConnection="Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          export ConnectionStrings__DefaultConnection="Server=127.0.0.1;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false;IP Address Preference=IPv4First"
           dotnet exec /usr/share/dotnet/sdk/$(dotnet --version)/Roslyn/builtins/../csc.dll >/dev/null 2>&1 || true
         env:
-          ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          ConnectionStrings__DefaultConnection: "Server=127.0.0.1;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false;IP Address Preference=IPv4First"
+          USE_INMEMORY_DB: "true"
+          ASPNETCORE_ENVIRONMENT: "Development"
+
+      - name: Verify SQL login (sanity)
+        run: |
+          if command -v sqlcmd >/dev/null 2>&1; then
+            echo "Probing login with sqlcmd..."
+            for i in $(seq 1 10); do
+              if sqlcmd -S 127.0.0.1 -U sa -P "YourStrong@Passw0rd" -Q "SELECT 1" -l 3 >/dev/null 2>&1; then
+                echo "sqlcmd login OK (attempt $i)"; exit 0; fi
+              echo "sqlcmd not ready yet (attempt $i)"; sleep 3
+            done
+            echo "sqlcmd login failed after retries"; exit 1
+          else
+            echo "sqlcmd not available; skipping login sanity check"
+          fi
 
       - name: Run tests
         run: |
@@ -159,7 +189,9 @@ jobs:
           echo "Listing coverage dir contents:"; ls -la "$COVERAGE_DIR" || true
           echo "Listing TRX files produced:"; find . -type f -name '*.trx' -print || true
         env:
-          ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+          ConnectionStrings__DefaultConnection: "Server=127.0.0.1;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false;IP Address Preference=IPv4First"
+          USE_INMEMORY_DB: "true"
+          ASPNETCORE_ENVIRONMENT: "Development"
           APP_VERSION: ${{ steps.gitversion.outputs.fullSemVer }}
 
       - name: Collect test result files (TRX)
@@ -220,6 +252,11 @@ jobs:
             unit-test-results/**/*.trx
             unit-test-results/**/coverage.cobertura.xml
           retention-days: 5
+
+      - name: Docker post-clean (SQL)
+        if: always()
+        run: |
+          docker rm -f sql 2>/dev/null || true
 
   ui-test:
     runs-on: [self-hosted, linux, x64]

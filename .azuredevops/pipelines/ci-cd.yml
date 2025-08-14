@@ -224,7 +224,8 @@ stages:
               arguments: '--no-build --configuration Release --verbosity normal --settings ./test.runsettings --logger "trx;LogFileName=unit-tests.trx" --results-directory "$(Agent.TempDirectory)"'
               publishTestResults: false
             env:
-              ASPNETCORE_ENVIRONMENT: "Testing"
+              ASPNETCORE_ENVIRONMENT: "Development"
+              USE_INMEMORY_DB: "true"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
               VSTEST_RESULTS_DIRECTORY: "$(Agent.TempDirectory)"
 
