@@ -60,7 +60,7 @@ env:
 jobs:
   test:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     name: Test Application
 
     steps:
@@ -209,7 +209,7 @@ jobs:
           retention-days: 5
 
   ui-test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: test
     name: UI Tests with Playwright
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
@@ -357,7 +357,7 @@ jobs:
           pkill -f "dotnet.*ai-stock-trade-app" || true
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [test, ui-test]
     name: Build and Push Container
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
@@ -647,7 +647,7 @@ jobs:
           echo "test_output: ${{ steps.final-output.outputs.test_output }}"
 
   deploy-dev:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: build
     name: Deploy to Development
     # Run for develop (normal dev flow) and main (promote immediately before prod)
@@ -800,7 +800,7 @@ jobs:
           echo "Health check passed!"
 
   deploy-prod:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [build, deploy-dev]
     name: Deploy to Production
     if: |
@@ -1218,7 +1218,7 @@ jobs:
           exit 1
 
   security-scan:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: build
     name: Security Scan
     if: github.event_name == 'pull_request'

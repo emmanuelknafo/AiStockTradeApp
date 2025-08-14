@@ -4,561 +4,561 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy infrastructure'
+        description: "Environment to deploy infrastructure"
         required: true
-        default: 'dev'
+        default: "dev"
         type: choice
         options:
-        - dev
-        - prod
+          - dev
+          - prod
       location:
-        description: 'Azure region for deployment'
+        description: "Azure region for deployment"
         required: true
-        default: 'Canada Central'
+        default: "Canada Central"
         type: string
       instanceNumber:
-        description: 'Instance number for resource differentiation'
+        description: "Instance number for resource differentiation"
         required: true
-        default: '002'
+        default: "002"
         type: string
       destroy:
-        description: 'Destroy infrastructure instead of deploy'
+        description: "Destroy infrastructure instead of deploy"
         required: false
         default: false
         type: boolean
 
 env:
-  AZURE_RESOURCE_GROUP_DEV: 'rg-aistock-dev-${{ github.event.inputs.instanceNumber }}'
-  AZURE_RESOURCE_GROUP_PROD: 'rg-aistock-prod-${{ github.event.inputs.instanceNumber }}'
+  AZURE_RESOURCE_GROUP_DEV: "rg-aistock-dev-${{ github.event.inputs.instanceNumber }}"
+  AZURE_RESOURCE_GROUP_PROD: "rg-aistock-prod-${{ github.event.inputs.instanceNumber }}"
 
 jobs:
   deploy-dev:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     name: Deploy Development Infrastructure
     if: github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'prod'
     environment: ${{ format('development-{0}', github.event.inputs.instanceNumber) }}
-    
+
     permissions:
       id-token: write
       contents: read
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Azure Login
-      uses: azure/login@v2
-      with:
-        client-id: ${{ vars.AZURE_CLIENT_ID }}
-        tenant-id: ${{ vars.AZURE_TENANT_ID }}
-        subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-    - name: Create Dev Resource Group
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
-        echo "Creating dev resource group: $RG_NAME"
-        az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
+      - name: Create Dev Resource Group
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+          echo "Creating dev resource group: $RG_NAME"
+          az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
 
-    - name: Validate Dev Bicep Template
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        az deployment group validate \
-          --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
-          --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-          --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
-          --parameters location="${{ github.event.inputs.location }}" \
-          --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
-          --parameters containerImage="ai-stock-trade-app:latest" \
-          --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
-          --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
-          --parameters enableAzureAdOnlyAuth=true \
-          --parameters enablePrivateSql=true \
-          --parameters vnetAddressSpace="10.40.0.0/16" \
-          --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
-          --parameters privateEndpointSubnetPrefix="10.40.2.0/28"
+      - name: Validate Dev Bicep Template
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          az deployment group validate \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
+            --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+            --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
+            --parameters location="${{ github.event.inputs.location }}" \
+            --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+            --parameters containerImage="ai-stock-trade-app:latest" \
+            --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
+            --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
+            --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+            --parameters enableAzureAdOnlyAuth=true \
+            --parameters enablePrivateSql=true \
+            --parameters vnetAddressSpace="10.40.0.0/16" \
+            --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
+            --parameters privateEndpointSubnetPrefix="10.40.2.0/28"
 
-    - name: Deploy Dev Infrastructure
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        echo "Deploying dev infrastructure with container registry..."
-        az deployment group create \
-          --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
-          --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-          --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
-          --parameters location="${{ github.event.inputs.location }}" \
-          --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
-          --parameters containerImage="ai-stock-trade-app:latest" \
-          --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
-          --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
-          --parameters enableAzureAdOnlyAuth=true \
-          --parameters enablePrivateSql=true \
-          --parameters vnetAddressSpace="10.40.0.0/16" \
-          --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
-          --parameters privateEndpointSubnetPrefix="10.40.2.0/28"
+      - name: Deploy Dev Infrastructure
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          echo "Deploying dev infrastructure with container registry..."
+          az deployment group create \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
+            --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+            --parameters ./ai-stock-trade-app/infrastructure/parameters.dev.json \
+            --parameters location="${{ github.event.inputs.location }}" \
+            --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+            --parameters containerImage="ai-stock-trade-app:latest" \
+            --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
+            --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
+            --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+            --parameters enableAzureAdOnlyAuth=true \
+            --parameters enablePrivateSql=true \
+            --parameters vnetAddressSpace="10.40.0.0/16" \
+            --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
+            --parameters privateEndpointSubnetPrefix="10.40.2.0/28"
 
-    - name: Set Web App Managed Identity as SQL Admin (Dev)
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        set -e
-        INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-        RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
-        WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
-        SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
-        echo "[DEV] Ensuring web app managed identity present..."
-        for i in 1 2 3 4 5; do
-          PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
-          if [ -n "$PRINCIPAL_ID" ] && [ "$PRINCIPAL_ID" != "null" ]; then echo "[DEV] principalId: $PRINCIPAL_ID"; break; fi
-          echo "[DEV] Identity not yet available (attempt $i); assigning..."
-          az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null || true
-          sleep 6
-        done
-        if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[DEV][ERROR] Managed identity principal ID unavailable"; exit 1; fi
+      - name: Set Web App Managed Identity as SQL Admin (Dev)
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+          WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
+          SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
+          echo "[DEV] Ensuring web app managed identity present..."
+          for i in 1 2 3 4 5; do
+            PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+            if [ -n "$PRINCIPAL_ID" ] && [ "$PRINCIPAL_ID" != "null" ]; then echo "[DEV] principalId: $PRINCIPAL_ID"; break; fi
+            echo "[DEV] Identity not yet available (attempt $i); assigning..."
+            az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null || true
+            sleep 6
+          done
+          if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[DEV][ERROR] Managed identity principal ID unavailable"; exit 1; fi
 
-        echo "[DEV] Checking current SQL Entra admin..."
-        CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
-        CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
-        if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
-          echo "[DEV] Desired admin already set to MI ($CURRENT_ADMIN_LOGIN) - skipping reconfiguration."
-        else
-          if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
-            echo "[DEV] Replacing existing admin '$CURRENT_ADMIN_LOGIN' with web app MI"
-            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-            sleep 5
+          echo "[DEV] Checking current SQL Entra admin..."
+          CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+          CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+          if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
+            echo "[DEV] Desired admin already set to MI ($CURRENT_ADMIN_LOGIN) - skipping reconfiguration."
           else
-            echo "[DEV] No existing Entra admin set; creating new admin with MI"
+            if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
+              echo "[DEV] Replacing existing admin '$CURRENT_ADMIN_LOGIN' with web app MI"
+              az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+              sleep 5
+            else
+              echo "[DEV] No existing Entra admin set; creating new admin with MI"
+            fi
+            az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
           fi
-          az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
-        fi
-        get_admin_sid() {
-          local list_sid
-          list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPP_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
-          if [ -n "$list_sid" ] && [ "$list_sid" != "null" ]; then echo "$list_sid"; return; fi
-          echo ""
-        }
-        echo "[DEV] Waiting for admin propagation..."
-        sleep 8
-        PROPAGATED=false
-        for i in $(seq 1 24); do
-          ADMIN_OID=$(get_admin_sid)
-          if [ "$ADMIN_OID" = "$PRINCIPAL_ID" ]; then echo "[DEV] Admin propagation confirmed (attempt $i)"; PROPAGATED=true; break; fi
-          echo "[DEV] Admin not propagated yet (attempt $i); current='$ADMIN_OID'; sleeping 5s..."; sleep 5
-        done
-        if [ "$PROPAGATED" != "true" ]; then
-          echo "[DEV][WARN] Propagation not confirmed after initial window. Gathering diagnostics..."
-          echo "[DEV] LIST JSON:"; az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(list failed)"
-          ANY_MATCH=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?sid=='$PRINCIPAL_ID'] | length(@)" -o tsv 2>/dev/null || echo "0")
-          if [ "$ANY_MATCH" = "1" ]; then
-            echo "[DEV][INFO] Principal ID appears in admin list despite show mismatch; proceeding (eventual consistency)."
-            PROPAGATED=true
+          get_admin_sid() {
+            local list_sid
+            list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPP_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
+            if [ -n "$list_sid" ] && [ "$list_sid" != "null" ]; then echo "$list_sid"; return; fi
+            echo ""
+          }
+          echo "[DEV] Waiting for admin propagation..."
+          sleep 8
+          PROPAGATED=false
+          for i in $(seq 1 24); do
+            ADMIN_OID=$(get_admin_sid)
+            if [ "$ADMIN_OID" = "$PRINCIPAL_ID" ]; then echo "[DEV] Admin propagation confirmed (attempt $i)"; PROPAGATED=true; break; fi
+            echo "[DEV] Admin not propagated yet (attempt $i); current='$ADMIN_OID'; sleeping 5s..."; sleep 5
+          done
+          if [ "$PROPAGATED" != "true" ]; then
+            echo "[DEV][WARN] Propagation not confirmed after initial window. Gathering diagnostics..."
+            echo "[DEV] LIST JSON:"; az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(list failed)"
+            ANY_MATCH=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?sid=='$PRINCIPAL_ID'] | length(@)" -o tsv 2>/dev/null || echo "0")
+            if [ "$ANY_MATCH" = "1" ]; then
+              echo "[DEV][INFO] Principal ID appears in admin list despite show mismatch; proceeding (eventual consistency)."
+              PROPAGATED=true
+            fi
           fi
-        fi
-        FINAL_OID=$(get_admin_sid)
-        if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
-          echo "[DEV][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
-        echo "[DEV] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
+          FINAL_OID=$(get_admin_sid)
+          if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
+            echo "[DEV][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
+          echo "[DEV] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
 
-    - name: Verify Dev Infrastructure SQL Setup
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-        SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
-        DATABASE_NAME="sqldb-aistock-dev-${INSTANCE_NUM}"
-        
-        echo "🔍 Verifying SQL Server setup for dev environment..."
-        echo "SQL Server: ${SQL_SERVER_NAME}.database.windows.net"
-        echo "Database: ${DATABASE_NAME}"
-        
-        # Test basic connectivity to SQL Server
-        echo "Testing SQL Server connectivity..."
-        if az sql server show --name "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} >/dev/null 2>&1; then
-          echo "✅ SQL Server is accessible"
-          
-          # Check if database exists
-          if az sql db show --name "${DATABASE_NAME}" --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} >/dev/null 2>&1; then
-            echo "✅ Database is accessible"
-            echo "🎯 Infrastructure deployment successful - ready for application deployment"
-          else
-            echo "⚠️ Database not found - may need to be created during first app deployment"
-          fi
-        else
-          echo "❌ SQL Server not accessible - check deployment"
-          exit 1
-        fi
+      - name: Verify Dev Infrastructure SQL Setup
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
+          DATABASE_NAME="sqldb-aistock-dev-${INSTANCE_NUM}"
 
-    - name: Destroy Dev Infrastructure
-      if: github.event.inputs.destroy == 'true'
-      continue-on-error: true  # Don't fail the workflow if dev destruction has issues
-      run: |
-        RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
-        INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-        KV_NAME="kv-aistock-dev-${INSTANCE_NUM}"
-        
-        echo "=== Destroying dev infrastructure ==="
-        echo "Resource Group: $RG_NAME"
-        echo "Key Vault: $KV_NAME"
-        
-        # First, check if resource group exists
-        echo "Checking if resource group exists: $RG_NAME"
-        if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
-          echo "ℹ️ Resource group $RG_NAME not found - already deleted or never existed"
-          echo "✅ Dev infrastructure destruction completed (nothing to destroy)"
-          exit 0
-        fi
-        
-        echo "✅ Resource group found. Proceeding with destruction..."
-        
-        # Check if Key Vault exists
-        echo "Checking for Key Vault: $KV_NAME"
-        KV_EXISTS=false
-        if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-          echo "✅ Key Vault found. Will be handled after resource group deletion."
-          KV_EXISTS=true
-        else
-          echo "ℹ️ Key Vault not found or already deleted."
-        fi
-        
-        # Delete the resource group (this will soft-delete the Key Vault)
-        echo "🗑️ Deleting resource group: $RG_NAME"
-        if az group delete --name "$RG_NAME" --yes --no-wait; then
-          echo "✅ Resource group deletion initiated successfully"
-        else
-          echo "⚠️ Failed to delete resource group, but continuing..."
-          exit 0
-        fi
-        
-        # Only attempt Key Vault purge if it existed
-        if [ "$KV_EXISTS" = true ]; then
-          echo "⏳ Waiting 60 seconds for deletion to propagate..."
-          sleep 60
-          
-          echo "🔍 Checking if Key Vault is in soft-delete state..."
-          
-          # First check if the Key Vault is actually in the deleted/soft-delete state
-          DELETED_KV=$(az keyvault list-deleted --query "[?name=='$KV_NAME'].name" --output tsv 2>/dev/null || echo "")
-          
-          if [ -n "$DELETED_KV" ]; then
-            echo "🧹 Key Vault found in soft-delete state. Attempting to purge..."
+          echo "🔍 Verifying SQL Server setup for dev environment..."
+          echo "SQL Server: ${SQL_SERVER_NAME}.database.windows.net"
+          echo "Database: ${DATABASE_NAME}"
+
+          # Test basic connectivity to SQL Server
+          echo "Testing SQL Server connectivity..."
+          if az sql server show --name "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} >/dev/null 2>&1; then
+            echo "✅ SQL Server is accessible"
             
-            # Try multiple times with increasing delays
-            for attempt in 1 2 3; do
-              echo "Purge attempt $attempt/3..."
-              if az keyvault purge --name "$KV_NAME" --location "${{ github.event.inputs.location }}" >/dev/null 2>&1; then
-                echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
-                break
-              else
-                if [ $attempt -lt 3 ]; then
-                  echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
-                  sleep 30
-                else
-                  echo "⚠️ Could not purge Key Vault after 3 attempts."
-                  echo "This may happen if the Key Vault is still being processed."
-                  echo "You can manually purge it later with:"
-                  echo "az keyvault purge --name $KV_NAME --location '${{ github.event.inputs.location }}'"
-                fi
-              fi
-            done
+            # Check if database exists
+            if az sql db show --name "${DATABASE_NAME}" --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} >/dev/null 2>&1; then
+              echo "✅ Database is accessible"
+              echo "🎯 Infrastructure deployment successful - ready for application deployment"
+            else
+              echo "⚠️ Database not found - may need to be created during first app deployment"
+            fi
           else
-            echo "ℹ️ Key Vault is not in soft-delete state - no purge needed"
-            echo "This is normal if the Key Vault was already purged or if soft-delete is disabled"
+            echo "❌ SQL Server not accessible - check deployment"
+            exit 1
           fi
-        fi
-        
-        echo "✅ Dev infrastructure destruction process completed"
+
+      - name: Destroy Dev Infrastructure
+        if: github.event.inputs.destroy == 'true'
+        continue-on-error: true # Don't fail the workflow if dev destruction has issues
+        run: |
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          KV_NAME="kv-aistock-dev-${INSTANCE_NUM}"
+
+          echo "=== Destroying dev infrastructure ==="
+          echo "Resource Group: $RG_NAME"
+          echo "Key Vault: $KV_NAME"
+
+          # First, check if resource group exists
+          echo "Checking if resource group exists: $RG_NAME"
+          if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
+            echo "ℹ️ Resource group $RG_NAME not found - already deleted or never existed"
+            echo "✅ Dev infrastructure destruction completed (nothing to destroy)"
+            exit 0
+          fi
+
+          echo "✅ Resource group found. Proceeding with destruction..."
+
+          # Check if Key Vault exists
+          echo "Checking for Key Vault: $KV_NAME"
+          KV_EXISTS=false
+          if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+            echo "✅ Key Vault found. Will be handled after resource group deletion."
+            KV_EXISTS=true
+          else
+            echo "ℹ️ Key Vault not found or already deleted."
+          fi
+
+          # Delete the resource group (this will soft-delete the Key Vault)
+          echo "🗑️ Deleting resource group: $RG_NAME"
+          if az group delete --name "$RG_NAME" --yes --no-wait; then
+            echo "✅ Resource group deletion initiated successfully"
+          else
+            echo "⚠️ Failed to delete resource group, but continuing..."
+            exit 0
+          fi
+
+          # Only attempt Key Vault purge if it existed
+          if [ "$KV_EXISTS" = true ]; then
+            echo "⏳ Waiting 60 seconds for deletion to propagate..."
+            sleep 60
+            
+            echo "🔍 Checking if Key Vault is in soft-delete state..."
+            
+            # First check if the Key Vault is actually in the deleted/soft-delete state
+            DELETED_KV=$(az keyvault list-deleted --query "[?name=='$KV_NAME'].name" --output tsv 2>/dev/null || echo "")
+            
+            if [ -n "$DELETED_KV" ]; then
+              echo "🧹 Key Vault found in soft-delete state. Attempting to purge..."
+              
+              # Try multiple times with increasing delays
+              for attempt in 1 2 3; do
+                echo "Purge attempt $attempt/3..."
+                if az keyvault purge --name "$KV_NAME" --location "${{ github.event.inputs.location }}" >/dev/null 2>&1; then
+                  echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
+                  break
+                else
+                  if [ $attempt -lt 3 ]; then
+                    echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
+                    sleep 30
+                  else
+                    echo "⚠️ Could not purge Key Vault after 3 attempts."
+                    echo "This may happen if the Key Vault is still being processed."
+                    echo "You can manually purge it later with:"
+                    echo "az keyvault purge --name $KV_NAME --location '${{ github.event.inputs.location }}'"
+                  fi
+                fi
+              done
+            else
+              echo "ℹ️ Key Vault is not in soft-delete state - no purge needed"
+              echo "This is normal if the Key Vault was already purged or if soft-delete is disabled"
+            fi
+          fi
+
+          echo "✅ Dev infrastructure destruction process completed"
 
   deploy-prod:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     name: Deploy Production Infrastructure
     needs: deploy-dev
     if: github.event.inputs.environment == 'prod' && always() && (needs.deploy-dev.result == 'success' || (github.event.inputs.destroy == 'true' && needs.deploy-dev.result != 'cancelled'))
     environment: ${{ format('production-{0}', github.event.inputs.instanceNumber) }}
-    
+
     permissions:
       id-token: write
       contents: read
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Azure Login
-      uses: azure/login@v2
-      with:
-        client-id: ${{ vars.AZURE_CLIENT_ID }}
-        tenant-id: ${{ vars.AZURE_TENANT_ID }}
-        subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-    - name: Create Prod Resource Group
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
-        echo "Creating prod resource group: $RG_NAME"
-        az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
+      - name: Create Prod Resource Group
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+          echo "Creating prod resource group: $RG_NAME"
+          az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
 
-    - name: Validate Prod Bicep Template
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        az deployment group validate \
-          --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
-          --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-          --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
-          --parameters location="${{ github.event.inputs.location }}" \
-          --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
-          --parameters containerImage="ai-stock-trade-app:latest" \
-          --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
-          --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-          --parameters deployContainerRegistry=false \
-          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
-          --parameters enableAzureAdOnlyAuth=true \
-          --parameters enablePrivateSql=true \
-          --parameters vnetAddressSpace="10.41.0.0/16" \
-          --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
-          --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
+      - name: Validate Prod Bicep Template
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          az deployment group validate \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
+            --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+            --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+            --parameters location="${{ github.event.inputs.location }}" \
+            --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+            --parameters containerImage="ai-stock-trade-app:latest" \
+            --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
+            --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
+            --parameters deployContainerRegistry=false \
+            --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+            --parameters enableAzureAdOnlyAuth=true \
+            --parameters enablePrivateSql=true \
+            --parameters vnetAddressSpace="10.41.0.0/16" \
+            --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
+            --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
 
-    - name: Deploy Prod Infrastructure
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        echo "Deploying prod infrastructure WITHOUT container registry..."
-        az deployment group create \
-          --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
-          --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
-          --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
-          --parameters location="${{ github.event.inputs.location }}" \
-          --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
-          --parameters containerImage="ai-stock-trade-app:latest" \
-          --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
-          --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-          --parameters deployContainerRegistry=false \
-          --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
-          --parameters enableAzureAdOnlyAuth=true \
-          --parameters enablePrivateSql=true \
-          --parameters vnetAddressSpace="10.41.0.0/16" \
-          --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
-          --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
+      - name: Deploy Prod Infrastructure
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          echo "Deploying prod infrastructure WITHOUT container registry..."
+          az deployment group create \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
+            --template-file ./ai-stock-trade-app/infrastructure/main.bicep \
+            --parameters ./ai-stock-trade-app/infrastructure/parameters.prod.json \
+            --parameters location="${{ github.event.inputs.location }}" \
+            --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+            --parameters containerImage="ai-stock-trade-app:latest" \
+            --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
+            --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
+            --parameters deployContainerRegistry=false \
+            --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
+            --parameters enableAzureAdOnlyAuth=true \
+            --parameters enablePrivateSql=true \
+            --parameters vnetAddressSpace="10.41.0.0/16" \
+            --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
+            --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
 
-    - name: Set Web App Managed Identity as SQL Admin (Prod)
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        set -e
-        INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-        RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
-        WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
-        SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
-        echo "[PROD] Ensuring web app managed identity present..."
-        for i in 1 2 3 4 5; do
-          PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
-            if [ -n "$PRINCIPAL_ID" ] && [ "$PRINCIPAL_ID" != "null" ]; then echo "[PROD] principalId: $PRINCIPAL_ID"; break; fi
-            echo "[PROD] Identity not yet available (attempt $i); assigning..."
-            az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null || true
-            sleep 6
-        done
-        if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] Managed identity principal ID unavailable"; exit 1; fi
+      - name: Set Web App Managed Identity as SQL Admin (Prod)
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+          WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
+          SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
+          echo "[PROD] Ensuring web app managed identity present..."
+          for i in 1 2 3 4 5; do
+            PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+              if [ -n "$PRINCIPAL_ID" ] && [ "$PRINCIPAL_ID" != "null" ]; then echo "[PROD] principalId: $PRINCIPAL_ID"; break; fi
+              echo "[PROD] Identity not yet available (attempt $i); assigning..."
+              az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null || true
+              sleep 6
+          done
+          if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] Managed identity principal ID unavailable"; exit 1; fi
 
-        echo "[PROD] Checking current SQL Entra admin..."
-        CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
-        CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
-        if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
-          echo "[PROD] Desired admin already set to MI ($CURRENT_ADMIN_LOGIN)."
-          if [ "$CURRENT_ADMIN_LOGIN" != "$WEBAPP_NAME" ]; then
-            echo "[PROD] Display name mismatch ($CURRENT_ADMIN_LOGIN != $WEBAPP_NAME); normalizing..."
-            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-            sleep 5
-            az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
-          fi
-        else
-          if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
-            echo "[PROD] Existing admin '$CURRENT_ADMIN_LOGIN' (sid=$CURRENT_ADMIN_OID) differs from MI (sid=$PRINCIPAL_ID); replacing..."
-            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-            sleep 5
-          else
-            echo "[PROD] No existing Entra admin; creating new MI admin."
-          fi
-          az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
-        fi
-
-        echo "[PROD] Waiting for admin propagation..."
-        get_admin_sid_prod() {
-          local sid_any
-          sid_any=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
-          if [ -n "$sid_any" ] && [ "$sid_any" != "null" ]; then echo "$sid_any"; return; fi
-          echo ""
-        }
-        sleep 8
-        PROPAGATED=false
-        for i in $(seq 1 24); do
-          ADMIN_OID=$(get_admin_sid_prod)
-          if [ "$ADMIN_OID" = "$PRINCIPAL_ID" ]; then echo "[PROD] Admin propagation confirmed (attempt $i)"; PROPAGATED=true; break; fi
-          echo "[PROD] Admin not propagated yet (attempt $i); current='$ADMIN_OID'; sleeping 5s..."; sleep 5
-        done
-        if [ "$PROPAGATED" != "true" ]; then
-          echo "[PROD][WARN] Propagation not confirmed after initial window. Gathering diagnostics..."
-          echo "[PROD] LIST JSON:"; az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(list failed)"
-          ANY_MATCH=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?sid=='$PRINCIPAL_ID'] | length(@)" -o tsv 2>/dev/null || echo "0")
-          if [ "$ANY_MATCH" = "1" ]; then
-            echo "[PROD][INFO] Principal ID appears in admin list despite show mismatch; proceeding (eventual consistency)."
-            PROPAGATED=true
-          fi
-        fi
-        FINAL_OID=$(get_admin_sid_prod)
-        if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
-          echo "[PROD][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
-        echo "[PROD] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
-
-    - name: Verify Prod Infrastructure SQL Setup
-      if: github.event.inputs.destroy != 'true'
-      run: |
-        INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-        SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
-        DATABASE_NAME="sqldb-aistock-prod-${INSTANCE_NUM}"
-        
-        echo "🔍 Verifying SQL Server setup for production environment..."
-        echo "SQL Server: ${SQL_SERVER_NAME}.database.windows.net"
-        echo "Database: ${DATABASE_NAME}"
-        
-        # Test basic connectivity to SQL Server
-        echo "Testing SQL Server connectivity..."
-        if az sql server show --name "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} >/dev/null 2>&1; then
-          echo "✅ SQL Server is accessible"
-          
-          # Check if database exists
-          if az sql db show --name "${DATABASE_NAME}" --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} >/dev/null 2>&1; then
-            echo "✅ Database is accessible"
-            
-            # For production, also verify Azure AD configuration
-            echo "🔐 Checking Azure AD configuration..."
-            AD_ADMIN=$(az sql server ad-admin list --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} --query '[0].login' --output tsv 2>/dev/null || echo "")
-            if [ -n "$AD_ADMIN" ] && [ "$AD_ADMIN" != "null" ]; then
-              echo "✅ Azure AD admin configured: $AD_ADMIN"
-              echo "🎯 Production infrastructure deployment successful - ready for application deployment"
-              echo ""
-              echo "📋 Next steps for application deployment:"
-              echo "   1. CI/CD pipeline will automatically create managed identity SQL user"
-              echo "   2. Application will use Azure AD authentication to connect"
-              echo "   3. Health checks should pass automatically"
-            else
-              echo "⚠️ Azure AD admin not configured - using SQL authentication"
-              echo "🎯 Infrastructure deployment successful - ready for application deployment"
+          echo "[PROD] Checking current SQL Entra admin..."
+          CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+          CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+          if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
+            echo "[PROD] Desired admin already set to MI ($CURRENT_ADMIN_LOGIN)."
+            if [ "$CURRENT_ADMIN_LOGIN" != "$WEBAPP_NAME" ]; then
+              echo "[PROD] Display name mismatch ($CURRENT_ADMIN_LOGIN != $WEBAPP_NAME); normalizing..."
+              az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+              sleep 5
+              az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
             fi
           else
-            echo "⚠️ Database not found - may need to be created during first app deployment"
+            if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
+              echo "[PROD] Existing admin '$CURRENT_ADMIN_LOGIN' (sid=$CURRENT_ADMIN_OID) differs from MI (sid=$PRINCIPAL_ID); replacing..."
+              az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+              sleep 5
+            else
+              echo "[PROD] No existing Entra admin; creating new MI admin."
+            fi
+            az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
           fi
-        else
-          echo "❌ SQL Server not accessible - check deployment"
-          exit 1
-        fi
 
-    - name: Destroy Prod Infrastructure
-      if: github.event.inputs.destroy == 'true'
-      run: |
-        RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
-        INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-        KV_NAME="kv-aistock-prod-${INSTANCE_NUM}"
-        
-        echo "=== Destroying prod infrastructure ==="
-        echo "Resource Group: $RG_NAME"
-        echo "Key Vault: $KV_NAME"
-        
-        # First, check if resource group exists
-        echo "Checking if resource group exists: $RG_NAME"
-        if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
-          echo "ℹ️ Resource group $RG_NAME not found - already deleted or never existed"
-          echo "✅ Prod infrastructure destruction completed (nothing to destroy)"
-          exit 0
-        fi
-        
-        echo "✅ Resource group found. Proceeding with destruction..."
-        
-        # Check if Key Vault exists
-        echo "Checking for Key Vault: $KV_NAME"
-        KV_EXISTS=false
-        if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-          echo "✅ Key Vault found. Will be handled after resource group deletion."
-          KV_EXISTS=true
-        else
-          echo "ℹ️ Key Vault not found or already deleted."
-        fi
-        
-        # Delete the resource group (this will soft-delete the Key Vault)
-        echo "🗑️ Deleting resource group: $RG_NAME"
-        if az group delete --name "$RG_NAME" --yes --no-wait; then
-          echo "✅ Resource group deletion initiated successfully"
-        else
-          echo "⚠️ Failed to delete resource group, but continuing..."
-          exit 0
-        fi
-        
-        # Only attempt Key Vault purge if it existed
-        if [ "$KV_EXISTS" = true ]; then
-          echo "⏳ Waiting 60 seconds for deletion to propagate..."
-          sleep 60
-          
-          echo "🔍 Checking if Key Vault is in soft-delete state..."
-          
-          # First check if the Key Vault is actually in the deleted/soft-delete state
-          DELETED_KV=$(az keyvault list-deleted --query "[?name=='$KV_NAME'].name" --output tsv 2>/dev/null || echo "")
-          
-          if [ -n "$DELETED_KV" ]; then
-            echo "🧹 Key Vault found in soft-delete state. Attempting to purge..."
-            
-            # Try multiple times with increasing delays
-            for attempt in 1 2 3; do
-              echo "Purge attempt $attempt/3..."
-              if az keyvault purge --name "$KV_NAME" --location "${{ github.event.inputs.location }}" >/dev/null 2>&1; then
-                echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
-                break
-              else
-                if [ $attempt -lt 3 ]; then
-                  echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
-                  sleep 30
-                else
-                  echo "⚠️ Could not purge Key Vault after 3 attempts."
-                  echo "This may happen if the Key Vault is still being processed."
-                  echo "You can manually purge it later with:"
-                  echo "az keyvault purge --name $KV_NAME --location '${{ github.event.inputs.location }}'"
-                fi
-              fi
-            done
-          else
-            echo "ℹ️ Key Vault is not in soft-delete state - no purge needed"
-            echo "This is normal if the Key Vault was already purged or if soft-delete is disabled"
+          echo "[PROD] Waiting for admin propagation..."
+          get_admin_sid_prod() {
+            local sid_any
+            sid_any=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+            if [ -n "$sid_any" ] && [ "$sid_any" != "null" ]; then echo "$sid_any"; return; fi
+            echo ""
+          }
+          sleep 8
+          PROPAGATED=false
+          for i in $(seq 1 24); do
+            ADMIN_OID=$(get_admin_sid_prod)
+            if [ "$ADMIN_OID" = "$PRINCIPAL_ID" ]; then echo "[PROD] Admin propagation confirmed (attempt $i)"; PROPAGATED=true; break; fi
+            echo "[PROD] Admin not propagated yet (attempt $i); current='$ADMIN_OID'; sleeping 5s..."; sleep 5
+          done
+          if [ "$PROPAGATED" != "true" ]; then
+            echo "[PROD][WARN] Propagation not confirmed after initial window. Gathering diagnostics..."
+            echo "[PROD] LIST JSON:"; az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json || echo "(list failed)"
+            ANY_MATCH=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?sid=='$PRINCIPAL_ID'] | length(@)" -o tsv 2>/dev/null || echo "0")
+            if [ "$ANY_MATCH" = "1" ]; then
+              echo "[PROD][INFO] Principal ID appears in admin list despite show mismatch; proceeding (eventual consistency)."
+              PROPAGATED=true
+            fi
           fi
-        fi
-        
-        echo "✅ Prod infrastructure destruction process completed"
+          FINAL_OID=$(get_admin_sid_prod)
+          if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
+            echo "[PROD][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
+          echo "[PROD] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
+
+      - name: Verify Prod Infrastructure SQL Setup
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
+          DATABASE_NAME="sqldb-aistock-prod-${INSTANCE_NUM}"
+
+          echo "🔍 Verifying SQL Server setup for production environment..."
+          echo "SQL Server: ${SQL_SERVER_NAME}.database.windows.net"
+          echo "Database: ${DATABASE_NAME}"
+
+          # Test basic connectivity to SQL Server
+          echo "Testing SQL Server connectivity..."
+          if az sql server show --name "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} >/dev/null 2>&1; then
+            echo "✅ SQL Server is accessible"
+            
+            # Check if database exists
+            if az sql db show --name "${DATABASE_NAME}" --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} >/dev/null 2>&1; then
+              echo "✅ Database is accessible"
+              
+              # For production, also verify Azure AD configuration
+              echo "🔐 Checking Azure AD configuration..."
+              AD_ADMIN=$(az sql server ad-admin list --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} --query '[0].login' --output tsv 2>/dev/null || echo "")
+              if [ -n "$AD_ADMIN" ] && [ "$AD_ADMIN" != "null" ]; then
+                echo "✅ Azure AD admin configured: $AD_ADMIN"
+                echo "🎯 Production infrastructure deployment successful - ready for application deployment"
+                echo ""
+                echo "📋 Next steps for application deployment:"
+                echo "   1. CI/CD pipeline will automatically create managed identity SQL user"
+                echo "   2. Application will use Azure AD authentication to connect"
+                echo "   3. Health checks should pass automatically"
+              else
+                echo "⚠️ Azure AD admin not configured - using SQL authentication"
+                echo "🎯 Infrastructure deployment successful - ready for application deployment"
+              fi
+            else
+              echo "⚠️ Database not found - may need to be created during first app deployment"
+            fi
+          else
+            echo "❌ SQL Server not accessible - check deployment"
+            exit 1
+          fi
+
+      - name: Destroy Prod Infrastructure
+        if: github.event.inputs.destroy == 'true'
+        run: |
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          KV_NAME="kv-aistock-prod-${INSTANCE_NUM}"
+
+          echo "=== Destroying prod infrastructure ==="
+          echo "Resource Group: $RG_NAME"
+          echo "Key Vault: $KV_NAME"
+
+          # First, check if resource group exists
+          echo "Checking if resource group exists: $RG_NAME"
+          if ! az group show --name "$RG_NAME" >/dev/null 2>&1; then
+            echo "ℹ️ Resource group $RG_NAME not found - already deleted or never existed"
+            echo "✅ Prod infrastructure destruction completed (nothing to destroy)"
+            exit 0
+          fi
+
+          echo "✅ Resource group found. Proceeding with destruction..."
+
+          # Check if Key Vault exists
+          echo "Checking for Key Vault: $KV_NAME"
+          KV_EXISTS=false
+          if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+            echo "✅ Key Vault found. Will be handled after resource group deletion."
+            KV_EXISTS=true
+          else
+            echo "ℹ️ Key Vault not found or already deleted."
+          fi
+
+          # Delete the resource group (this will soft-delete the Key Vault)
+          echo "🗑️ Deleting resource group: $RG_NAME"
+          if az group delete --name "$RG_NAME" --yes --no-wait; then
+            echo "✅ Resource group deletion initiated successfully"
+          else
+            echo "⚠️ Failed to delete resource group, but continuing..."
+            exit 0
+          fi
+
+          # Only attempt Key Vault purge if it existed
+          if [ "$KV_EXISTS" = true ]; then
+            echo "⏳ Waiting 60 seconds for deletion to propagate..."
+            sleep 60
+            
+            echo "🔍 Checking if Key Vault is in soft-delete state..."
+            
+            # First check if the Key Vault is actually in the deleted/soft-delete state
+            DELETED_KV=$(az keyvault list-deleted --query "[?name=='$KV_NAME'].name" --output tsv 2>/dev/null || echo "")
+            
+            if [ -n "$DELETED_KV" ]; then
+              echo "🧹 Key Vault found in soft-delete state. Attempting to purge..."
+              
+              # Try multiple times with increasing delays
+              for attempt in 1 2 3; do
+                echo "Purge attempt $attempt/3..."
+                if az keyvault purge --name "$KV_NAME" --location "${{ github.event.inputs.location }}" >/dev/null 2>&1; then
+                  echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
+                  break
+                else
+                  if [ $attempt -lt 3 ]; then
+                    echo "⏳ Attempt $attempt failed. Waiting 30 seconds before retry..."
+                    sleep 30
+                  else
+                    echo "⚠️ Could not purge Key Vault after 3 attempts."
+                    echo "This may happen if the Key Vault is still being processed."
+                    echo "You can manually purge it later with:"
+                    echo "az keyvault purge --name $KV_NAME --location '${{ github.event.inputs.location }}'"
+                  fi
+                fi
+              done
+            else
+              echo "ℹ️ Key Vault is not in soft-delete state - no purge needed"
+              echo "This is normal if the Key Vault was already purged or if soft-delete is disabled"
+            fi
+          fi
+
+          echo "✅ Prod infrastructure destruction process completed"
 
   deployment-summary:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     name: Deployment Summary
     needs: [deploy-dev, deploy-prod]
     if: always() && github.event.inputs.destroy != 'true'
-    
+
     steps:
-    - name: Generate Summary
-      run: |
-        echo "## Infrastructure Deployment Summary" >> $GITHUB_STEP_SUMMARY
-        echo "- **Environment Requested**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Instance Number**: ${{ github.event.inputs.instanceNumber }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Location**: ${{ github.event.inputs.location }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        if [ "${{ needs.deploy-dev.result }}" == "success" ]; then
-          echo "✅ **Dev Infrastructure**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
-          echo "- **Dev Resource Group**: ${{ env.AZURE_RESOURCE_GROUP_DEV }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Dev Web App**: https://app-aistock-dev-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
-          echo "- **Container Registry**: Deployed in dev environment (shared with prod)" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "❌ **Dev Infrastructure**: ${{ needs.deploy-dev.result }}" >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
-          if [ "${{ needs.deploy-prod.result }}" == "success" ]; then
-            echo "✅ **Prod Infrastructure**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
-            echo "- **Prod Resource Group**: ${{ env.AZURE_RESOURCE_GROUP_PROD }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Prod Web App**: https://app-aistock-prod-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
-            echo "- **Container Registry**: Uses shared registry from dev environment" >> $GITHUB_STEP_SUMMARY
+      - name: Generate Summary
+        run: |
+          echo "## Infrastructure Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment Requested**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Instance Number**: ${{ github.event.inputs.instanceNumber }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Location**: ${{ github.event.inputs.location }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.deploy-dev.result }}" == "success" ]; then
+            echo "✅ **Dev Infrastructure**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "- **Dev Resource Group**: ${{ env.AZURE_RESOURCE_GROUP_DEV }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Dev Web App**: https://app-aistock-dev-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+            echo "- **Container Registry**: Deployed in dev environment (shared with prod)" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ **Prod Infrastructure**: ${{ needs.deploy-prod.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Dev Infrastructure**: ${{ needs.deploy-dev.result }}" >> $GITHUB_STEP_SUMMARY
           fi
-        fi
+
+          if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+            if [ "${{ needs.deploy-prod.result }}" == "success" ]; then
+              echo "✅ **Prod Infrastructure**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
+              echo "- **Prod Resource Group**: ${{ env.AZURE_RESOURCE_GROUP_PROD }}" >> $GITHUB_STEP_SUMMARY
+              echo "- **Prod Web App**: https://app-aistock-prod-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+              echo "- **Container Registry**: Uses shared registry from dev environment" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ **Prod Infrastructure**: ${{ needs.deploy-prod.result }}" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
