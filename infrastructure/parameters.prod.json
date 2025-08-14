@@ -17,6 +17,9 @@
     "containerImage": {
       "value": "ai-stock-trade-app:latest"
     },
+    "enablePrivateKeyVault": {
+      "value": true
+    },
     "sqlAdminUsername": {
       "value": "sqladmin"
     }

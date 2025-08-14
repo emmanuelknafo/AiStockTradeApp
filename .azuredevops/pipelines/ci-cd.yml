@@ -996,7 +996,7 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./infrastructure/main.bicep"
                     csmParametersFile: "./infrastructure/parameters.dev.json"
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -appVersion $(appVersion) -enableAzureAdOnlyAuth true -enablePrivateSql true -manageNetworking false"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -appVersion $(appVersion) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
@@ -1231,7 +1231,7 @@ stages:
                     csmParametersFile: "./infrastructure/parameters.prod.json"
                     # Use containerImage variable if provided; prefer GitVersion FullSemVer tag if available
                     # containerImage variable expected to be ai-stock-trade-app:<tag>
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth true -enablePrivateSql true -manageNetworking false -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)' -appVersion $(appVersion)"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)' -appVersion $(appVersion)"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2

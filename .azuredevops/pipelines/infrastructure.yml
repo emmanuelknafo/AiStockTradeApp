@@ -93,6 +93,7 @@ stages:
                         --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
                         --parameters enableAzureAdOnlyAuth=true \
                         --parameters enablePrivateSql=true \
+                        --parameters enablePrivateKeyVault=true \
                         --parameters vnetAddressSpace="10.60.0.0/16" \
                         --parameters appIntegrationSubnetPrefix="10.60.1.0/27" \
                         --parameters privateEndpointSubnetPrefix="10.60.2.0/28"
@@ -118,6 +119,7 @@ stages:
                         --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
                         --parameters enableAzureAdOnlyAuth=true \
                         --parameters enablePrivateSql=true \
+                        --parameters enablePrivateKeyVault=true \
                         --parameters vnetAddressSpace="10.60.0.0/16" \
                         --parameters appIntegrationSubnetPrefix="10.60.1.0/27" \
                         --parameters privateEndpointSubnetPrefix="10.60.2.0/28"
@@ -360,6 +362,7 @@ stages:
                         --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
                         --parameters enableAzureAdOnlyAuth=true \
                         --parameters enablePrivateSql=true \
+                        --parameters enablePrivateKeyVault=true \
                         --parameters vnetAddressSpace="10.61.0.0/16" \
                         --parameters appIntegrationSubnetPrefix="10.61.1.0/27" \
                         --parameters privateEndpointSubnetPrefix="10.61.2.0/28"
@@ -386,6 +389,7 @@ stages:
                         --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
                         --parameters enableAzureAdOnlyAuth=true \
                         --parameters enablePrivateSql=true \
+                        --parameters enablePrivateKeyVault=true \
                         --parameters vnetAddressSpace="10.61.0.0/16" \
                         --parameters appIntegrationSubnetPrefix="10.61.1.0/27" \
                         --parameters privateEndpointSubnetPrefix="10.61.2.0/28"

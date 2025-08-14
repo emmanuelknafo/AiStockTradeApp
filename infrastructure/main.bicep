@@ -55,6 +55,9 @@ param enablePrivateSql bool = true
 @description('If false, networking resources (VNet, subnets, private endpoint, DNS) are not created/updated. Use in app-only CI/CD to avoid touching in-use subnets.')
 param manageNetworking bool = true
 
+@description('Enable private endpoint for Azure Key Vault and disable public network access (recommended if org policy blocks public access).')
+param enablePrivateKeyVault bool = true
+
 @description('Address space for the virtual network (only used when enablePrivateSql = true)')
 param vnetAddressSpace string = '10.20.0.0/16'
 
@@ -66,6 +69,9 @@ param privateEndpointSubnetPrefix string = '10.20.2.0/28'
 
 @description('Private DNS zone name for Azure SQL private endpoints (override for sovereign clouds). Default derived from sqlServerHostname suffix (handles leading dot).')
 param privateSqlPrivateDnsZoneName string = 'privatelink${az.environment().suffixes.sqlServerHostname}'
+
+@description('Private DNS zone name for Azure Key Vault private endpoints.')
+param privateKvPrivateDnsZoneName string = 'privatelink.vaultcore.azure.net'
 
 // Variables
 var resourceNamePrefix = '${appName}-${environment}'
@@ -83,9 +89,12 @@ var privateEndpointSubnetName = 'snet-private-endpoints'
 // Use Azure AD auth only if explicitly enabled AND admin values provided
 var useAzureAdAuth = enableAzureAdOnlyAuth && !empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin)
 
+// Whether any private networking is required for the app
+var requireVNetIntegration = enablePrivateSql || enablePrivateKeyVault
+
 // Validate that when private SQL is enabled we are not using a Basic plan (Basic does not support VNet integration)
-@sys.description('Ensure App Service Plan SKU supports VNet integration when enablePrivateSql is true')
-var appServicePlanSkuEffective = enablePrivateSql && toLower(appServicePlanSku) == 'b1' ? 'S1' : appServicePlanSku
+@sys.description('Ensure App Service Plan SKU supports VNet integration when private networking is enabled and we are managing networking')
+var appServicePlanSkuEffective = (requireVNetIntegration && manageNetworking && toLower(appServicePlanSku) == 'b1') ? 'S1' : appServicePlanSku
 
 // Log Analytics Workspace
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
@@ -134,6 +143,11 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
     tenantId: subscription().tenantId
     enabledForTemplateDeployment: true
     enableRbacAuthorization: true
+    ...(manageNetworking
+      ? {
+          publicNetworkAccess: enablePrivateKeyVault ? 'Disabled' : 'Enabled'
+        }
+      : {})
   }
 }
 
@@ -152,7 +166,11 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
           administratorLoginPassword: sqlAdminPassword
         })
     version: '12.0'
-    publicNetworkAccess: enablePrivateSql ? 'Disabled' : 'Enabled'
+    ...(manageNetworking
+      ? {
+          publicNetworkAccess: enablePrivateSql ? 'Disabled' : 'Enabled'
+        }
+      : {})
   }
 }
 
@@ -185,7 +203,7 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2024-11-01-preview' = {
 }
 
 // SQL Server Firewall Rule for Azure Services
-resource sqlServerFirewallRuleAzure 'Microsoft.Sql/servers/firewallRules@2024-11-01-preview' = if (!enablePrivateSql) {
+resource sqlServerFirewallRuleAzure 'Microsoft.Sql/servers/firewallRules@2024-11-01-preview' = if (!enablePrivateSql && manageNetworking) {
   parent: sqlServer
   name: 'AllowAzureServices'
   properties: {
@@ -245,7 +263,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     // Attach to VNet integration subnet when private SQL enabled
-    ...(enablePrivateSql
+  ...(requireVNetIntegration && manageNetworking
       ? {
           virtualNetworkSubnetId: resourceId(
             'Microsoft.Network/virtualNetworks/subnets',
@@ -320,7 +338,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
 }
 
 // Networking (only when private SQL requested)
-resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = if (enablePrivateSql && manageNetworking) {
+resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = if (requireVNetIntegration && manageNetworking) {
   name: vnetName
   location: location
   properties: {
@@ -413,6 +431,61 @@ resource sqlPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZo
   }
 }
 
+// Private DNS Zone for Key Vault
+resource privateDnsZoneKv 'Microsoft.Network/privateDnsZones@2024-06-01' = if (enablePrivateKeyVault && manageNetworking) {
+  name: privateKvPrivateDnsZoneName
+  location: 'global'
+}
+
+// Link VNet to Key Vault Private DNS Zone
+resource privateDnsVnetLinkKv 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (enablePrivateKeyVault && manageNetworking) {
+  name: 'vnet-link-kv'
+  parent: privateDnsZoneKv
+  location: 'global'
+  properties: {
+    virtualNetwork: {
+      id: vnet.id
+    }
+    registrationEnabled: false
+  }
+}
+
+// Private Endpoint for Key Vault
+resource keyVaultPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if (enablePrivateKeyVault && manageNetworking) {
+  name: 'pe-${keyVaultName}'
+  location: location
+  properties: {
+    subnet: {
+      id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, privateEndpointSubnetName)
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'plsc-kv'
+        properties: {
+          groupIds: ['vault']
+          privateLinkServiceId: keyVault.id
+        }
+      }
+    ]
+  }
+}
+
+// Associate Key Vault Private Endpoint with DNS Zone
+resource keyVaultPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = if (enablePrivateKeyVault && manageNetworking) {
+  name: 'pdzg-kv'
+  parent: keyVaultPrivateEndpoint
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'config'
+        properties: {
+          privateDnsZoneId: privateDnsZoneKv.id
+        }
+      }
+    ]
+  }
+}
+
 // Grant Key Vault access to Web App
 resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: keyVault
@@ -447,5 +520,5 @@ output containerRegistryLoginServer string = deployContainerRegistry
   : 'not-deployed'
 output keyVaultName string = keyVault.name
 output applicationInsightsName string = applicationInsights.name
-output vnetName string = enablePrivateSql ? vnetName : 'not-deployed'
+output vnetName string = (requireVNetIntegration && manageNetworking) ? vnetName : 'not-deployed'
 output privateSqlEnabled bool = enablePrivateSql

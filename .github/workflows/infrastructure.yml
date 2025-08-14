@@ -75,6 +75,7 @@ jobs:
             --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
+            --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.40.0.0/16" \
             --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
             --parameters privateEndpointSubnetPrefix="10.40.2.0/28"
@@ -95,6 +96,7 @@ jobs:
             --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
+            --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.40.0.0/16" \
             --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
             --parameters privateEndpointSubnetPrefix="10.40.2.0/28"
@@ -313,6 +315,7 @@ jobs:
             --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
+            --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.41.0.0/16" \
             --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
             --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
@@ -334,6 +337,7 @@ jobs:
             --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
+            --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.41.0.0/16" \
             --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
             --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
