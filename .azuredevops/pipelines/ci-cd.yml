@@ -1018,7 +1018,7 @@ stages:
                       echo "[DEV] Web App MI: $MI_PRINCIPAL_ID"; echo "[DEV] Current admin login: $CURR_LOGIN"; echo "[DEV] Current admin sid: $CURR_SID"
                       if [ "$CURR_SID" != "$MI_PRINCIPAL_ID" ]; then
                         echo "[DEV] Mismatch detected; updating SQL AD admin to MI..."
-                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --yes || true
+                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
                         az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$MI_PRINCIPAL_ID"
                       else
                         echo "[DEV] Already correct; no change needed."
@@ -1253,7 +1253,7 @@ stages:
                       echo "[PROD] Web App MI: $MI_PRINCIPAL_ID"; echo "[PROD] Current admin login: $CURR_LOGIN"; echo "[PROD] Current admin sid: $CURR_SID"
                       if [ "$CURR_SID" != "$MI_PRINCIPAL_ID" ]; then
                         echo "[PROD] Mismatch detected; updating SQL AD admin to MI..."
-                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --yes || true
+                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
                         az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$MI_PRINCIPAL_ID"
                       else
                         echo "[PROD] Already correct; no change needed."
