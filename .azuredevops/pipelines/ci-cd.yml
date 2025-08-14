@@ -186,16 +186,32 @@ stages:
               arguments: "--no-restore --configuration Release"
 
           - script: |
-              # Wait for SQL Server to be ready
-              echo "Waiting for SQL Server to start..."
-              for i in {1..30}; do
-                if sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -Q "SELECT 1" >/dev/null 2>&1; then
-                  echo "SQL Server is ready"
+              set -e
+              echo "Waiting for SQL Server (container) to start and open port 1433..."
+              echo "Docker ps (first 5):"
+              docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}" | head -5 || true
+
+              READY=0
+              for i in $(seq 1 60); do
+                if timeout 1 bash -c ">/dev/tcp/127.0.0.1/1433" 2>/dev/null; then
+                  echo "Port 1433 is open (attempt $i)."
+                  READY=1
                   break
                 fi
-                echo "Waiting for SQL Server... ($i/30)"
+                echo "Waiting for SQL Server port... ($i/60)"
                 sleep 2
               done
+
+              if [ "$READY" -ne 1 ]; then
+                echo "SQL Server port did not open in time. Dumping container logs..."
+                CID=$(docker ps -a --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest" --format "{{.ID}}" | head -1)
+                [ -n "$CID" ] && echo "Container ID: $CID" && docker logs "$CID" --tail 200 || echo "No SQL container found"
+                exit 1
+              fi
+
+              # Give SQL a few more seconds to finish initialization after port opens
+              sleep 15
+              echo "SQL Server ready."
             displayName: "Wait for SQL Server to start"
 
           # Removed EF Core database update: migrations will run at application startup in deployed environment
@@ -383,16 +399,32 @@ stages:
               arguments: "install --global dotnet-ef"
 
           - script: |
-              # Wait for SQL Server to be ready
-              echo "Waiting for SQL Server to start..."
-              for i in {1..30}; do
-                if sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -Q "SELECT 1" >/dev/null 2>&1; then
-                  echo "SQL Server is ready"
+              set -e
+              echo "Waiting for SQL Server (container) to start and open port 1433..."
+              echo "Docker ps (first 5):"
+              docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}" | head -5 || true
+
+              READY=0
+              for i in $(seq 1 60); do
+                if timeout 1 bash -c ">/dev/tcp/127.0.0.1/1433" 2>/dev/null; then
+                  echo "Port 1433 is open (attempt $i)."
+                  READY=1
                   break
                 fi
-                echo "Waiting for SQL Server... ($i/30)"
+                echo "Waiting for SQL Server port... ($i/60)"
                 sleep 2
               done
+
+              if [ "$READY" -ne 1 ]; then
+                echo "SQL Server port did not open in time. Dumping container logs..."
+                CID=$(docker ps -a --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest" --format "{{.ID}}" | head -1)
+                [ -n "$CID" ] && echo "Container ID: $CID" && docker logs "$CID" --tail 200 || echo "No SQL container found"
+                exit 1
+              fi
+
+              # Give SQL a few more seconds to finish initialization after port opens
+              sleep 15
+              echo "SQL Server ready."
             displayName: "Wait for SQL Server to start"
 
           # Removed EF Core database update for UI tests: app handles migrations on startup (post-deployment)
