@@ -82,6 +82,8 @@ jobs:
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
+            --parameters sqlAdministratorLogin="${{ secrets.AZURE_SQL_TEMP_ADMIN_LOGIN }}" \
+            --parameters sqlAdministratorPassword="${{ secrets.AZURE_SQL_TEMP_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
@@ -112,6 +114,8 @@ jobs:
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
+            --parameters sqlAdministratorLogin="${{ secrets.AZURE_SQL_TEMP_ADMIN_LOGIN }}" \
+            --parameters sqlAdministratorPassword="${{ secrets.AZURE_SQL_TEMP_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
@@ -379,6 +383,8 @@ jobs:
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \
+            --parameters sqlAdministratorLogin="${{ secrets.AZURE_SQL_TEMP_ADMIN_LOGIN }}" \
+            --parameters sqlAdministratorPassword="${{ secrets.AZURE_SQL_TEMP_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
@@ -410,6 +416,8 @@ jobs:
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \
+            --parameters sqlAdministratorLogin="${{ secrets.AZURE_SQL_TEMP_ADMIN_LOGIN }}" \
+            --parameters sqlAdministratorPassword="${{ secrets.AZURE_SQL_TEMP_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \

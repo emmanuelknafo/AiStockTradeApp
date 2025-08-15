@@ -47,6 +47,13 @@ param azureAdAdminLogin string = ''
 @description('Whether to enable Azure AD only authentication (required for some subscriptions)')
 param enableAzureAdOnlyAuth bool = false
 
+@description('Temporary SQL administrator login for initial server creation (SQL auth will be disabled when enableAzureAdOnlyAuth = true). Provide via pipeline; do not store in files.')
+param sqlAdministratorLogin string = ''
+
+@description('Temporary SQL administrator password for initial server creation (SQL auth will be disabled when enableAzureAdOnlyAuth = true). Provide via pipeline; do not store in files.')
+@secure()
+param sqlAdministratorPassword string = ''
+
 @description('Enable private endpoint for Azure SQL and disable public network access (requires App Service Plan SKU that supports VNet integration e.g. S1 or above). When true, a VNet, subnets, private endpoint and DNS zone are provisioned.')
 param enablePrivateSql bool = true
 
@@ -86,6 +93,11 @@ var vnetName = 'vnet-${resourceNamePrefix}-${instanceNumber}'
 var appIntegrationSubnetName = 'snet-appintegration'
 var privateEndpointSubnetName = 'snet-private-endpoints'
 // Entra-only: Always use Azure AD auth for connection strings.
+
+// Defaults for temporary SQL admin when not provided
+var defaultSqlAdminLogin = 'tempSqlAdmin'
+// Build a password with upper, lower, digits, and special chars; deterministic per RG/env/instance
+var defaultSqlAdminPassword = '${toUpper(substring(uniqueString(resourceGroup().id, appName, environment, instanceNumber), 0, 6))}!${uniqueString(resourceGroup().id, 'sql', instanceNumber)}a1@'
 
 // Whether any private networking is required for the app
 var requireVNetIntegration = enablePrivateSql || enablePrivateKeyVault
@@ -158,11 +170,24 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
   }
   properties: {
     version: '12.0'
+  // Although we operate Entra-only, Azure SQL requires a SQL admin at creation time.
+  // If none provided, use safe defaults; SQL auth is disabled post-deploy when enableAzureAdOnlyAuth = true.
+  administratorLogin: empty(sqlAdministratorLogin) ? defaultSqlAdminLogin : sqlAdministratorLogin
+  administratorLoginPassword: empty(sqlAdministratorPassword) ? defaultSqlAdminPassword : sqlAdministratorPassword
     ...(manageNetworking
       ? {
           publicNetworkAccess: enablePrivateSql ? 'Disabled' : 'Enabled'
         }
       : {})
+  }
+}
+
+// Enforce Azure AD-only authentication when requested
+resource sqlServerAadOnly 'Microsoft.Sql/servers/azureADOnlyAuthentications@2021-11-01' = {
+  parent: sqlServer
+  name: 'Default'
+  properties: {
+    azureADOnlyAuthentication: enableAzureAdOnlyAuth
   }
 }
 
