@@ -63,6 +63,15 @@ jobs:
       - name: Validate Dev Bicep Template
         if: github.event.inputs.destroy != 'true'
         run: |
+          # Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+          SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
+          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+            echo "[DEV] Cleaning any lingering AAD admin before validate..."
+            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+          fi
+
           az deployment group validate \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
             --template-file ./infrastructure/main.bicep \
@@ -83,6 +92,15 @@ jobs:
       - name: Deploy Dev Infrastructure
         if: github.event.inputs.destroy != 'true'
         run: |
+          # Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+          SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
+          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+            echo "[DEV] Cleaning any lingering AAD admin before deploy..."
+            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+          fi
+
           echo "Deploying dev infrastructure with container registry..."
           az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
@@ -341,6 +359,15 @@ jobs:
       - name: Validate Prod Bicep Template
         if: github.event.inputs.destroy != 'true'
         run: |
+          # Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+          SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
+          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+            echo "[PROD] Cleaning any lingering AAD admin before validate..."
+            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+          fi
+
           az deployment group validate \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
             --template-file ./infrastructure/main.bicep \
@@ -362,6 +389,15 @@ jobs:
       - name: Deploy Prod Infrastructure
         if: github.event.inputs.destroy != 'true'
         run: |
+          # Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+          SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
+          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+            echo "[PROD] Cleaning any lingering AAD admin before deploy..."
+            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+          fi
+
           echo "Deploying prod infrastructure WITHOUT container registry..."
           az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \

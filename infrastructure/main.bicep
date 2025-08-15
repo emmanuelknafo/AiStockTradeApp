@@ -153,6 +153,9 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
 resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
   name: sqlServerName
   location: location
+  tags: {
+    aadOnlyAuth: string(enableAzureAdOnlyAuth)
+  }
   properties: {
     version: '12.0'
     ...(manageNetworking
@@ -175,19 +178,8 @@ resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2024-11-01-
   }
 }
 
-// Fallback: When Entra-only auth is enabled but no explicit admin values are provided,
-// set the SQL AD admin to the API Web App's managed identity so the server can be created.
-// This preserves the "Entra-only" stance without needing SQL logins.
-resource sqlServerAzureAdAdminAuto 'Microsoft.Sql/servers/administrators@2024-11-01-preview' = if (enableAzureAdOnlyAuth && (empty(azureAdAdminObjectId) || empty(azureAdAdminLogin))) {
-  parent: sqlServer
-  name: 'ActiveDirectory'
-  properties: {
-    administratorType: 'ActiveDirectory'
-    login: webApiName
-    sid: webApi.identity.principalId
-    tenantId: subscription().tenantId
-  }
-}
+// NOTE: We no longer auto-assign the SQL AAD admin in ARM to avoid timing/conflict issues.
+// The pipelines assign the Web/App MI as SQL AAD admin after the server exists via CLI.
 
 // SQL Database
 resource sqlDatabase 'Microsoft.Sql/servers/databases@2024-11-01-preview' = {

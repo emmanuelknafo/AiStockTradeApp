@@ -74,6 +74,24 @@ stages:
                       az group create --name "$RG_NAME" --location "${{ parameters.location }}"
 
                 - task: AzureCLI@2
+                  displayName: "Preflight: Clean SQL AAD admin (Dev)"
+                  condition: ne('${{ parameters.destroy }}', true)
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      set -e
+                      RG_NAME="$(azureResourceGroupDev)"
+                      SQL_SERVER_NAME="sql-aistock-dev-${{ parameters.instanceNumber }}"
+                      if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+                        echo "[DEV] Server exists; removing any lingering AAD admin..."
+                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                      else
+                        echo "[DEV] Server not present yet; nothing to clean."
+                      fi
+
+                - task: AzureCLI@2
                   displayName: "Validate Dev Bicep Template"
                   condition: ne('${{ parameters.destroy }}', true)
                   inputs:
@@ -340,6 +358,24 @@ stages:
                       RG_NAME="$(azureResourceGroupProd)"
                       echo "Creating prod resource group: $RG_NAME"
                       az group create --name "$RG_NAME" --location "${{ parameters.location }}"
+
+                - task: AzureCLI@2
+                  displayName: "Preflight: Clean SQL AAD admin (Prod)"
+                  condition: and(ne('${{ parameters.destroy }}', true), eq('${{ parameters.environment }}','prod'))
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      set -e
+                      RG_NAME="$(azureResourceGroupProd)"
+                      SQL_SERVER_NAME="sql-aistock-prod-${{ parameters.instanceNumber }}"
+                      if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+                        echo "[PROD] Server exists; removing any lingering AAD admin..."
+                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                      else
+                        echo "[PROD] Server not present yet; nothing to clean."
+                      fi
 
                 - task: AzureCLI@2
                   displayName: "Validate Prod Bicep Template"
