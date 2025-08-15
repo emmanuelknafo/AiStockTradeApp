@@ -135,8 +135,10 @@ public class StockManagementTests : BaseUITest
         };
 
         // Click clear all button regardless of how many were actually added
-        var clearButton = Page.Locator("#clear-all");
-        await Expect(clearButton).ToBeVisibleAsync();
+    var clearButton = Page.Locator("#clear-all");
+    // Ensure it's in the DOM before asserting visibility (helps on slower CI runs)
+    await clearButton.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 10000 });
+    await Expect(clearButton).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 10000 });
         await clearButton.ClickAsync();
 
         // Wait for clearing and potential page reload

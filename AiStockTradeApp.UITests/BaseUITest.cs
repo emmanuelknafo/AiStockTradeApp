@@ -144,6 +144,17 @@ public class BaseUITest : PageTest
             await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
             // Additional wait for JavaScript to initialize
             await Page.WaitForTimeoutAsync(1000);
+            // Ensure network quiescence to reduce flakiness on CI
+            await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10000 });
+            // Ensure core controls are present and (if possible) visible before tests proceed
+            try
+            {
+                var clearAll = Page.Locator("#clear-all");
+                await clearAll.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 10000 });
+                // Visibility may still race with layout; try but don't fail the navigation if it isn't yet visible
+                await clearAll.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
+            }
+            catch { /* Non-fatal: element might not be on non-dashboard pages or slower to render */ }
         }
         catch (PlaywrightException ex) when (ex.Message.Contains("ERR_CONNECTION_REFUSED"))
         {

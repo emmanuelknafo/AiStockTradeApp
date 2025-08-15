@@ -1055,7 +1055,7 @@ stages:
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
-                  displayName: "Ensure SQL AD admin matches Web App Managed Identity (Dev)"
+                  displayName: "Ensure SQL AD admin matches API Managed Identity (Dev)"
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
                     scriptType: bash
@@ -1063,16 +1063,16 @@ stages:
                     inlineScript: |
                       set -e
                       RG_NAME="rg-aistock-dev-$(instanceNum)"
-                      WEBAPP_NAME="app-aistock-dev-$(instanceNum)"
+                      WEBAPP_NAME="api-aistock-dev-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-dev-$(instanceNum)"
-                      echo "[DEV] Ensuring SQL AD admin is set to Web App MI..."
+                      echo "[DEV] Ensuring SQL AD admin is set to API Web App MI..."
                       MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
                       if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[DEV][ERROR] Web app MI principalId not found"; exit 1; fi
                       CURR_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
                       CURR_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
-                      echo "[DEV] Web App MI: $MI_PRINCIPAL_ID"; echo "[DEV] Current admin login: $CURR_LOGIN"; echo "[DEV] Current admin sid: $CURR_SID"
+                      echo "[DEV] API Web App MI: $MI_PRINCIPAL_ID"; echo "[DEV] Current admin login: $CURR_LOGIN"; echo "[DEV] Current admin sid: $CURR_SID"
                       if [ "$CURR_SID" != "$MI_PRINCIPAL_ID" ]; then
-                        echo "[DEV] Mismatch detected; updating SQL AD admin to MI..."
+                        echo "[DEV] Mismatch detected; updating SQL AD admin to API MI..."
                         az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
                         az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$MI_PRINCIPAL_ID"
                       else
@@ -1081,9 +1081,9 @@ stages:
                       # Re-verify
                       NEW_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
                       if [ "$NEW_SID" != "$MI_PRINCIPAL_ID" ]; then
-                        echo "[DEV][ERROR] Re-verify failed: SQL AD admin still not MI (expected=$MI_PRINCIPAL_ID, found=$NEW_SID)"; exit 1
+                        echo "[DEV][ERROR] Re-verify failed: SQL AD admin still not API MI (expected=$MI_PRINCIPAL_ID, found=$NEW_SID)"; exit 1
                       fi
-                      echo "[DEV] ✅ SQL AD admin set to Web App MI."
+                      echo "[DEV] ✅ SQL AD admin set to API Web App MI."
 
                 - task: AzureCLI@2
                   displayName: "Update Web App Container"
@@ -1347,7 +1347,7 @@ stages:
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
-                  displayName: "Ensure SQL AD admin matches Web App Managed Identity (Prod)"
+                  displayName: "Ensure SQL AD admin matches API Managed Identity (Prod)"
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
                     scriptType: bash
@@ -1355,16 +1355,16 @@ stages:
                     inlineScript: |
                       set -e
                       RG_NAME="rg-aistock-prod-$(instanceNum)"
-                      WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                      WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
-                      echo "[PROD] Ensuring SQL AD admin is set to Web App MI..."
+                      echo "[PROD] Ensuring SQL AD admin is set to API Web App MI..."
                       MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
                       if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] Web app MI principalId not found"; exit 1; fi
                       CURR_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
                       CURR_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
-                      echo "[PROD] Web App MI: $MI_PRINCIPAL_ID"; echo "[PROD] Current admin login: $CURR_LOGIN"; echo "[PROD] Current admin sid: $CURR_SID"
+                      echo "[PROD] API Web App MI: $MI_PRINCIPAL_ID"; echo "[PROD] Current admin login: $CURR_LOGIN"; echo "[PROD] Current admin sid: $CURR_SID"
                       if [ "$CURR_SID" != "$MI_PRINCIPAL_ID" ]; then
-                        echo "[PROD] Mismatch detected; updating SQL AD admin to MI..."
+                        echo "[PROD] Mismatch detected; updating SQL AD admin to API MI..."
                         az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
                         az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$MI_PRINCIPAL_ID"
                       else
@@ -1373,9 +1373,9 @@ stages:
                       # Re-verify
                       NEW_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
                       if [ "$NEW_SID" != "$MI_PRINCIPAL_ID" ]; then
-                        echo "[PROD][ERROR] Re-verify failed: SQL AD admin still not MI (expected=$MI_PRINCIPAL_ID, found=$NEW_SID)"; exit 1
+                        echo "[PROD][ERROR] Re-verify failed: SQL AD admin still not API MI (expected=$MI_PRINCIPAL_ID, found=$NEW_SID)"; exit 1
                       fi
-                      echo "[PROD] ✅ SQL AD admin set to Web App MI."
+                      echo "[PROD] ✅ SQL AD admin set to API Web App MI."
 
                 # Removed re-assignment of SQL admin here; infra pipeline owns that responsibility.
 
