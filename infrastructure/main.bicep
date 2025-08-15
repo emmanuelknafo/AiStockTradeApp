@@ -183,7 +183,7 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
 }
 
 // Enforce Azure AD-only authentication when requested
-resource sqlServerAadOnly 'Microsoft.Sql/servers/azureADOnlyAuthentications@2021-11-01' = {
+resource sqlServerAadOnly 'Microsoft.Sql/servers/azureADOnlyAuthentications@2021-11-01' = if (!empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin) && enableAzureAdOnlyAuth) {
   parent: sqlServer
   name: 'Default'
   properties: {
