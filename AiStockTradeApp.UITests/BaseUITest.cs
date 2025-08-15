@@ -180,4 +180,36 @@ public class BaseUITest : PageTest
         // Additional wait for JavaScript initialization
         await Page.WaitForTimeoutAsync(500);
     }
+
+    protected async Task<ILocator> WaitForLocatorAttachedWithRetry(string selector, int attempts = 2, int perAttemptTimeoutMs = 8000)
+    {
+        var locator = Page.Locator(selector);
+        for (int i = 1; i <= attempts; i++)
+        {
+            try
+            {
+                await locator.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = perAttemptTimeoutMs });
+                return locator;
+            }
+            catch
+            {
+                if (i == attempts) break;
+                // Try a lightweight refresh and wait for readiness again
+                await Page.ReloadAsync(new() { Timeout = perAttemptTimeoutMs });
+                await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded, new() { Timeout = perAttemptTimeoutMs });
+                await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = perAttemptTimeoutMs });
+            }
+        }
+
+        try
+        {
+            var html = await Page.ContentAsync();
+            var snapshotPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"page-snapshot-{TestContext.CurrentContext.Test.Name}.html");
+            File.WriteAllText(snapshotPath, html);
+            TestContext.WriteLine($"Saved page snapshot to: {snapshotPath}");
+        }
+        catch { /* best-effort */ }
+
+        throw new TimeoutException($"Timed out waiting for selector '{selector}' to be attached after {attempts} attempts.");
+    }
 }
