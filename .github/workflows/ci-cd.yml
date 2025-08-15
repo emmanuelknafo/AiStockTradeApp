@@ -92,11 +92,11 @@ jobs:
           echo "Version for downstream usage set"
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore AiStockTradeApp.sln
 
       - name: Build application
         run: |
-          dotnet build --no-restore --configuration Release \
+          dotnet build AiStockTradeApp.sln --no-restore --configuration Release \
             /p:Version=${{ steps.gitversion.outputs.fullSemVer }} \
             /p:FileVersion=${{ steps.gitversion.outputs.assemblySemFileVer }} \
             /p:InformationalVersion=${{ steps.gitversion.outputs.fullSemVer }} \
@@ -171,7 +171,7 @@ jobs:
           COVERAGE_DIR="$RESULTS_DIR/coverage"
           mkdir -p "$RESULTS_DIR" "$COVERAGE_DIR"
           echo "Running unit tests with coverage (XPlat collector)..."
-          dotnet test --no-build --configuration Release --verbosity normal \
+          dotnet test AiStockTradeApp.sln --no-build --configuration Release --verbosity normal \
             --filter "FullyQualifiedName!~UITests" \
             --logger "trx;LogFileName=unit-test-results.trx" \
             --results-directory "$RESULTS_DIR" \
@@ -291,10 +291,10 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore AiStockTradeApp.sln
 
       - name: Build application
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build AiStockTradeApp.sln --no-restore --configuration Release
 
       - name: Docker pre-clean (SQL)
         if: always()
