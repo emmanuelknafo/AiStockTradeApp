@@ -118,6 +118,9 @@ if (!useInMemory)
 app.UseHttpsRedirection();
 app.UseCors("StockUi");
 
+// Health check
+app.MapGet("/health", () => Results.Ok("OK"));
+
 // Map minimal API endpoints
 app.MapGet("/api/stocks/quote", async ([FromQuery] string symbol, IStockDataService svc) =>
 {
