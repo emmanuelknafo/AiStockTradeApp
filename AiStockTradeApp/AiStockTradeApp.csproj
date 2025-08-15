@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -7,9 +7,9 @@
     <RootNamespace>ai_stock_trade_app</RootNamespace>
     <UserSecretsId>59a58696-52aa-43cf-830a-b71ca079da84</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-    <DockerfileContext>.</DockerfileContext>
   <!-- GitVersion will supply Version / AssemblyVersion / FileVersion / InformationalVersion at build time -->
   <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  <DockerComposeProjectPath>..\docker-compose.dcproj</DockerComposeProjectPath>
   </PropertyGroup>
 
   <ItemGroup>

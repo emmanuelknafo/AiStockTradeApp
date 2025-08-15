@@ -1,0 +1,6 @@
+services:
+  aistocktradeapp:
+    image: ${DOCKER_REGISTRY-}aistocktradeapp
+    build:
+      context: .
+      dockerfile: AiStockTradeApp/Dockerfile
