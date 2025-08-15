@@ -20,6 +20,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.8" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.8" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.8" />
     <PackageReference Include="FluentAssertions" Version="8.6.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.8" />
     <PackageReference Include="coverlet.collector" Version="6.0.4">
@@ -29,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AiStockTradeApp.Api\AiStockTradeApp.Api.csproj" />
     <ProjectReference Include="..\AiStockTradeApp.DataAccess\AiStockTradeApp.DataAccess.csproj" />
     <ProjectReference Include="..\AiStockTradeApp.Entities\AiStockTradeApp.Entities.csproj" />
     <ProjectReference Include="..\AiStockTradeApp.Services\AiStockTradeApp.Services.csproj" />
