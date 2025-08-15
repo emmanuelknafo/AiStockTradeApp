@@ -426,6 +426,7 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     outputs:
       image: ${{ steps.final-output.outputs.image }}
+      api_image: ${{ steps.final-output-api.outputs.image }}
       test_output: ${{ steps.final-output.outputs.test_output }}
 
     permissions:
@@ -567,6 +568,17 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Extract metadata (API)
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/aistocktradeapp-api
+          tags: |
+            type=raw,value=${{ steps.gitversion.outputs.fullSemVer }}
+            type=raw,value=v${{ steps.gitversion.outputs.fullSemVer }}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
       - name: Debug metadata outputs
         run: |
           echo "=== METADATA STEP DEBUG ==="
@@ -586,6 +598,22 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }}
           tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.gitversion.outputs.fullSemVer }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.ref.name=v${{ steps.gitversion.outputs.fullSemVer }}
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.version.prefixed=v${{ steps.gitversion.outputs.fullSemVer }}
+
+      - name: Build and push Docker image (API)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./AiStockTradeApp.Api/Dockerfile
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }}
+          tags: ${{ steps.meta-api.outputs.tags }}
           labels: |
             org.opencontainers.image.version=${{ steps.gitversion.outputs.fullSemVer }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -685,6 +713,36 @@ jobs:
 
           echo "=== END COMBINED STEP ==="
 
+      - name: Extract and set API container image for deployment
+        id: final-output-api
+        run: |
+          set -e
+          echo "=== API IMAGE OUTPUT STEP ==="
+
+          TAGS=$(cat << 'EOFTAGS'
+          ${{ steps.meta-api.outputs.tags }}
+          EOFTAGS
+          )
+
+          echo "API TAGS captured:"; echo "$TAGS"
+          if [ -z "$(echo "$TAGS" | tr -d ' \t\n\r')" ]; then
+            echo "ERROR: No API tags received from metadata step"; exit 1; fi
+
+          SEMVER_TAG=$(echo "$TAGS" | grep -E ":[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.]+)?$" | head -1 | tr -d '\n\r' | xargs || true)
+          SHA_TAG=$(echo "$TAGS" | grep -E "sha-[a-f0-9]+" | head -1 | tr -d '\n\r' | xargs || true)
+          if [ -n "$SEMVER_TAG" ]; then
+            DEPLOY_IMAGE="$SEMVER_TAG"; echo "Using API semantic version tag: $SEMVER_TAG";
+          elif [ -n "$SHA_TAG" ]; then
+            DEPLOY_IMAGE="$SHA_TAG"; echo "Using API SHA tag: $SHA_TAG";
+          else
+            DEPLOY_IMAGE=$(echo "$TAGS" | head -1 | tr -d '\n\r' | xargs); echo "Fallback API deploy image: $DEPLOY_IMAGE";
+          fi
+
+          mkdir -p build-outputs
+          echo "$DEPLOY_IMAGE" > build-outputs/container-image-api.txt
+          echo "image=$DEPLOY_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "=== END API IMAGE OUTPUT STEP ==="
+
       - name: Upload build outputs as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -744,6 +802,20 @@ jobs:
             exit 1
           fi
 
+      - name: Load API container image from artifact
+        id: load-image-api
+        run: |
+          echo "=== LOADING API CONTAINER IMAGE FROM ARTIFACT ==="
+          if [ -f "build-outputs/container-image-api.txt" ]; then
+            CONTAINER_IMAGE=$(cat build-outputs/container-image-api.txt)
+            echo "API container image from artifact: '${CONTAINER_IMAGE}'"
+            echo "container_image_api=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ERROR: container-image-api.txt not found in artifacts!"
+            ls -la build-outputs/
+            exit 1
+          fi
+
       - name: Derive appVersion from image tag (Dev)
         id: derive-version-dev
         run: |
@@ -770,7 +842,7 @@ jobs:
           # vars.* mapped via env at top to reduce linter warnings
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-002' }}
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false vnetAddressSpace=10.50.0.0/16 appIntegrationSubnetPrefix=10.50.1.0/27 privateEndpointSubnetPrefix=10.50.2.0/28 appVersion=${{ steps.derive-version-dev.outputs.app_version }}
+          parameters: ./infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image_api }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false vnetAddressSpace=10.50.0.0/16 appIntegrationSubnetPrefix=10.50.1.0/27 privateEndpointSubnetPrefix=10.50.2.0/28 appVersion=${{ steps.derive-version-dev.outputs.app_version }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches Web App Managed Identity (Dev)
@@ -851,6 +923,33 @@ jobs:
             --container-registry-user "${REGISTRY_USERNAME}" \
             --container-registry-password "${REGISTRY_PASSWORD}"
 
+      - name: Update API Web App Container
+        run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          WEBAPP_NAME="api-aistock-dev-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+
+          # Get registry information from the same resource group
+          REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+          REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+          REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+          echo "API Container Image: ${{ steps.load-image-api.outputs.container_image_api }}"
+          echo "API Web App Name: ${WEBAPP_NAME}"
+          echo "Resource Group: ${RG_NAME}"
+          echo "Registry Name: ${REGISTRY_NAME}"
+
+          if [ -z "${{ steps.load-image-api.outputs.container_image_api }}" ]; then
+            echo "ERROR: API container image is empty!"; exit 1; fi
+
+          az webapp config container set \
+            --name "${WEBAPP_NAME}" \
+            --resource-group "${RG_NAME}" \
+            --container-image-name "${{ steps.load-image-api.outputs.container_image_api }}" \
+            --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+            --container-registry-user "${REGISTRY_USERNAME}" \
+            --container-registry-password "${REGISTRY_PASSWORD}"
+
       - name: Run Health Check
         run: |
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
@@ -861,6 +960,17 @@ jobs:
           sleep 30
           curl -f "${HEALTH_URL}" || exit 1
           echo "Health check passed!"
+
+      - name: Run API Health Check
+        run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          WEBAPP_NAME="api-aistock-dev-${INSTANCE_NUM}"
+          HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+          echo "Waiting for API deployment to be ready..."
+          echo "API Health check URL: ${HEALTH_URL}"
+          sleep 30
+          curl -f "${HEALTH_URL}" || exit 1
+          echo "API Health check passed!"
 
   deploy-prod:
     runs-on: [self-hosted, linux, x64]
@@ -896,6 +1006,20 @@ jobs:
             echo "container_image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
           else
             echo "ERROR: container-image.txt not found in artifacts!"
+            ls -la build-outputs/
+            exit 1
+          fi
+
+      - name: Load API container image from artifact
+        id: load-image-api
+        run: |
+          echo "=== LOADING API CONTAINER IMAGE FROM ARTIFACT ==="
+          if [ -f "build-outputs/container-image-api.txt" ]; then
+            CONTAINER_IMAGE=$(cat build-outputs/container-image-api.txt)
+            echo "API container image from artifact: '${CONTAINER_IMAGE}'"
+            echo "container_image_api=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ERROR: container-image-api.txt not found in artifacts!"
             ls -la build-outputs/
             exit 1
           fi
@@ -958,7 +1082,7 @@ jobs:
           # For GitHub we infer enabling AAD-only via an input/secret flag (ENABLE_AAD_ONLY_AUTH) or default to true for prod to standardize.
           # Currently leaving enableAzureAdOnlyAuth=false until AZURE_AD_ADMIN_* values are explicitly provided.
           # To enable AAD-only auth: define repository variables AZURE_AD_ADMIN_OBJECT_ID + AZURE_AD_ADMIN_LOGIN then replace enableAzureAdOnlyAuth=false below with true and include those values.
-          parameters: ./infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false vnetAddressSpace=10.51.0.0/16 appIntegrationSubnetPrefix=10.51.1.0/27 privateEndpointSubnetPrefix=10.51.2.0/28 appVersion=${{ steps.derive-version-prod.outputs.app_version }}
+          parameters: ./infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image_api }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false vnetAddressSpace=10.51.0.0/16 appIntegrationSubnetPrefix=10.51.1.0/27 privateEndpointSubnetPrefix=10.51.2.0/28 appVersion=${{ steps.derive-version-prod.outputs.app_version }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches Web App Managed Identity (Prod)
@@ -1203,6 +1327,35 @@ jobs:
             --container-registry-user "${REGISTRY_USERNAME}" \
             --container-registry-password "${REGISTRY_PASSWORD}"
 
+      - name: Update API Web App Container
+        run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          WEBAPP_NAME="api-aistock-prod-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+
+          # Get registry information from DEV resource group (shared registry)
+          DEV_RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+          REGISTRY_NAME=$(az acr list --resource-group "${DEV_RG_NAME}" --query '[0].name' --output tsv)
+          REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+          REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+          echo "API Container Image: ${{ steps.load-image-api.outputs.container_image_api }}"
+          echo "API Web App Name: ${WEBAPP_NAME}"
+          echo "Prod Resource Group: ${RG_NAME}"
+          echo "Dev Registry Resource Group: ${DEV_RG_NAME}"
+          echo "Shared Registry Name: ${REGISTRY_NAME}"
+
+          if [ -z "${{ steps.load-image-api.outputs.container_image_api }}" ]; then
+            echo "ERROR: API container image is empty!"; exit 1; fi
+
+          az webapp config container set \
+            --name "${WEBAPP_NAME}" \
+            --resource-group "${RG_NAME}" \
+            --container-image-name "${{ steps.load-image-api.outputs.container_image_api }}" \
+            --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+            --container-registry-user "${REGISTRY_USERNAME}" \
+            --container-registry-password "${REGISTRY_PASSWORD}"
+
       - name: Run Health Check
         run: |
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
@@ -1279,6 +1432,32 @@ jobs:
 
           echo "❌ Health check failed - no successful response received"
           exit 1
+
+      - name: Run API Health Check
+        run: |
+          echo "[DIAG] Dumping resolved connection string authentication mode before API health checks (shared script)..."
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          API_WEBAPP_NAME="api-aistock-prod-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+          bash ./scripts/sql-conn-auth-dump.sh "$RG_NAME" "$API_WEBAPP_NAME" || echo "[DIAG] Script execution failed (non-fatal)"
+          HEALTH_URL="https://${API_WEBAPP_NAME}.azurewebsites.net/health"
+          BASE_URL="https://${API_WEBAPP_NAME}.azurewebsites.net"
+
+          echo "🏥 Starting API health check..."
+          echo "Base URL: ${BASE_URL}"
+          echo "Health URL: ${HEALTH_URL}"
+          sleep 60
+          for i in {1..10}; do
+            echo "API Health check attempt $i/10..."
+            HTTP_CODE=$(curl -s -o /tmp/health_api_response.txt -w "%{http_code}" "${HEALTH_URL}")
+            RESPONSE_BODY=$(cat /tmp/health_api_response.txt 2>/dev/null || echo "No response body")
+            echo "HTTP Status: ${HTTP_CODE}"; echo "Response: ${RESPONSE_BODY}"
+            if [ "${HTTP_CODE}" = "200" ]; then
+              echo "✅ API Health check passed!"; exit 0
+            fi
+            sleep 30
+          done
+          echo "❌ API Health check failed"; exit 1
 
   security-scan:
     runs-on: [self-hosted, linux, x64]

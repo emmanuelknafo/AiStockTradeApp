@@ -607,9 +607,11 @@ stages:
     condition: succeeded()
     jobs:
       - job: BuildJob
-        displayName: "Build and Push Container"
+        displayName: "Build and Push Container (UI + API)"
         variables:
           - name: containerImage
+            value: ""
+          - name: containerImageApi
             value: ""
           - name: registryName
             value: ""
@@ -768,50 +770,59 @@ stages:
                 fi
                 # Generate tags similar to docker/metadata-action
                 REGISTRY_URL="$(registryName).azurecr.io"
-                IMAGE_NAME="${REGISTRY_URL}/aistocktradeapp"
+                IMAGE_NAME_UI="${REGISTRY_URL}/aistocktradeapp"
+                IMAGE_NAME_API="${REGISTRY_URL}/aistocktradeapp-api"
 
                 # Branch-based tag
                 BRANCH_NAME=$(echo "$(Build.SourceBranchName)" | sed 's/[^a-zA-Z0-9._-]/-/g')
-                BRANCH_TAG="${IMAGE_NAME}:${BRANCH_NAME}"
+                BRANCH_TAG_UI="${IMAGE_NAME_UI}:${BRANCH_NAME}"
+                BRANCH_TAG_API="${IMAGE_NAME_API}:${BRANCH_NAME}"
 
                 # SHA-based tag
                 SHORT_SHA=$(echo "$(Build.SourceVersion)" | cut -c1-7)
-                SHA_TAG="${IMAGE_NAME}:sha-${SHORT_SHA}"
+                SHA_TAG_UI="${IMAGE_NAME_UI}:sha-${SHORT_SHA}"
+                SHA_TAG_API="${IMAGE_NAME_API}:sha-${SHORT_SHA}"
 
                 # Latest tag for main/master branch
-                VERSION_TAG=""
+                VERSION_TAG_UI=""; VERSION_TAG_API=""
                 if [ -n "$(GitVersion.FullSemVer)" ]; then
-                  VERSION_TAG="${IMAGE_NAME}:$(GitVersion.FullSemVer)"
+                  VERSION_TAG_UI="${IMAGE_NAME_UI}:$(GitVersion.FullSemVer)"
+                  VERSION_TAG_API="${IMAGE_NAME_API}:$(GitVersion.FullSemVer)"
                 fi
                 if [[ "$(Build.SourceBranchName)" == "main" || "$(Build.SourceBranchName)" == "master" ]]; then
-                  LATEST_TAG="${IMAGE_NAME}:latest"
-                  if [ -n "$VERSION_TAG" ]; then
-                    TAGS="${BRANCH_TAG},${SHA_TAG},${VERSION_TAG},${LATEST_TAG}"
+                  LATEST_TAG_UI="${IMAGE_NAME_UI}:latest"; LATEST_TAG_API="${IMAGE_NAME_API}:latest"
+                  if [ -n "$VERSION_TAG_UI" ]; then
+                    TAGS_UI="${BRANCH_TAG_UI},${SHA_TAG_UI},${VERSION_TAG_UI},${LATEST_TAG_UI}"
+                    TAGS_API="${BRANCH_TAG_API},${SHA_TAG_API},${VERSION_TAG_API},${LATEST_TAG_API}"
                   else
-                    TAGS="${BRANCH_TAG},${SHA_TAG},${LATEST_TAG}"
+                    TAGS_UI="${BRANCH_TAG_UI},${SHA_TAG_UI},${LATEST_TAG_UI}"
+                    TAGS_API="${BRANCH_TAG_API},${SHA_TAG_API},${LATEST_TAG_API}"
                   fi
                 else
-                  if [ -n "$VERSION_TAG" ]; then
-                    TAGS="${BRANCH_TAG},${SHA_TAG},${VERSION_TAG}"
+                  if [ -n "$VERSION_TAG_UI" ]; then
+                    TAGS_UI="${BRANCH_TAG_UI},${SHA_TAG_UI},${VERSION_TAG_UI}"
+                    TAGS_API="${BRANCH_TAG_API},${SHA_TAG_API},${VERSION_TAG_API}"
                   else
-                    TAGS="${BRANCH_TAG},${SHA_TAG}"
+                    TAGS_UI="${BRANCH_TAG_UI},${SHA_TAG_UI}"
+                    TAGS_API="${BRANCH_TAG_API},${SHA_TAG_API}"
                   fi
                 fi
 
-                echo "Generated tags: ${TAGS}"
-                echo "##vso[task.setvariable variable=containerTags]${TAGS}"
-                DEPLOY_TAG="${SHA_TAG}"
-                if [ -n "$VERSION_TAG" ]; then
-                  echo "Semantic version tag available: $VERSION_TAG (will be used for deployment)"
-                  DEPLOY_TAG="$VERSION_TAG"
-                else
-                  echo "No semantic version tag available; using sha tag for deployment"
-                fi
-                echo "Selected deploy tag: ${DEPLOY_TAG}"
-                echo "##vso[task.setvariable variable=deployTag]${DEPLOY_TAG}"
+                echo "Generated UI tags: ${TAGS_UI}"
+                echo "Generated API tags: ${TAGS_API}"
+                echo "##vso[task.setvariable variable=containerTagsUI]${TAGS_UI}"
+                echo "##vso[task.setvariable variable=containerTagsAPI]${TAGS_API}"
+
+                DEPLOY_TAG_UI="${SHA_TAG_UI}"; DEPLOY_TAG_API="${SHA_TAG_API}"
+                if [ -n "$VERSION_TAG_UI" ]; then DEPLOY_TAG_UI="$VERSION_TAG_UI"; fi
+                if [ -n "$VERSION_TAG_API" ]; then DEPLOY_TAG_API="$VERSION_TAG_API"; fi
+                echo "Selected UI deploy tag: ${DEPLOY_TAG_UI}"
+                echo "Selected API deploy tag: ${DEPLOY_TAG_API}"
+                echo "##vso[task.setvariable variable=deployTagUI]${DEPLOY_TAG_UI}"
+                echo "##vso[task.setvariable variable=deployTagAPI]${DEPLOY_TAG_API}"
 
           - task: AzureCLI@2
-            displayName: "Build and push Docker image"
+            displayName: "Build and push Docker images (UI + API)"
             inputs:
               azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
               scriptType: "bash"
@@ -819,40 +830,47 @@ stages:
               inlineScript: |
                 echo "=== BUILDING AND PUSHING CONTAINER IMAGE ==="
 
-                # Parse container tags into individual tags
-                IFS=',' read -ra TAG_ARRAY <<< "$(containerTags)"
+                # Parse container tags into individual arrays
+                IFS=',' read -ra TAG_ARRAY_UI <<< "$(containerTagsUI)"
+                IFS=',' read -ra TAG_ARRAY_API <<< "$(containerTagsAPI)"
 
-                # Build the image first
-                echo "Building Docker image..."
+                # Build UI image
+                echo "Building UI Docker image..."
                 if [ -n "$(GitVersion.FullSemVer)" ] && [ "$(GitVersion.FullSemVer)" != "0.0.0-local" ]; then
-                  echo "Using semantic version build arg APP_VERSION=$(GitVersion.FullSemVer)"
-                  docker build \
-                    --build-arg APP_VERSION=$(GitVersion.FullSemVer) \
-                    -f ./AiStockTradeApp/Dockerfile \
-                    -t temp-build-image .
+                  docker build --build-arg APP_VERSION=$(GitVersion.FullSemVer) -f ./AiStockTradeApp/Dockerfile -t temp-build-image-ui .
                 else
-                  echo "No valid semantic version found; building without APP_VERSION build-arg"
-                  docker build \
-                    -f ./AiStockTradeApp/Dockerfile \
-                    -t temp-build-image .
+                  docker build -f ./AiStockTradeApp/Dockerfile -t temp-build-image-ui .
                 fi
 
-                # Tag and push each tag
-                for tag in "${TAG_ARRAY[@]}"; do
-                  # Remove any leading/trailing whitespace
+                # Build API image
+                echo "Building API Docker image..."
+                if [ -n "$(GitVersion.FullSemVer)" ] && [ "$(GitVersion.FullSemVer)" != "0.0.0-local" ]; then
+                  docker build --build-arg APP_VERSION=$(GitVersion.FullSemVer) -f ./AiStockTradeApp.Api/Dockerfile -t temp-build-image-api .
+                else
+                  docker build -f ./AiStockTradeApp.Api/Dockerfile -t temp-build-image-api .
+                fi
+
+                # Push UI tags
+                for tag in "${TAG_ARRAY_UI[@]}"; do
                   clean_tag=$(echo "$tag" | xargs)
-                  echo "Tagging and pushing: $clean_tag"
-                  
-                  # Tag the image
-                  docker tag temp-build-image "$clean_tag"
-                  
-                  # Push using az acr
-                  az acr repository show --name "$(registryName)" --repository aistocktradeapp || echo "Repository doesn't exist yet, will be created on first push"
+                  echo "Tagging and pushing UI: $clean_tag"
+                  docker tag temp-build-image-ui "$clean_tag"
+                  az acr repository show --name "$(registryName)" --repository aistocktradeapp || echo "Repository will be created"
                   docker push "$clean_tag"
                 done
 
-                echo "All tags pushed successfully"
-                echo "Deploy tag will be: $(deployTag)"
+                # Push API tags
+                for tag in "${TAG_ARRAY_API[@]}"; do
+                  clean_tag=$(echo "$tag" | xargs)
+                  echo "Tagging and pushing API: $clean_tag"
+                  docker tag temp-build-image-api "$clean_tag"
+                  az acr repository show --name "$(registryName)" --repository aistocktradeapp-api || echo "Repository will be created"
+                  docker push "$clean_tag"
+                done
+
+                echo "All UI and API tags pushed successfully"
+                echo "UI Deploy tag: $(deployTagUI)"
+                echo "API Deploy tag: $(deployTagAPI)"
 
           - task: Bash@3
             displayName: "Create and push git semantic tag"
@@ -892,7 +910,7 @@ stages:
                 set -e  # Exit on any error
                 echo "=== SETTING DEPLOYMENT IMAGE ==="
 
-                DEPLOY_IMAGE="$(deployTag)"
+                DEPLOY_IMAGE="$(deployTagUI)"
                 echo "Final deployment image: '${DEPLOY_IMAGE}'"
 
                 # Check if DEPLOY_IMAGE is empty
@@ -913,6 +931,20 @@ stages:
                 cat $(Pipeline.Workspace)/build-outputs/container-image.txt
 
                 echo "##vso[task.setvariable variable=containerImage;isOutput=true]${DEPLOY_IMAGE}"
+
+          - task: Bash@3
+            displayName: "Extract and set API container image for deployment"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -e
+                echo "=== SETTING API DEPLOYMENT IMAGE ==="
+                DEPLOY_IMAGE_API="$(deployTagAPI)"
+                echo "API deployment image: '${DEPLOY_IMAGE_API}'"
+                if [ -z "${DEPLOY_IMAGE_API}" ]; then echo "ERROR: API DEPLOY_IMAGE empty"; exit 1; fi
+                mkdir -p $(Pipeline.Workspace)/build-outputs
+                echo "${DEPLOY_IMAGE_API}" > $(Pipeline.Workspace)/build-outputs/container-image-api.txt
+                echo "##vso[task.setvariable variable=containerImageApi;isOutput=true]${DEPLOY_IMAGE_API}"
 
           - task: PublishPipelineArtifact@1
             displayName: "Upload build outputs as artifact"
@@ -974,6 +1006,21 @@ stages:
                         exit 1
                       fi
                 - task: Bash@3
+                  displayName: "Load API container image from artifact"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "=== LOADING API CONTAINER IMAGE FROM ARTIFACT ==="
+                      if [ -f "$(Pipeline.Workspace)/build-outputs/container-image-api.txt" ]; then
+                        CONTAINER_IMAGE=$(cat $(Pipeline.Workspace)/build-outputs/container-image-api.txt)
+                        echo "API container image from artifact: '${CONTAINER_IMAGE}'"
+                        echo "##vso[task.setvariable variable=containerImageApi]${CONTAINER_IMAGE}"
+                      else
+                        echo "ERROR: container-image-api.txt not found in artifacts!"
+                        ls -la $(Pipeline.Workspace)/build-outputs/
+                        exit 1
+                      fi
+                - task: Bash@3
                   displayName: "Derive appVersion parameter (Dev)"
                   inputs:
                     targetType: "inline"
@@ -999,7 +1046,7 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./infrastructure/main.bicep"
                     csmParametersFile: "./infrastructure/parameters.dev.json"
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -appVersion $(appVersion) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -containerImageApi $(containerImageApi) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -appVersion $(appVersion) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
@@ -1066,6 +1113,35 @@ stages:
                         --container-registry-user "${REGISTRY_USERNAME}" \
                         --container-registry-password "${REGISTRY_PASSWORD}"
 
+                - task: AzureCLI@2
+                  displayName: "Update API Web App Container"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      WEBAPP_NAME="api-aistock-dev-$(instanceNum)"
+                      RG_NAME="rg-aistock-dev-$(instanceNum)"
+
+                      REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+                      REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+                      REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+                      echo "API Container Image: $(containerImageApi)"
+                      echo "API Web App Name: ${WEBAPP_NAME}"
+                      echo "Resource Group: ${RG_NAME}"
+                      echo "Registry Name: ${REGISTRY_NAME}"
+
+                      if [ -z "$(containerImageApi)" ]; then echo "ERROR: API container image is empty!"; exit 1; fi
+
+                      az webapp config container set \
+                        --name "${WEBAPP_NAME}" \
+                        --resource-group "${RG_NAME}" \
+                        --container-image-name "$(containerImageApi)" \
+                        --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+                        --container-registry-user "${REGISTRY_USERNAME}" \
+                        --container-registry-password "${REGISTRY_PASSWORD}"
+
                 - task: Bash@3
                   displayName: "Run Health Check"
                   inputs:
@@ -1078,6 +1154,19 @@ stages:
                       sleep 30
                       curl -f "${HEALTH_URL}" || exit 1
                       echo "Health check passed!"
+
+                - task: Bash@3
+                  displayName: "Run API Health Check"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      WEBAPP_NAME="api-aistock-dev-$(instanceNum)"
+                      HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+                      echo "Waiting for API deployment to be ready..."
+                      echo "API Health check URL: ${HEALTH_URL}"
+                      sleep 30
+                      curl -f "${HEALTH_URL}" || exit 1
+                      echo "API Health check passed!"
 
   - stage: DeployProd
     displayName: "Deploy to Production"
@@ -1132,6 +1221,21 @@ stages:
                         echo "##vso[task.setvariable variable=containerImage]${CONTAINER_IMAGE}"
                       else
                         echo "ERROR: container-image.txt not found in artifacts!"
+                        ls -la $(Pipeline.Workspace)/build-outputs/
+                        exit 1
+                      fi
+                - task: Bash@3
+                  displayName: "Load API container image from artifact"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "=== LOADING API CONTAINER IMAGE FROM ARTIFACT ==="
+                      if [ -f "$(Pipeline.Workspace)/build-outputs/container-image-api.txt" ]; then
+                        CONTAINER_IMAGE=$(cat $(Pipeline.Workspace)/build-outputs/container-image-api.txt)
+                        echo "API container image from artifact: '${CONTAINER_IMAGE}'"
+                        echo "##vso[task.setvariable variable=containerImageApi]${CONTAINER_IMAGE}"
+                      else
+                        echo "ERROR: container-image-api.txt not found in artifacts!"
                         ls -la $(Pipeline.Workspace)/build-outputs/
                         exit 1
                       fi
@@ -1234,7 +1338,7 @@ stages:
                     csmParametersFile: "./infrastructure/parameters.prod.json"
                     # Use containerImage variable if provided; prefer GitVersion FullSemVer tag if available
                     # containerImage variable expected to be AiStockTradeApp:<tag>
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)' -appVersion $(appVersion)"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -containerImageApi $(containerImageApi) -sqlAdminPassword $(SQL_ADMIN_PASSWORD) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)' -appVersion $(appVersion)"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
@@ -1478,6 +1582,38 @@ stages:
                         --container-registry-password "${REGISTRY_PASSWORD}"
 
                 - task: AzureCLI@2
+                  displayName: "Update API Web App Container"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+
+                      # Get registry information from DEV resource group (shared registry)
+                      DEV_RG_NAME="rg-aistock-dev-$(instanceNum)"
+                      REGISTRY_NAME=$(az acr list --resource-group "${DEV_RG_NAME}" --query '[0].name' --output tsv)
+                      REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+                      REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+                      echo "API Container Image: $(containerImageApi)"
+                      echo "API Web App Name: ${WEBAPP_NAME}"
+                      echo "Prod Resource Group: ${RG_NAME}"
+                      echo "Dev Registry Resource Group: ${DEV_RG_NAME}"
+                      echo "Shared Registry Name: ${REGISTRY_NAME}"
+
+                      if [ -z "$(containerImageApi)" ]; then echo "ERROR: API container image is empty!"; exit 1; fi
+
+                      az webapp config container set \
+                        --name "${WEBAPP_NAME}" \
+                        --resource-group "${RG_NAME}" \
+                        --container-image-name "$(containerImageApi)" \
+                        --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+                        --container-registry-user "${REGISTRY_USERNAME}" \
+                        --container-registry-password "${REGISTRY_PASSWORD}"
+
+                - task: AzureCLI@2
                   displayName: "Run Health Check"
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
@@ -1556,6 +1692,33 @@ stages:
 
                       echo "❌ Health check failed - no successful response received"
                       exit 1
+
+                - task: Bash@3
+                  displayName: "Run API Health Check"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "[DIAG] Dumping resolved connection string authentication mode before API health checks (shared script)..."
+                      WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      bash ./scripts/sql-conn-auth-dump.sh "$RG_NAME" "$WEBAPP_NAME" || echo "[DIAG] Script execution failed (non-fatal)"
+                      HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+                      BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
+                      echo "🏥 Starting API health check..."
+                      echo "Base URL: ${BASE_URL}"
+                      echo "Health URL: ${HEALTH_URL}"
+                      sleep 60
+                      for i in {1..10}; do
+                        echo "API Health check attempt $i/10..."
+                        HTTP_CODE=$(curl -s -o /tmp/health_api_response.txt -w "%{http_code}" "${HEALTH_URL}")
+                        RESPONSE_BODY=$(cat /tmp/health_api_response.txt 2>/dev/null || echo "No response body")
+                        echo "HTTP Status: ${HTTP_CODE}"; echo "Response: ${RESPONSE_BODY}"
+                        if [ "${HTTP_CODE}" = "200" ]; then
+                          echo "✅ API Health check passed!"; exit 0
+                        fi
+                        sleep 30
+                      done
+                      echo "❌ API Health check failed"; exit 1
 
   - stage: SecurityScan
     displayName: "Security Scan"

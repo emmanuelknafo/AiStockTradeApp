@@ -17,6 +17,9 @@
     "containerImage": {
       "value": "AiStockTradeApp:latest"
     },
+    "containerImageApi": {
+      "value": "aistocktradeapp-api:latest"
+    },
     "enablePrivateKeyVault": {
       "value": true
     },

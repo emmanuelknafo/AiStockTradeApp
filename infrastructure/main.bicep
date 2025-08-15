@@ -23,6 +23,9 @@ param containerRegistryName string
 
 @description('Container image name and tag')
 param containerImage string
+
+@description('API container image name and tag')
+param containerImageApi string = 'aistocktradeapp-api:latest'
 @description('Optional application semantic version (injected into APP_VERSION setting)')
 param appVersion string = ''
 
@@ -77,6 +80,7 @@ param privateKvPrivateDnsZoneName string = 'privatelink.vaultcore.azure.net'
 var resourceNamePrefix = '${appName}-${environment}'
 var appServicePlanName = 'asp-${resourceNamePrefix}-${instanceNumber}'
 var webAppName = 'app-${resourceNamePrefix}-${instanceNumber}'
+var webApiName = 'api-${resourceNamePrefix}-${instanceNumber}'
 var containerRegistryResourceName = 'cr${toLower(replace(containerRegistryName, '-', ''))}${toLower(environment)}${instanceNumber}${uniqueString(resourceGroup().id)}'
 var keyVaultName = 'kv-${resourceNamePrefix}-${instanceNumber}'
 var applicationInsightsName = 'appi-${resourceNamePrefix}-${instanceNumber}'
@@ -337,6 +341,89 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
   }
 }
 
+// API Web App
+resource webApi 'Microsoft.Web/sites@2024-11-01' = {
+  name: webApiName
+  location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    serverFarmId: appServicePlan.id
+    ...(requireVNetIntegration && manageNetworking
+      ? {
+          virtualNetworkSubnetId: resourceId(
+            'Microsoft.Network/virtualNetworks/subnets',
+            vnetName,
+            appIntegrationSubnetName
+          )
+        }
+      : {})
+    siteConfig: {
+      linuxFxVersion: deployContainerRegistry
+        ? 'DOCKER|${containerRegistry!.properties.loginServer}/${containerImageApi}'
+        : 'DOCKER|${containerImageApi}'
+      alwaysOn: true
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+      http20Enabled: true
+      appSettings: [
+        {
+          name: 'WEBSITES_ENABLE_APP_SERVICE_STORAGE'
+          value: 'false'
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: applicationInsights.properties.ConnectionString
+        }
+        {
+          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
+          value: applicationInsights.properties.InstrumentationKey
+        }
+        {
+          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
+          value: '~3'
+        }
+        {
+          name: 'XDT_MicrosoftApplicationInsights_Mode'
+          value: 'Recommended'
+        }
+        {
+          name: 'ASPNETCORE_ENVIRONMENT'
+          value: environment == 'prod' ? 'Production' : 'Development'
+        }
+        {
+          name: 'AlphaVantage__ApiKey'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
+        }
+        {
+          name: 'TwelveData__ApiKey'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
+        }
+        {
+          name: 'ConnectionStrings__DefaultConnection'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=SqlConnectionString)'
+        }
+        {
+          name: 'APP_VERSION'
+          value: empty(appVersion) ? '' : appVersion
+        }
+      ]
+      connectionStrings: [
+        {
+          name: 'DefaultConnection'
+          connectionString: useAzureAdAuth
+            ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+            : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+          type: 'SQLAzure'
+        }
+      ]
+      healthCheckPath: '/health'
+    }
+    httpsOnly: true
+  }
+}
+
 // Networking (only when private SQL requested)
 resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = if (requireVNetIntegration && manageNetworking) {
   name: vnetName
@@ -500,6 +587,20 @@ resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-0
   }
 }
 
+// Grant Key Vault access to API Web App
+resource keyVaultAccessPolicyApi 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: keyVault
+  name: guid(keyVault.id, webApi.id, 'Key Vault Secrets User')
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '4633458b-17de-408a-b874-0445c86b69e6'
+    )
+    principalId: webApi.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // NOTE: When enableAzureAdOnlyAuth is true, after deployment you need to manually:
 // 1. Connect to the SQL database as the Azure AD admin
 // 2. Run: CREATE USER [app-aistock-{environment}-{instanceNumber}] FROM EXTERNAL PROVIDER
@@ -511,6 +612,9 @@ resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-0
 output webAppName string = webApp.name
 output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
 output webAppPrincipalId string = webApp.identity.principalId
+output webApiName string = webApi.name
+output webApiUrl string = 'https://${webApi.properties.defaultHostName}'
+output webApiPrincipalId string = webApi.identity.principalId
 output sqlServerName string = sqlServer.name
 output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
 output sqlDatabaseName string = sqlDatabaseName

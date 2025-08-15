@@ -88,6 +88,7 @@ stages:
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
                         --parameters containerImage="AiStockTradeApp:latest" \
+                        --parameters containerImageApi="aistocktradeapp-api:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
@@ -114,6 +115,7 @@ stages:
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
                         --parameters containerImage="AiStockTradeApp:latest" \
+                        --parameters containerImageApi="aistocktradeapp-api:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters sqlAdminPassword="$(SQL_ADMIN_PASSWORD)" \
@@ -356,6 +358,7 @@ stages:
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
                         --parameters containerImage="AiStockTradeApp:latest" \
+                        --parameters containerImageApi="aistocktradeapp-api:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters deployContainerRegistry=false \
@@ -383,6 +386,7 @@ stages:
                         --parameters location="${{ parameters.location }}" \
                         --parameters instanceNumber="${{ parameters.instanceNumber }}" \
                         --parameters containerImage="AiStockTradeApp:latest" \
+                        --parameters containerImageApi="aistocktradeapp-api:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters deployContainerRegistry=false \

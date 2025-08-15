@@ -70,6 +70,7 @@ jobs:
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
             --parameters containerImage="AiStockTradeApp:latest" \
+            --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
@@ -91,6 +92,7 @@ jobs:
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
             --parameters containerImage="AiStockTradeApp:latest" \
+            --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
@@ -161,6 +163,45 @@ jobs:
           if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
             echo "[DEV][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
           echo "[DEV] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
+
+      - name: Set API Web App Managed Identity as SQL Admin (Dev)
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+          WEBAPI_NAME="api-aistock-dev-${INSTANCE_NUM}"
+          SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
+          echo "[DEV] Ensuring API web app managed identity present..."
+          for i in 1 2 3 4 5; do
+            PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPI_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+            if [ -n "$PRINCIPAL_ID" ] && [ "$PRINCIPAL_ID" != "null" ]; then echo "[DEV] API principalId: $PRINCIPAL_ID"; break; fi
+            echo "[DEV] API Identity not yet available (attempt $i); assigning..."
+            az webapp identity assign --name "$WEBAPI_NAME" --resource-group "$RG_NAME" >/dev/null || true
+            sleep 6
+          done
+          if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[DEV][ERROR] API Managed identity principal ID unavailable"; exit 1; fi
+
+          echo "[DEV] Checking current SQL Entra admin for API..."
+          CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+          CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+          if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
+            echo "[DEV] Desired admin already set to API MI ($CURRENT_ADMIN_LOGIN) - skipping reconfiguration."
+          else
+            if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
+              echo "[DEV] Replacing existing admin '$CURRENT_ADMIN_LOGIN' with API web app MI"
+              az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+              sleep 5
+            else
+              echo "[DEV] No existing Entra admin set; creating new admin with API MI"
+            fi
+            az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPI_NAME" --object-id "$PRINCIPAL_ID"
+          fi
+          echo "[DEV] Waiting for API admin propagation..."
+          sleep 8
+          ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPI_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
+          if [ "$ADMIN_OID" != "$PRINCIPAL_ID" ]; then echo "[DEV][ERROR] API admin assignment did not propagate correctly"; exit 1; fi
+          echo "[DEV] API MI is confirmed as SQL Entra admin (sid=$ADMIN_OID)."
 
       - name: Verify Dev Infrastructure SQL Setup
         if: github.event.inputs.destroy != 'true'
@@ -309,6 +350,7 @@ jobs:
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
             --parameters containerImage="AiStockTradeApp:latest" \
+            --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \
@@ -331,6 +373,7 @@ jobs:
             --parameters location="${{ github.event.inputs.location }}" \
             --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
             --parameters containerImage="AiStockTradeApp:latest" \
+            --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \
@@ -409,6 +452,51 @@ jobs:
           if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
             echo "[PROD][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
           echo "[PROD] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
+
+      - name: Set API Web App Managed Identity as SQL Admin (Prod)
+        if: github.event.inputs.destroy != 'true'
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+          WEBAPI_NAME="api-aistock-prod-${INSTANCE_NUM}"
+          SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
+          echo "[PROD] Ensuring API web app managed identity present..."
+          for i in 1 2 3 4 5; do
+            PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPI_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+            if [ -n "$PRINCIPAL_ID" ] && [ "$PRINCIPAL_ID" != "null" ]; then echo "[PROD] API principalId: $PRINCIPAL_ID"; break; fi
+            echo "[PROD] API Identity not yet available (attempt $i); assigning..."
+            az webapp identity assign --name "$WEBAPI_NAME" --resource-group "$RG_NAME" >/dev/null || true
+            sleep 6
+          done
+          if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] API Managed identity principal ID unavailable"; exit 1; fi
+
+          echo "[PROD] Checking current SQL Entra admin for API..."
+          CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+          CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+          if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
+            echo "[PROD] Desired admin already set to API MI ($CURRENT_ADMIN_LOGIN)."
+            if [ "$CURRENT_ADMIN_LOGIN" != "$WEBAPI_NAME" ]; then
+              echo "[PROD] Display name mismatch ($CURRENT_ADMIN_LOGIN != $WEBAPI_NAME); normalizing..."
+              az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+              sleep 5
+              az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPI_NAME" --object-id "$PRINCIPAL_ID"
+            fi
+          else
+            if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
+              echo "[PROD] Existing admin '$CURRENT_ADMIN_LOGIN' (sid=$CURRENT_ADMIN_OID) differs from API MI (sid=$PRINCIPAL_ID); replacing..."
+              az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+              sleep 5
+            else
+              echo "[PROD] No existing Entra admin; creating new API MI admin."
+            fi
+            az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPI_NAME" --object-id "$PRINCIPAL_ID"
+          fi
+          echo "[PROD] Waiting for API admin propagation..."
+          sleep 8
+          ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+          if [ "$ADMIN_OID" != "$PRINCIPAL_ID" ]; then echo "[PROD][ERROR] API admin assignment did not propagate correctly"; exit 1; fi
+          echo "[PROD] API MI is confirmed as SQL Entra admin (sid=$ADMIN_OID)."
 
       - name: Verify Prod Infrastructure SQL Setup
         if: github.event.inputs.destroy != 'true'
