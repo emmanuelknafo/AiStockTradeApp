@@ -78,6 +78,9 @@ param privateSqlPrivateDnsZoneName string = 'privatelink${az.environment().suffi
 @description('Private DNS zone name for Azure Key Vault private endpoints.')
 param privateKvPrivateDnsZoneName string = 'privatelink.vaultcore.azure.net'
 
+@description('If false, skip creating/updating SQL Server and Database (use existing). Useful for app-only CI/CD deploys when Azure AD-only is already enabled.')
+param manageSql bool = true
+
 // Variables
 var resourceNamePrefix = '${appName}-${environment}'
 var appServicePlanName = 'asp-${resourceNamePrefix}-${instanceNumber}'
@@ -161,8 +164,8 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
   }
 }
 
-// SQL Server
-resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
+// SQL Server (create/update when manageSql=true)
+resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = if (manageSql) {
   name: sqlServerName
   location: location
   tags: {
@@ -170,10 +173,10 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
   }
   properties: {
     version: '12.0'
-  // Although we operate Entra-only, Azure SQL requires a SQL admin at creation time.
-  // If none provided, use safe defaults; SQL auth is disabled post-deploy when enableAzureAdOnlyAuth = true.
-  administratorLogin: empty(sqlAdministratorLogin) ? defaultSqlAdminLogin : sqlAdministratorLogin
-  administratorLoginPassword: empty(sqlAdministratorPassword) ? defaultSqlAdminPassword : sqlAdministratorPassword
+    // Although we operate Entra-only, Azure SQL requires a SQL admin at creation time.
+    // If none provided, use safe defaults; SQL auth is disabled post-deploy when enableAzureAdOnlyAuth = true.
+    administratorLogin: empty(sqlAdministratorLogin) ? defaultSqlAdminLogin : sqlAdministratorLogin
+    administratorLoginPassword: empty(sqlAdministratorPassword) ? defaultSqlAdminPassword : sqlAdministratorPassword
     ...(manageNetworking
       ? {
           publicNetworkAccess: enablePrivateSql ? 'Disabled' : 'Enabled'
@@ -182,8 +185,12 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
   }
 }
 
+// When skipping SQL management, avoid referencing conditional resource properties.
+// Derive the public FQDN; private DNS will resolve to private IP when private endpoint is used.
+var sqlServerFqdnValue = '${sqlServerName}${az.environment().suffixes.sqlServerHostname}'
+
 // Enforce Azure AD-only authentication when requested
-resource sqlServerAadOnly 'Microsoft.Sql/servers/azureADOnlyAuthentications@2021-11-01' = if (!empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin) && enableAzureAdOnlyAuth) {
+resource sqlServerAadOnly 'Microsoft.Sql/servers/azureADOnlyAuthentications@2021-11-01' = if (manageSql && !empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin) && enableAzureAdOnlyAuth) {
   parent: sqlServer
   name: 'Default'
   properties: {
@@ -192,7 +199,7 @@ resource sqlServerAadOnly 'Microsoft.Sql/servers/azureADOnlyAuthentications@2021
 }
 
 // SQL Server Azure AD Administrator (deploy only when all required values provided)
-resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2024-11-01-preview' = if (!empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin)) {
+resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2024-11-01-preview' = if (manageSql && !empty(azureAdAdminObjectId) && !empty(azureAdAdminLogin)) {
   parent: sqlServer
   name: 'ActiveDirectory'
   properties: {
@@ -206,8 +213,8 @@ resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2024-11-01-
 // NOTE: We no longer auto-assign the SQL AAD admin in ARM to avoid timing/conflict issues.
 // The pipelines assign the Web/App MI as SQL AAD admin after the server exists via CLI.
 
-// SQL Database
-resource sqlDatabase 'Microsoft.Sql/servers/databases@2024-11-01-preview' = {
+// SQL Database (create/update when manageSql=true)
+resource sqlDatabase 'Microsoft.Sql/servers/databases@2024-11-01-preview' = if (manageSql) {
   parent: sqlServer
   name: sqlDatabaseName
   location: location
@@ -222,8 +229,9 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2024-11-01-preview' = {
   }
 }
 
+
 // SQL Server Firewall Rule for Azure Services
-resource sqlServerFirewallRuleAzure 'Microsoft.Sql/servers/firewallRules@2024-11-01-preview' = if (!enablePrivateSql && manageNetworking) {
+resource sqlServerFirewallRuleAzure 'Microsoft.Sql/servers/firewallRules@2024-11-01-preview' = if (manageSql && !enablePrivateSql && manageNetworking) {
   parent: sqlServer
   name: 'AllowAzureServices'
   properties: {
@@ -237,7 +245,7 @@ resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01
   parent: keyVault
   name: 'SqlConnectionString'
   properties: {
-  value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+  value: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
   }
 }
 
@@ -343,7 +351,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
       connectionStrings: [
         {
           name: 'DefaultConnection'
-          connectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+          connectionString: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
         }
       ]
@@ -424,7 +432,7 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
       connectionStrings: [
         {
           name: 'DefaultConnection'
-          connectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+          connectionString: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
         }
       ]
@@ -493,7 +501,7 @@ resource privateDnsVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLin
 }
 
 // Private Endpoint for SQL Server
-resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if (enablePrivateSql && manageNetworking) {
+resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if (manageSql && enablePrivateSql && manageNetworking) {
   name: 'pe-${sqlServerName}'
   location: location
   properties: {
@@ -513,7 +521,7 @@ resource sqlPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = if
 }
 
 // Associate Private Endpoint with DNS Zone (creates A record)
-resource sqlPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = if (enablePrivateSql && manageNetworking) {
+resource sqlPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = if (manageSql && enablePrivateSql && manageNetworking) {
   name: 'pdzg-sql'
   parent: sqlPrivateEndpoint
   properties: {
@@ -625,8 +633,8 @@ output webAppPrincipalId string = webApp.identity.principalId
 output webApiName string = webApi.name
 output webApiUrl string = 'https://${webApi.properties.defaultHostName}'
 output webApiPrincipalId string = webApi.identity.principalId
-output sqlServerName string = sqlServer.name
-output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
+output sqlServerName string = sqlServerName
+output sqlServerFqdn string = sqlServerFqdnValue
 output sqlDatabaseName string = sqlDatabaseName
 output containerRegistryName string = deployContainerRegistry ? containerRegistry!.name : 'not-deployed'
 output containerRegistryLoginServer string = deployContainerRegistry
