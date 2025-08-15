@@ -175,7 +175,7 @@ stages:
             inputs:
               command: "build"
               projects: "AiStockTradeApp.sln"
-              arguments: "--no-restore --configuration Release /p:Version=$(FullSemVer) /p:FileVersion=$(AssemblySemVer) /p:InformationalVersion=$(InformationalVersion) /p:AssemblyVersion=$(AssemblySemVer)"
+              arguments: "--no-restore --configuration Release"
 
           # SQL Server container not required for unit tests; using in-memory DB
 
