@@ -22,9 +22,6 @@
     },
     "enablePrivateKeyVault": {
       "value": true
-    },
-    "sqlAdminUsername": {
-      "value": "sqladmin"
     }
   }
 }

@@ -1,9 +1,4 @@
-@description('SQL Server admin username')
-param sqlAdminUsername string = 'sqladmin'
-
-@description('SQL Server admin password (ignored when enableAzureAdOnlyAuth = true). Left blank when using Azure AD only auth.')
-@secure()
-param sqlAdminPassword string = ''
+// Entra-only: SQL admin username/password removed. Server will be created without SQL logins.
 
 @description('The location for all resources')
 param location string = resourceGroup().location
@@ -90,9 +85,7 @@ var sqlDatabaseName = 'sqldb-${resourceNamePrefix}-${instanceNumber}'
 var vnetName = 'vnet-${resourceNamePrefix}-${instanceNumber}'
 var appIntegrationSubnetName = 'snet-appintegration'
 var privateEndpointSubnetName = 'snet-private-endpoints'
-// Use Azure AD auth for connection strings and to omit SQL admin credentials when explicitly enabled by policy/params
-// Even if azureAdAdmin* values are not provided here, a later pipeline step can set the server's Entra admin.
-var useAzureAdAuth = enableAzureAdOnlyAuth
+// Entra-only: Always use Azure AD auth for connection strings.
 
 // Whether any private networking is required for the app
 var requireVNetIntegration = enablePrivateSql || enablePrivateKeyVault
@@ -161,14 +154,6 @@ resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = {
   name: sqlServerName
   location: location
   properties: {
-    // Only include SQL admin credentials when NOT using Azure AD only authentication
-    // Using object spread to avoid sending nulls which can cause deployment errors in AAD-only mode
-    ...(useAzureAdAuth
-      ? {}
-      : {
-          administratorLogin: sqlAdminUsername
-          administratorLoginPassword: sqlAdminPassword
-        })
     version: '12.0'
     ...(manageNetworking
       ? {
@@ -186,6 +171,20 @@ resource sqlServerAzureAdAdmin 'Microsoft.Sql/servers/administrators@2024-11-01-
     administratorType: 'ActiveDirectory'
     login: azureAdAdminLogin
     sid: azureAdAdminObjectId
+    tenantId: subscription().tenantId
+  }
+}
+
+// Fallback: When Entra-only auth is enabled but no explicit admin values are provided,
+// set the SQL AD admin to the API Web App's managed identity so the server can be created.
+// This preserves the "Entra-only" stance without needing SQL logins.
+resource sqlServerAzureAdAdminAuto 'Microsoft.Sql/servers/administrators@2024-11-01-preview' = if (enableAzureAdOnlyAuth && (empty(azureAdAdminObjectId) || empty(azureAdAdminLogin))) {
+  parent: sqlServer
+  name: 'ActiveDirectory'
+  properties: {
+    administratorType: 'ActiveDirectory'
+    login: webApiName
+    sid: webApi.identity.principalId
     tenantId: subscription().tenantId
   }
 }
@@ -221,9 +220,7 @@ resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01
   parent: keyVault
   name: 'SqlConnectionString'
   properties: {
-    value: useAzureAdAuth
-      ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
-      : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+  value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
   }
 }
 
@@ -329,9 +326,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
       connectionStrings: [
         {
           name: 'DefaultConnection'
-          connectionString: useAzureAdAuth
-            ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
-            : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+          connectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
         }
       ]
@@ -412,9 +407,7 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
       connectionStrings: [
         {
           name: 'DefaultConnection'
-          connectionString: useAzureAdAuth
-            ? 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
-            : 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};User ID=${sqlAdminUsername};Password=${sqlAdminPassword};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+          connectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
         }
       ]

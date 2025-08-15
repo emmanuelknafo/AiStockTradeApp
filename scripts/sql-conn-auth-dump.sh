@@ -22,6 +22,6 @@ else
   MASKED=$(echo "$RAW_CONN" | sed -E 's/Password=([^;]{0,4})[^;]*/Password=***MASKED***/I')
   echo "[DIAG] Connection string (masked): $MASKED"
   if echo "$RAW_CONN" | grep -qi 'User ID=sqladmin' && echo "$RAW_CONN" | grep -qi 'Password=;' ; then
-    echo "[DIAG][WARN] SQL admin password appears blank in connection string! Ensure pipelines pass sqlAdminPassword or enable AAD-only auth."
+    echo "[DIAG][WARN] SQL admin password appears blank in connection string. Recommended: enforce Azure AD (Entra) only auth and remove SQL logins."
   fi
 fi

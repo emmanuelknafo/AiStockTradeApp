@@ -99,6 +99,5 @@ dotnet ef migrations remove
 ## Environment Variables
 
 Required for Azure deployment:
-- `SQL_ADMIN_PASSWORD`: SQL Server admin password
 - `ALPHA_VANTAGE_API_KEY`: API key for Alpha Vantage
 - `TWELVE_DATA_API_KEY`: API key for Twelve Data

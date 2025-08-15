@@ -73,7 +73,6 @@ jobs:
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-            --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
@@ -95,7 +94,6 @@ jobs:
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-            --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
@@ -354,7 +352,6 @@ jobs:
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \
-            --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
@@ -377,7 +374,6 @@ jobs:
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \
-            --parameters sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}" \
             --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
