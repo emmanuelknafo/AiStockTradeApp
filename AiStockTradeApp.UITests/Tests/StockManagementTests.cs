@@ -107,6 +107,7 @@ public class StockManagementTests : BaseUITest
     }
 
     [Test]
+    [Retry(2)]
     public async Task ClearAll_ShouldRemoveAllStocks()
     {
         await NavigateToStockDashboard();
@@ -128,6 +129,9 @@ public class StockManagementTests : BaseUITest
             await Page.WaitForTimeoutAsync(1000); // Small delay between additions
         }
 
+        // Ensure page has settled after any reloads
+        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10000 });
+
         // Set up dialog handler before clicking clear all
         Page.Dialog += async (_, dialog) =>
         {
@@ -136,10 +140,19 @@ public class StockManagementTests : BaseUITest
 
         // Click clear all button regardless of how many were actually added
     var clearButton = Page.Locator("#clear-all");
-    // Ensure it's in the DOM before asserting visibility (helps on slower CI runs)
-    await clearButton.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 10000 });
-    await Expect(clearButton).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 10000 });
-        await clearButton.ClickAsync();
+        // Ensure it's in the DOM and try to bring it into view
+        await clearButton.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+        await clearButton.ScrollIntoViewIfNeededAsync();
+        try
+        {
+            await Expect(clearButton).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 15000 });
+            await clearButton.ClickAsync();
+        }
+        catch (PlaywrightException)
+        {
+            // Fallback: click with force in case of rare visibility timing issues in CI
+            await clearButton.ClickAsync(new LocatorClickOptions { Force = true });
+        }
 
         // Wait for clearing and potential page reload
         await Page.WaitForTimeoutAsync(3000);

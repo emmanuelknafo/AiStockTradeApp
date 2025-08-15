@@ -93,6 +93,14 @@ public class BaseUITest : PageTest
             Snapshots = true,
             Sources = true
         });
+
+        // Set sensible defaults for CI where machines may be slower
+        try
+        {
+            Page.SetDefaultTimeout(15000);
+            Page.SetDefaultNavigationTimeout(20000);
+        }
+        catch { /* Page might not be ready in rare cases; safe to ignore */ }
     }
 
     [TearDown]

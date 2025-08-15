@@ -1068,12 +1068,18 @@ stages:
                       echo "[DEV] Ensuring SQL AD admin is set to API Web App MI..."
                       MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
                       if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[DEV][ERROR] Web app MI principalId not found"; exit 1; fi
+                      # Detect AAD-only mode; deleting admin is blocked when true
+                      AAD_ONLY=$(az sql server ad-only-auth show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "azureAdOnlyAuthentication" -o tsv 2>/dev/null || echo "")
                       CURR_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
                       CURR_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
                       echo "[DEV] API Web App MI: $MI_PRINCIPAL_ID"; echo "[DEV] Current admin login: $CURR_LOGIN"; echo "[DEV] Current admin sid: $CURR_SID"
                       if [ "$CURR_SID" != "$MI_PRINCIPAL_ID" ]; then
-                        echo "[DEV] Mismatch detected; updating SQL AD admin to API MI..."
-                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        echo "[DEV] Mismatch detected; updating SQL AD admin to API MI... (AAD-only=$AAD_ONLY)"
+                        if [ "$AAD_ONLY" != "true" ]; then
+                          az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        else
+                          echo "[DEV] Skipping delete because AAD-only is enabled; will upsert via create."
+                        fi
                         az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$MI_PRINCIPAL_ID"
                       else
                         echo "[DEV] Already correct; no change needed."
@@ -1360,12 +1366,18 @@ stages:
                       echo "[PROD] Ensuring SQL AD admin is set to API Web App MI..."
                       MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
                       if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] Web app MI principalId not found"; exit 1; fi
+                      # Detect AAD-only mode; deleting admin is blocked when true
+                      AAD_ONLY=$(az sql server ad-only-auth show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "azureAdOnlyAuthentication" -o tsv 2>/dev/null || echo "")
                       CURR_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
                       CURR_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
                       echo "[PROD] API Web App MI: $MI_PRINCIPAL_ID"; echo "[PROD] Current admin login: $CURR_LOGIN"; echo "[PROD] Current admin sid: $CURR_SID"
                       if [ "$CURR_SID" != "$MI_PRINCIPAL_ID" ]; then
-                        echo "[PROD] Mismatch detected; updating SQL AD admin to API MI..."
-                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        echo "[PROD] Mismatch detected; updating SQL AD admin to API MI... (AAD-only=$AAD_ONLY)"
+                        if [ "$AAD_ONLY" != "true" ]; then
+                          az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        else
+                          echo "[PROD] Skipping delete because AAD-only is enabled; will upsert via create."
+                        fi
                         az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$MI_PRINCIPAL_ID"
                       else
                         echo "[PROD] Already correct; no change needed."
