@@ -959,23 +959,58 @@ jobs:
         run: |
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
           HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+          BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
+          echo "🏥 Starting comprehensive health check (Dev UI)..."
+          echo "Base URL: ${BASE_URL}"
+          echo "Health URL: ${HEALTH_URL}"
           echo "Waiting for deployment to be ready..."
-          echo "Health check URL: ${HEALTH_URL}"
-          sleep 30
-          curl -f "${HEALTH_URL}" || exit 1
-          echo "Health check passed!"
+          sleep 60
+          echo "Testing basic site accessibility..."
+          for i in {1..5}; do
+            if curl -f -s "${BASE_URL}" >/dev/null 2>&1; then
+              echo "✅ Site is accessible (attempt $i)"; break
+            else
+              echo "⏳ Site not ready yet (attempt $i/5)..."; sleep 20
+            fi
+          done
+          echo "Testing health endpoint..."
+          for i in {1..10}; do
+            echo "Health check attempt $i/10..."
+            HTTP_CODE=$(curl -s -o /tmp/health_ui_dev.txt -w "%{http_code}" "${HEALTH_URL}")
+            RESPONSE_BODY=$(cat /tmp/health_ui_dev.txt 2>/dev/null || echo "No response body")
+            echo "HTTP Status: ${HTTP_CODE}"; echo "Response: ${RESPONSE_BODY}"
+            if [ "${HTTP_CODE}" = "200" ]; then
+              echo "✅ Health check passed!"; exit 0
+            fi
+            sleep 30
+          done
+          echo "❌ UI Health check failed (Dev)"; exit 1
 
       - name: Run API Health Check
         run: |
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           WEBAPP_NAME="api-aistock-dev-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
           HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+          BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
+          echo "🏥 Starting API health check (Dev API)..."
+          echo "Base URL: ${BASE_URL}"
+          echo "Health URL: ${HEALTH_URL}"
           echo "Waiting for API deployment to be ready..."
-          echo "API Health check URL: ${HEALTH_URL}"
-          sleep 30
-          curl -f "${HEALTH_URL}" || exit 1
-          echo "API Health check passed!"
+          sleep 60
+          for i in {1..10}; do
+            echo "API Health check attempt $i/10..."
+            HTTP_CODE=$(curl -s -o /tmp/health_api_dev.txt -w "%{http_code}" "${HEALTH_URL}")
+            RESPONSE_BODY=$(cat /tmp/health_api_dev.txt 2>/dev/null || echo "No response body")
+            echo "HTTP Status: ${HTTP_CODE}"; echo "Response: ${RESPONSE_BODY}"
+            if [ "${HTTP_CODE}" = "200" ]; then
+              echo "✅ API Health check passed!"; exit 0
+            fi
+            sleep 30
+          done
+          echo "❌ API Health check failed (Dev)"; exit 1
 
   deploy-prod:
     runs-on: [self-hosted, linux, x64]

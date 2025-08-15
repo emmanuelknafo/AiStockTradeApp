@@ -312,6 +312,14 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
           value: 'false'
         }
         {
+          name: 'WEBSITES_CONTAINER_START_TIME_LIMIT'
+          value: '600'
+        }
+        {
+          name: 'WEBSITE_HEALTHCHECK_MAXPINGFAILURES'
+          value: '20'
+        }
+        {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: applicationInsights.properties.ConnectionString
         }
@@ -363,8 +371,8 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
           connectionString: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
         }
-      ]
-      healthCheckPath: '/health'
+  ]
+  healthCheckPath: '/health'
     }
     httpsOnly: true
   }
@@ -400,6 +408,14 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
         {
           name: 'WEBSITES_ENABLE_APP_SERVICE_STORAGE'
           value: 'false'
+        }
+        {
+          name: 'WEBSITES_CONTAINER_START_TIME_LIMIT'
+          value: '600'
+        }
+        {
+          name: 'WEBSITE_HEALTHCHECK_MAXPINGFAILURES'
+          value: '20'
         }
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -444,8 +460,8 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
           connectionString: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
         }
-      ]
-      healthCheckPath: '/health'
+  ]
+  healthCheckPath: '/health'
     }
     httpsOnly: true
   }
