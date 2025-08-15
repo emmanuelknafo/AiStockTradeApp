@@ -5,9 +5,9 @@ trigger: none # Manual trigger only
 
 parameters:
   - name: environment
-    displayName: "Environment to deploy infrastructure"
+    displayName: "Environment to deploy infrastructure (selecting prod will deploy to dev and prod environments)"
     type: string
-    default: "dev"
+    default: "prod"
     values:
       - dev
       - prod

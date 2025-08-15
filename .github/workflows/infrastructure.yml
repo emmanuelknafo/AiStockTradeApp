@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to deploy infrastructure"
+        description: "Environment to deploy infrastructure (selecting prod will deploy to dev and prod environments)"
         required: true
-        default: "dev"
+        default: "prod"
         type: choice
         options:
           - dev
