@@ -312,11 +312,6 @@ jobs:
           sa-password: "YourStrong@Passw0rd"
           show-log: true
 
-      - name: Docker post-clean (SQL)
-        if: always()
-        run: |
-          docker rm -f sql 2>/dev/null || true
-
       - name: Wait for SQL Server to start
         run: sleep 30
 
@@ -350,6 +345,10 @@ jobs:
           ASPNETCORE_URLS: "http://localhost:5000"
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
           USE_INMEMORY_DB: "true" # Use EF in-memory provider for faster UI tests (auto-start logic also supports this)
+          # Ensure UI uses the same API URL that TestSetupHelper will auto-start
+          PLAYWRIGHT_API_BASE_URL: "http://localhost:5256"
+          StockApi__BaseUrl: "http://localhost:5256"
+          StockApi__HttpBaseUrl: "http://localhost:5256"
 
       - name: Wait for application to be ready
         run: |
@@ -381,6 +380,7 @@ jobs:
         timeout-minutes: 25
         env:
           PLAYWRIGHT_BASE_URL: "http://localhost:5000"
+          PLAYWRIGHT_API_BASE_URL: "http://localhost:5256"
           ASPNETCORE_ENVIRONMENT: "Development"
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
           USE_INMEMORY_DB: "true" # In-memory DB accelerates UI tests and avoids local SQL dependency
@@ -418,6 +418,11 @@ jobs:
           fi
           # Cleanup any remaining dotnet processes
           pkill -f "dotnet.*AiStockTradeApp" || true
+
+      - name: Docker post-clean (SQL)
+        if: always()
+        run: |
+          docker rm -f sql 2>/dev/null || true
 
   build:
     runs-on: [self-hosted, linux, x64]

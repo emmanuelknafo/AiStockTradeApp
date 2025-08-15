@@ -347,7 +347,7 @@ stages:
             inputs:
               command: "build"
               projects: "AiStockTradeApp.sln"
-              arguments: "--no-restore --configuration Release /p:Version=$(FullSemVer) /p:FileVersion=$(AssemblySemVer) /p:InformationalVersion=$(InformationalVersion) /p:AssemblyVersion=$(AssemblySemVer)"
+              arguments: "--no-restore --configuration Release"
 
           - task: DotNetCoreCLI@2
             displayName: "Install Entity Framework tools"
@@ -408,6 +408,10 @@ stages:
               ASPNETCORE_ENVIRONMENT: "Development"
               ASPNETCORE_URLS: "http://localhost:5000"
               USE_INMEMORY_DB: "true"
+              # Ensure UI uses the same API URL that the tests will auto-start
+              PLAYWRIGHT_API_BASE_URL: "http://localhost:5256"
+              StockApi__BaseUrl: "http://localhost:5256"
+              StockApi__HttpBaseUrl: "http://localhost:5256"
 
           - script: |
               echo "Waiting for application to start..."
@@ -502,6 +506,7 @@ stages:
             env:
               ASPNETCORE_ENVIRONMENT: "Development"
               PLAYWRIGHT_BASE_URL: "http://localhost:5000"
+              PLAYWRIGHT_API_BASE_URL: "http://localhost:5256"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
               DISPLAY: ":99.0"
               PLAYWRIGHT_LAUNCH_OPTIONS: '{"headless":true,"args":["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu","--no-first-run","--no-default-browser-check","--disable-background-timer-throttling","--disable-backgrounding-occluded-windows","--disable-renderer-backgrounding"]}'
