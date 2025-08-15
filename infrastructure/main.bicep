@@ -347,6 +347,15 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'APP_VERSION'
           value: empty(appVersion) ? '' : appVersion
         }
+        // Configure UI to call the Azure API endpoint
+        {
+          name: 'StockApi__BaseUrl'
+          value: 'https://${webApi.properties.defaultHostName}'
+        }
+        {
+          name: 'StockApi__HttpBaseUrl'
+          value: 'http://${webApi.properties.defaultHostName}'
+        }
       ]
       connectionStrings: [
         {
