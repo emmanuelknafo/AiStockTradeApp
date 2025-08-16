@@ -42,12 +42,20 @@ public sealed class DownloadHistoricalCommandSettings : CommandSettings
     [DefaultValue(60)]
     public int TimeoutSec { get; init; } = 60;
 
+    [CommandOption("--browser <NAME>")]
+    [Description("Browser engine: auto|chromium|firefox|webkit (default: auto)")]
+    [DefaultValue("auto")]
+    public string Browser { get; init; } = "auto";
+
     public override ValidationResult Validate()
     {
         if (string.IsNullOrWhiteSpace(Symbol))
             return ValidationResult.Error("--symbol is required");
         if (string.IsNullOrWhiteSpace(Destination))
             return ValidationResult.Error("--dest is required");
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "auto", "chromium", "firefox", "webkit" };
+        if (!allowed.Contains(Browser))
+            return ValidationResult.Error("--browser must be one of: auto|chromium|firefox|webkit");
         return ValidationResult.Success();
     }
 }
@@ -69,19 +77,64 @@ public sealed class DownloadHistoricalCommand : AsyncCommand<DownloadHistoricalC
         using var pw = await Playwright.CreateAsync();
         var chromiumArgs = new[] { "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage" };
         var headlessUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+        IBrowser browser;
+        IBrowserContext bctx;
+        IPage page;
 
-        var browser = await pw.Chromium.LaunchAsync(new()
+        string browserPref = settings.Browser.Trim().ToLowerInvariant();
+        if (settings.Headful)
         {
-            Headless = !settings.Headful,
-            Args = chromiumArgs
-        });
-        var bctx = await browser.NewContextAsync(new()
+            // Headful: prefer Chromium for best dev experience
+            browser = await pw.Chromium.LaunchAsync(new() { Headless = false, Args = chromiumArgs });
+            bctx = await browser.NewContextAsync(new() { AcceptDownloads = true });
+            page = await bctx.NewPageAsync();
+        }
+        else
         {
-            AcceptDownloads = true,
-            UserAgent = settings.Headful ? null : headlessUA,
-            ViewportSize = settings.Headful ? null : new() { Width = 1280, Height = 900 }
-        });
-        var page = await bctx.NewPageAsync();
+            switch (browserPref)
+            {
+                case "chromium":
+                    browser = await pw.Chromium.LaunchAsync(new() { Headless = true, Args = chromiumArgs });
+                    bctx = await browser.NewContextAsync(new()
+                    {
+                        AcceptDownloads = true,
+                        UserAgent = headlessUA,
+                        ViewportSize = new() { Width = 1280, Height = 900 }
+                    });
+                    page = await bctx.NewPageAsync();
+                    break;
+                case "firefox":
+                    browser = await pw.Firefox.LaunchAsync(new() { Headless = true });
+                    bctx = await browser.NewContextAsync(new()
+                    {
+                        AcceptDownloads = true,
+                        UserAgent = headlessUA,
+                        ViewportSize = new() { Width = 1280, Height = 900 }
+                    });
+                    page = await bctx.NewPageAsync();
+                    break;
+                case "webkit":
+                    browser = await pw.Webkit.LaunchAsync(new() { Headless = true });
+                    bctx = await browser.NewContextAsync(new()
+                    {
+                        AcceptDownloads = true,
+                        UserAgent = headlessUA,
+                        ViewportSize = new() { Width = 1280, Height = 900 }
+                    });
+                    page = await bctx.NewPageAsync();
+                    break;
+                default: // auto (Chromium with fallback later)
+                    browser = await pw.Chromium.LaunchAsync(new() { Headless = true, Args = chromiumArgs });
+                    bctx = await browser.NewContextAsync(new()
+                    {
+                        AcceptDownloads = true,
+                        UserAgent = headlessUA,
+                        ViewportSize = new() { Width = 1280, Height = 900 }
+                    });
+                    page = await bctx.NewPageAsync();
+                    break;
+            }
+        }
         page.SetDefaultTimeout(timeoutMs);
 
         // Navigate with a more permissive load state (networkidle can hang on analytics)
@@ -89,7 +142,7 @@ public sealed class DownloadHistoricalCommand : AsyncCommand<DownloadHistoricalC
         {
             await page.GotoAsync(url, new() { Timeout = timeoutMs, WaitUntil = WaitUntilState.DOMContentLoaded });
         }
-        catch (PlaywrightException ex) when (!settings.Headful && ex.Message.Contains("ERR_HTTP2_PROTOCOL_ERROR", StringComparison.OrdinalIgnoreCase))
+    catch (PlaywrightException ex) when (!settings.Headful && browserPref == "auto" && ex.Message.Contains("ERR_HTTP2_PROTOCOL_ERROR", StringComparison.OrdinalIgnoreCase))
         {
             // Headless Chromium can hit HTTP/2 issues in some environments; fall back to Firefox headless
             AnsiConsole.MarkupLine("[yellow]Chromium headless hit HTTP/2 error; retrying with Firefox headless...[/]");
