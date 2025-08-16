@@ -67,14 +67,19 @@ public sealed class DownloadHistoricalCommand : AsyncCommand<DownloadHistoricalC
 
         // Setup Playwright
         using var pw = await Playwright.CreateAsync();
+        var chromiumArgs = new[] { "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage" };
+        var headlessUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+
         var browser = await pw.Chromium.LaunchAsync(new()
         {
             Headless = !settings.Headful,
-            Args = new[] { "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage" }
+            Args = chromiumArgs
         });
         var bctx = await browser.NewContextAsync(new()
         {
-            AcceptDownloads = true
+            AcceptDownloads = true,
+            UserAgent = settings.Headful ? null : headlessUA,
+            ViewportSize = settings.Headful ? null : new() { Width = 1280, Height = 900 }
         });
         var page = await bctx.NewPageAsync();
         page.SetDefaultTimeout(timeoutMs);
@@ -82,6 +87,24 @@ public sealed class DownloadHistoricalCommand : AsyncCommand<DownloadHistoricalC
         // Navigate with a more permissive load state (networkidle can hang on analytics)
         try
         {
+            await page.GotoAsync(url, new() { Timeout = timeoutMs, WaitUntil = WaitUntilState.DOMContentLoaded });
+        }
+        catch (PlaywrightException ex) when (!settings.Headful && ex.Message.Contains("ERR_HTTP2_PROTOCOL_ERROR", StringComparison.OrdinalIgnoreCase))
+        {
+            // Headless Chromium can hit HTTP/2 issues in some environments; fall back to Firefox headless
+            AnsiConsole.MarkupLine("[yellow]Chromium headless hit HTTP/2 error; retrying with Firefox headless...[/]");
+            try { await bctx.CloseAsync(); } catch { }
+            try { await browser.CloseAsync(); } catch { }
+
+            browser = await pw.Firefox.LaunchAsync(new() { Headless = true });
+            bctx = await browser.NewContextAsync(new()
+            {
+                AcceptDownloads = true,
+                UserAgent = headlessUA,
+                ViewportSize = new() { Width = 1280, Height = 900 },
+            });
+            page = await bctx.NewPageAsync();
+            page.SetDefaultTimeout(timeoutMs);
             await page.GotoAsync(url, new() { Timeout = timeoutMs, WaitUntil = WaitUntilState.DOMContentLoaded });
         }
         catch (TimeoutException)
