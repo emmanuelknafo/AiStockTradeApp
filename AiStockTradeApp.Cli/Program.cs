@@ -94,28 +94,8 @@ public sealed class DownloadHistoricalCommand : AsyncCommand<DownloadHistoricalC
     // Attempt to accept cookie banner if present (common variants)
         await page.TryAcceptCookiesAsync(acceptTimeoutMs: 12000);
 
-        // Nasdaq page uses a control like "Download historical data" or "Download CSV"
-        // Build several candidates and pick the first visible one, waiting briefly for it
-        var candidates = new ILocator[]
-        {
-            page.GetByRole(AriaRole.Button, new() { Name = "Download historical data" }),
-            page.GetByRole(AriaRole.Link,   new() { Name = "Download historical data" }),
-            page.GetByRole(AriaRole.Button, new() { NameRegex = new("(?i)download.*(historical|csv)") }),
-            page.GetByRole(AriaRole.Link,   new() { NameRegex = new("(?i)download.*(historical|csv)") }),
-            page.GetByText(new Regex("Download\\s+(historical|csv)", RegexOptions.IgnoreCase)),
-            page.Locator(":has-text('Download historical data')"),
-            page.Locator(":has-text('Download CSV')"),
-        };
-        ILocator? downloadControl = null;
-        foreach (var c in candidates)
-        {
-            try
-            {
-                await c.First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
-                if (await c.First.IsVisibleAsync()) { downloadControl = c.First; break; }
-            }
-            catch { /* try next */ }
-        }
+    // Find the download control with progressive scrolling and retries
+    var downloadControl = await PageFinders.FindDownloadControlAsync(page, timeoutMs);
 
         if (downloadControl is null)
         {
@@ -125,8 +105,8 @@ public sealed class DownloadHistoricalCommand : AsyncCommand<DownloadHistoricalC
             return 2;
         }
 
-        await downloadControl.ScrollIntoViewIfNeededAsync();
-        try { await downloadControl.HoverAsync(new() { Timeout = 1500 }); } catch { }
+    await downloadControl.ScrollIntoViewIfNeededAsync();
+    try { await downloadControl.HoverAsync(new() { Timeout = 1500 }); } catch { }
 
         // Strategy 1: Use the browser download event
         try
@@ -165,6 +145,70 @@ public sealed class DownloadHistoricalCommand : AsyncCommand<DownloadHistoricalC
 
     await browser.CloseAsync();
         return 0;
+    }
+}
+
+internal static class DownloadLocators
+{
+    public static IEnumerable<Func<IPage, ILocator>> BuildCandidates()
+    {
+        yield return p => p.GetByRole(AriaRole.Button, new() { Name = "Download historical data" });
+        yield return p => p.GetByRole(AriaRole.Link,   new() { Name = "Download historical data" });
+        yield return p => p.GetByRole(AriaRole.Button, new() { NameRegex = new("(?i)download.*(historical|csv)") });
+        yield return p => p.GetByRole(AriaRole.Link,   new() { NameRegex = new("(?i)download.*(historical|csv)") });
+        yield return p => p.GetByText(new Regex("Download\\s+(historical|csv)", RegexOptions.IgnoreCase));
+        yield return p => p.Locator(":has-text('Download historical data')");
+        yield return p => p.Locator(":has-text('Download CSV')");
+        yield return p => p.Locator("a[download], button[download]");
+        yield return p => p.Locator("[aria-label*='Download' i]");
+        yield return p => p.Locator("[data-testid*='download' i]");
+        yield return p => p.Locator("a[href*='.csv'], a[href*='download']");
+    }
+}
+
+internal static class PageFinders
+{
+    public static async Task<ILocator?> FindDownloadControlAsync(IPage page, int timeoutMs)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        int attempt = 0;
+        // Try a few full-page scroll passes to trigger lazy content
+        while (DateTime.UtcNow < deadline)
+        {
+            attempt++;
+            AnsiConsole.MarkupLine($"[grey]Scanning for download control (attempt {attempt})...[/]");
+
+            foreach (var factory in DownloadLocators.BuildCandidates())
+            {
+                var loc = factory(page).First;
+                try
+                {
+                    await loc.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 1200 });
+                    if (await loc.IsVisibleAsync())
+                    {
+                        return loc;
+                    }
+                }
+                catch { /* try next candidate */ }
+            }
+
+            // Scroll down in steps to reveal lazily rendered controls
+            try
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    await page.EvaluateAsync("window.scrollBy(0, 600)");
+                    await page.WaitForTimeoutAsync(200);
+                }
+                // Scroll back to top to catch sticky header buttons
+                await page.EvaluateAsync("window.scrollTo(0, 0)");
+            }
+            catch { }
+
+            await page.WaitForTimeoutAsync(400);
+        }
+
+        return null;
     }
 }
 
