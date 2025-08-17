@@ -18,6 +18,9 @@ public class Program
                .WithDescription("Download historical stock data CSV from nasdaq.com")
                .WithExample(new[] { "download-historical", "--symbol", "GOOG", "--dest", "C:/tmp/goog.csv" })
                .WithExample(new[] { "download-historical", "-s", "MSFT", "-d", "./msft.csv" });
+                cfg.AddCommand<ImportListedCommand>("import-listed")
+                    .WithDescription("Import a screener CSV into the API listed-stocks catalog")
+                    .WithExample(new[] { "import-listed", "--file", "./data/nasdaq.com/screener.csv", "--api", "https://localhost:5001" });
         });
         return await app.RunAsync(args);
     }
@@ -57,6 +60,58 @@ public sealed class DownloadHistoricalCommandSettings : CommandSettings
         if (!allowed.Contains(Browser))
             return ValidationResult.Error("--browser must be one of: auto|chromium|firefox|webkit");
         return ValidationResult.Success();
+    }
+}
+
+public sealed class ImportListedSettings : CommandSettings
+{
+    [CommandOption("--file <PATH>")]
+    [Description("Path to the screener CSV file to import")] 
+    public string FilePath { get; init; } = string.Empty;
+
+    [CommandOption("--api <BASEURL>")]
+    [Description("API base URL (e.g., https://localhost:5001)")]
+    public string ApiBase { get; init; } = "http://localhost:5000";
+
+    public override ValidationResult Validate()
+    {
+        if (string.IsNullOrWhiteSpace(FilePath) || !System.IO.File.Exists(FilePath))
+            return ValidationResult.Error("--file path is required and must exist");
+        if (string.IsNullOrWhiteSpace(ApiBase))
+            return ValidationResult.Error("--api is required");
+        return ValidationResult.Success();
+    }
+}
+
+public sealed class ImportListedCommand : AsyncCommand<ImportListedSettings>
+{
+    public override async Task<int> ExecuteAsync(CommandContext context, ImportListedSettings settings)
+    {
+        try
+        {
+            var csv = await System.IO.File.ReadAllTextAsync(settings.FilePath);
+            using var http = new HttpClient();
+            http.Timeout = TimeSpan.FromMinutes(2);
+            var url = settings.ApiBase.TrimEnd('/') + "/api/listed-stocks/import-csv";
+            var content = new StringContent(csv, System.Text.Encoding.UTF8, "text/csv");
+            AnsiConsole.MarkupLine($"[green]POST[/] {url} ({csv.Length} bytes)");
+            var resp = await http.PostAsync(url, content);
+            var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                AnsiConsole.MarkupLine($"[red]Import failed:[/] {(int)resp.StatusCode} {resp.ReasonPhrase}");
+                AnsiConsole.WriteLine(body);
+                return 2;
+            }
+            AnsiConsole.MarkupLine("[green]Import succeeded.[/]");
+            AnsiConsole.WriteLine(body);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
+            return 1;
+        }
     }
 }
 

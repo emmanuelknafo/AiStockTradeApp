@@ -9,7 +9,8 @@ namespace AiStockTradeApp.DataAccess
         {
         }
 
-        public DbSet<StockData> StockData { get; set; }
+    public DbSet<StockData> StockData { get; set; }
+    public DbSet<ListedStock> ListedStocks { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -76,6 +77,20 @@ namespace AiStockTradeApp.DataAccess
                         v => v.Ticks,
                         v => new TimeSpan(v))
                     .HasDefaultValue(TimeSpan.FromMinutes(15));
+            });
+
+            // Configure ListedStock entity
+            modelBuilder.Entity<ListedStock>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.Symbol).IsUnique();
+                entity.Property(e => e.Symbol).HasMaxLength(10).IsRequired();
+                entity.Property(e => e.Name).HasMaxLength(500).IsRequired();
+                entity.Property(e => e.Sector).HasMaxLength(100);
+                entity.Property(e => e.Industry).HasMaxLength(200);
+                // Helpful filter indexes
+                entity.HasIndex(e => e.Sector);
+                entity.HasIndex(e => e.Industry);
             });
         }
     }
