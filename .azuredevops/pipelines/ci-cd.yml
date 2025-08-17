@@ -19,6 +19,8 @@ trigger:
       - ".github/**"
       - "AGENTS.md"
       - "LICENSE"
+      - "data/**"
+      - "AiStockTradeApp.Cli/**"
 
 pr:
   branches:
@@ -37,6 +39,8 @@ pr:
       - ".github/**"
       - "AGENTS.md"
       - "LICENSE"
+      - "data/**"
+      - "AiStockTradeApp.Cli/**"
 resources:
   pipelines:
     - pipeline: infrastructurePipeline
