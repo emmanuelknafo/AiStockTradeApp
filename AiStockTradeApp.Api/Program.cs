@@ -32,7 +32,12 @@ else
     {
         var cs = builder.Configuration.GetConnectionString("DefaultConnection")
                  ?? "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
-        options.UseSqlServer(cs, sql => sql.EnableRetryOnFailure());
+        options.UseSqlServer(cs, sql =>
+        {
+            sql.EnableRetryOnFailure();
+            // Explicitly set migrations assembly to ensure discovery in containerized environments
+            sql.MigrationsAssembly(typeof(StockDataContext).Assembly.FullName);
+        });
     });
 }
 
@@ -67,7 +72,7 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// Create database if missing, then apply EF Core migrations on startup (with simple retry)
+// Create database if missing, then apply EF Core migrations on startup (with robust retry)
 if (!useInMemory)
 {
     using var scope = app.Services.CreateScope();
@@ -93,8 +98,9 @@ if (!useInMemory)
     {
         logger.LogWarning(ex, "Failed ensuring database exists; will rely on retries.");
     }
+
     var attempts = 0;
-    var maxAttempts = 10;
+    var maxAttempts = 30; // allow more time for SQL Server to become ready in containers
     var delay = TimeSpan.FromSeconds(5);
     while (true)
     {
@@ -111,8 +117,9 @@ if (!useInMemory)
             logger.LogWarning(ex, "Migration attempt {Attempt} failed.", attempts);
             if (attempts >= maxAttempts)
             {
-                logger.LogError(ex, "Exceeded max migration attempts. Starting without successful migration.");
-                break;
+                logger.LogCritical(ex, "Exceeded max migration attempts. Exiting.");
+                // Fail fast so container restarts and retries until DB is ready
+                throw;
             }
             await Task.Delay(delay);
         }

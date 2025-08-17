@@ -17,8 +17,10 @@ services:
       - ${APPDATA}/ASP.NET/Https:/home/app/.aspnet/https:ro
       - ${APPDATA}/ASP.NET/Https:/root/.aspnet/https:ro
     depends_on:
-      - AiStockTradeAppApi
-      - sqlserver
+      sqlserver:
+        condition: service_healthy
+      AiStockTradeAppApi:
+        condition: service_started
     networks:
       app-network:
         aliases:
@@ -32,7 +34,8 @@ services:
     ports:
       - "8082:8080"
     depends_on:
-      - sqlserver
+      sqlserver:
+        condition: service_healthy
     networks:
       app-network:
         aliases:
@@ -48,6 +51,12 @@ services:
       - "1433:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P $${SA_PASSWORD} -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks:
       - app-network
 
