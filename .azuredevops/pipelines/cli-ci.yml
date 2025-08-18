@@ -171,14 +171,17 @@ stages:
                 API_REPO="$(RegistryName).azurecr.io/aistocktradeapp-api"
                 VER="${VER:-}"
                 if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
-                echo "Building UI image $UI_REPO:$VER"
-                docker build -f ./AiStockTradeApp/Dockerfile -t "$UI_REPO:$VER" --build-arg APP_VERSION="$VER" .
-                docker push "$UI_REPO:$VER"
-                echo "Building API image $API_REPO:$VER"
-                docker build -f ./AiStockTradeApp.Api/Dockerfile -t "$API_REPO:$VER" --build-arg APP_VERSION="$VER" .
-                docker push "$API_REPO:$VER"
-                echo "##vso[task.setvariable variable=UiImage;isOutput=true]$UI_REPO:$VER"
-                echo "##vso[task.setvariable variable=ApiImage;isOutput=true]$API_REPO:$VER"
+                # Sanitize to Docker tag: allow only [A-Za-z0-9_.-]
+                DOCKER_TAG=$(echo "$VER" | sed -E 's/[^A-Za-z0-9_.-]/-/g')
+                echo "GitVersion: $VER -> Docker tag: $DOCKER_TAG"
+                echo "Building UI image $UI_REPO:$DOCKER_TAG"
+                docker build -f ./AiStockTradeApp/Dockerfile -t "$UI_REPO:$DOCKER_TAG" --build-arg APP_VERSION="$VER" .
+                docker push "$UI_REPO:$DOCKER_TAG"
+                echo "Building API image $API_REPO:$DOCKER_TAG"
+                docker build -f ./AiStockTradeApp.Api/Dockerfile -t "$API_REPO:$DOCKER_TAG" --build-arg APP_VERSION="$VER" .
+                docker push "$API_REPO:$DOCKER_TAG"
+                echo "##vso[task.setvariable variable=UiImage;isOutput=true]$UI_REPO:$DOCKER_TAG"
+                echo "##vso[task.setvariable variable=ApiImage;isOutput=true]$API_REPO:$DOCKER_TAG"
             env:
               VER: $(FullSemVer)
 
@@ -221,10 +224,12 @@ stages:
                   if echo "$RAW" | grep -q 'FullSemVer'; then VER=$(echo "$RAW" | jq -r '.FullSemVer // empty'); fi
                 fi
                 if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
-                UI_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp:$VER"
-                API_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp-api:$VER"
+                DOCKER_TAG=$(echo "$VER" | sed -E 's/[^A-Za-z0-9_.-]/-/g')
+                UI_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp:$DOCKER_TAG"
+                API_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp-api:$DOCKER_TAG"
                 echo "##vso[task.setvariable variable=UiImage]$UI_IMAGE"
                 echo "##vso[task.setvariable variable=ApiImage]$API_IMAGE"
+                echo "Computed images: UI=$UI_IMAGE API=$API_IMAGE"
             env:
               VER: $(FullSemVer)
 
@@ -299,10 +304,12 @@ stages:
                   if echo "$RAW" | grep -q 'FullSemVer'; then VER=$(echo "$RAW" | jq -r '.FullSemVer // empty'); fi
                 fi
                 if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
-                UI_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp:$VER"
-                API_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp-api:$VER"
+                DOCKER_TAG=$(echo "$VER" | sed -E 's/[^A-Za-z0-9_.-]/-/g')
+                UI_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp:$DOCKER_TAG"
+                API_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp-api:$DOCKER_TAG"
                 echo "##vso[task.setvariable variable=UiImage]$UI_IMAGE"
                 echo "##vso[task.setvariable variable=ApiImage]$API_IMAGE"
+                echo "Computed images: UI=$UI_IMAGE API=$API_IMAGE"
             env:
               VER: $(FullSemVer)
 

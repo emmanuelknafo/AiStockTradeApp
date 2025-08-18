@@ -316,6 +316,14 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
           value: '600'
         }
         {
+          name: 'WEBSITES_PORT'
+          value: '8080'
+        }
+        {
+          name: 'ASPNETCORE_URLS'
+          value: 'http://0.0.0.0:8080'
+        }
+        {
           name: 'WEBSITE_HEALTHCHECK_MAXPINGFAILURES'
           value: '20'
         }
@@ -412,6 +420,14 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
         {
           name: 'WEBSITES_CONTAINER_START_TIME_LIMIT'
           value: '600'
+        }
+        {
+          name: 'WEBSITES_PORT'
+          value: '8080'
+        }
+        {
+          name: 'ASPNETCORE_URLS'
+          value: 'http://0.0.0.0:8080'
         }
         {
           name: 'WEBSITE_HEALTHCHECK_MAXPINGFAILURES'
