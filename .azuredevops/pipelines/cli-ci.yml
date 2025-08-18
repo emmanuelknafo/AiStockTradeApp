@@ -50,6 +50,9 @@ variables:
     value: '9.0.x'
   - name: vmImageName
     value: 'ubuntu-latest'
+  # Optional: auto-seed after deploy based on branch. Allowed values: 'none', 'dev', 'prod', 'both'
+  - name: SEED_AFTER_DEPLOY
+    value: 'none'
 
 pool:
   vmImage: $(vmImageName)
@@ -243,6 +246,7 @@ stages:
                   --template-file ./infrastructure/main.bicep \
                   --parameters @./infrastructure/parameters.dev.json \
                     instanceNumber="$INSTANCE" \
+                    deployContainerRegistry=false \
                     containerImage="$UI_IMAGE" \
                     containerImageApi="$API_IMAGE" \
                     alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
@@ -320,6 +324,7 @@ stages:
                   --template-file ./infrastructure/main.bicep \
                   --parameters @./infrastructure/parameters.prod.json \
                     instanceNumber="$INSTANCE" \
+                    deployContainerRegistry=false \
                     containerImage="$UI_IMAGE" \
                     containerImageApi="$API_IMAGE" \
                     alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
@@ -336,7 +341,7 @@ stages:
   - stage: SeedDev
     displayName: "Seed listed stocks (dev)"
     dependsOn: DeployDev
-    condition: and(succeeded(), eq('${{ parameters.environment }}', 'dev'), eq(${{ parameters.seed }}, true))
+    condition: and(succeeded(), or(and(eq(variables['Build.SourceBranch'], 'refs/heads/develop'), or(eq(variables['SEED_AFTER_DEPLOY'], 'dev'), eq(variables['SEED_AFTER_DEPLOY'], 'both'))), and(eq('${{ parameters.environment }}', 'dev'), eq(${{ parameters.seed }}, true))))
     jobs:
       - job: SeedDevJob
         displayName: "Import CSV into Dev API"
@@ -362,7 +367,7 @@ stages:
   - stage: SeedProd
     displayName: "Seed listed stocks (prod)"
     dependsOn: DeployProd
-    condition: and(succeeded(), eq('${{ parameters.environment }}', 'prod'), eq(${{ parameters.seed }}, true))
+    condition: and(succeeded(), or(and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), or(eq(variables['SEED_AFTER_DEPLOY'], 'prod'), eq(variables['SEED_AFTER_DEPLOY'], 'both'))), and(eq('${{ parameters.environment }}', 'prod'), eq(${{ parameters.seed }}, true))))
     jobs:
       - job: SeedProdJob
         displayName: "Import CSV into Prod API"
