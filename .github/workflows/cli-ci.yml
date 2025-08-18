@@ -1,0 +1,353 @@
+name: CLI CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'AiStockTradeApp.Cli/**'
+      - '.github/workflows/cli-ci.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+      instanceNumber:
+        description: 'Instance number for resource differentiation'
+        required: true
+        default: '002'
+        type: string
+      seed:
+        description: 'Run seeding (import listed stocks) after deploy'
+        required: false
+        default: false
+        type: boolean
+      seedCsv:
+        description: 'CSV path to import (relative to repo)'
+        required: false
+        default: 'data/nasdaq.com/nasdaq_screener_1755436177903.csv'
+        type: string
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  test-cli:
+    runs-on: [self-hosted, linux, x64]
+    name: Test CLI and Solution (fast)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore & Build CLI
+        run: |
+          dotnet restore AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj
+          dotnet build AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -c Release --no-restore
+
+      - name: CLI smoke test (--help)
+        run: |
+          dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- --help
+
+      - name: Restore solution
+        run: dotnet restore AiStockTradeApp.sln
+
+      - name: Run unit tests (exclude UI tests)
+        run: |
+          dotnet test AiStockTradeApp.sln \
+            --no-build -c Release \
+            --filter "FullyQualifiedName!~UITests" \
+            -v normal
+
+  build:
+    runs-on: [self-hosted, linux, x64]
+    needs: test-cli
+    name: Build and Push Container Images
+    outputs:
+      image: ${{ steps.final-output.outputs.image }}
+      api_image: ${{ steps.final-output-api.outputs.image }}
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0
+        with:
+          versionSpec: '5.x'
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0
+
+      - name: Validate version
+        run: |
+          if [ -z "${{ steps.gitversion.outputs.fullSemVer }}" ] || [ "${{ steps.gitversion.outputs.fullSemVer }}" = "0.0.0-local" ]; then
+            echo 'Invalid semantic version'; exit 1; fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Azure Login for Registry
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve shared container registry (dev RG)
+        id: registry
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            INSTANCE_NUM='${{ github.event.inputs.instanceNumber }}'
+          else
+            INSTANCE_NUM='002'
+          fi
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+          REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' -o tsv)
+          if [ -z "${REGISTRY_NAME}" ] || [ "${REGISTRY_NAME}" = "null" ]; then
+            echo "No ACR in ${RG_NAME}"; exit 1; fi
+          echo "registry_name=${REGISTRY_NAME}" >> $GITHUB_OUTPUT
+          echo "resource_group=${RG_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Get ACR credentials
+        id: registry-creds
+        run: |
+          REGISTRY_NAME='${{ steps.registry.outputs.registry_name }}'
+          USER=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' -o tsv)
+          PASS=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' -o tsv)
+          echo "registry_username=${USER}" >> $GITHUB_OUTPUT
+          echo "registry_password=${PASS}" >> $GITHUB_OUTPUT
+
+      - name: Docker login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.registry.outputs.registry_name }}.azurecr.io
+          username: ${{ steps.registry-creds.outputs.registry_username }}
+          password: ${{ steps.registry-creds.outputs.registry_password }}
+
+      - name: Extract metadata (UI)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/aistocktradeapp
+          tags: |
+            type=raw,value=${{ steps.gitversion.outputs.fullSemVer }}
+            type=raw,value=v${{ steps.gitversion.outputs.fullSemVer }}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract metadata (API)
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/aistocktradeapp-api
+          tags: |
+            type=raw,value=${{ steps.gitversion.outputs.fullSemVer }}
+            type=raw,value=v${{ steps.gitversion.outputs.fullSemVer }}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push (UI)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./AiStockTradeApp/Dockerfile
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }}
+          tags: ${{ steps.meta.outputs.tags }}
+
+      - name: Build and push (API)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./AiStockTradeApp.Api/Dockerfile
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }}
+          tags: ${{ steps.meta-api.outputs.tags }}
+
+      - name: Choose deployment image (UI)
+        id: final-output
+        run: |
+          TAGS=$(cat << 'EOFTAGS'
+          ${{ steps.meta.outputs.tags }}
+          EOFTAGS
+          )
+          SEMVER_TAG=$(echo "$TAGS" | grep -E ":[0-9]+\.[0-9]+\.[0-9]+" | head -1 | xargs || true)
+          SHA_TAG=$(echo "$TAGS" | grep -E "sha-[a-f0-9]+" | head -1 | xargs || true)
+          if [ -n "$SEMVER_TAG" ]; then IMG="$SEMVER_TAG"; elif [ -n "$SHA_TAG" ]; then IMG="$SHA_TAG"; else IMG=$(echo "$TAGS" | head -1 | xargs); fi
+          echo "image=$IMG" >> $GITHUB_OUTPUT
+
+      - name: Choose deployment image (API)
+        id: final-output-api
+        run: |
+          TAGS=$(cat << 'EOFTAGS'
+          ${{ steps.meta-api.outputs.tags }}
+          EOFTAGS
+          )
+          SEMVER_TAG=$(echo "$TAGS" | grep -E ":[0-9]+\.[0-9]+\.[0-9]+" | head -1 | xargs || true)
+          SHA_TAG=$(echo "$TAGS" | grep -E "sha-[a-f0-9]+" | head -1 | xargs || true)
+          if [ -n "$SEMVER_TAG" ]; then IMG="$SEMVER_TAG"; elif [ -n "$SHA_TAG" ]; then IMG="$SHA_TAG"; else IMG=$(echo "$TAGS" | head -1 | xargs); fi
+          echo "image=$IMG" >> $GITHUB_OUTPUT
+
+  deploy-dev:
+    runs-on: [self-hosted, linux, x64]
+    needs: build
+    if: |
+      github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || 
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    name: Deploy to Development
+    environment: ${{ github.event_name == 'workflow_dispatch' && format('development-{0}', github.event.inputs.instanceNumber) || 'development-002' }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep (dev)
+        uses: azure/arm-deploy@v1
+        with:
+          subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-002' }}
+          template: ./infrastructure/main.bicep
+          parameters: |
+            ./infrastructure/parameters.dev.json 
+            instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} 
+            containerImage=${{ needs.build.outputs.image }} 
+            containerImageApi=${{ needs.build.outputs.api_image }} 
+            alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} 
+            twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} 
+            enableAzureAdOnlyAuth=true 
+            enablePrivateSql=true 
+            enablePrivateKeyVault=true 
+            manageNetworking=false 
+            manageSql=false 
+            vnetAddressSpace=10.50.0.0/16 
+            appIntegrationSubnetPrefix=10.50.1.0/27 
+            privateEndpointSubnetPrefix=10.50.2.0/28
+          failOnStdErr: false
+
+  deploy-prod:
+    runs-on: [self-hosted, linux, x64]
+    needs: [build, deploy-dev]
+    if: |
+      always() && 
+      (needs.build.result == 'success') &&
+      (needs.deploy-dev.result == 'success' || needs.deploy-dev.result == 'skipped') &&
+      (github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'))
+    name: Deploy to Production
+    environment: ${{ github.event_name == 'workflow_dispatch' && format('production-{0}', github.event.inputs.instanceNumber) || 'production-002' }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep (prod)
+        uses: azure/arm-deploy@v1
+        with:
+          subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
+          template: ./infrastructure/main.bicep
+          parameters: |
+            ./infrastructure/parameters.prod.json 
+            instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} 
+            containerImage=${{ needs.build.outputs.image }} 
+            containerImageApi=${{ needs.build.outputs.api_image }} 
+            alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} 
+            twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} 
+            enableAzureAdOnlyAuth=true 
+            enablePrivateSql=true 
+            enablePrivateKeyVault=true 
+            manageNetworking=false 
+            manageSql=false 
+            vnetAddressSpace=10.51.0.0/16 
+            appIntegrationSubnetPrefix=10.51.1.0/27 
+            privateEndpointSubnetPrefix=10.51.2.0/28
+          failOnStdErr: false
+
+  seed-dev:
+    runs-on: [self-hosted, linux, x64]
+    needs: deploy-dev
+    if: github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.seed) && github.event.inputs.environment == 'dev'
+    name: Seed listed stocks (dev)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Import CSV to API (dev)
+        env:
+          INSTANCE_NUM: ${{ github.event.inputs.instanceNumber }}
+          CSV_PATH: ${{ github.event.inputs.seedCsv }}
+        run: |
+          API_BASE="https://api-aistock-dev-${INSTANCE_NUM}.azurewebsites.net"
+          FILE_PATH="${CSV_PATH:-data/nasdaq.com/nasdaq_screener_1755436177903.csv}"
+          echo "API: $API_BASE"
+          echo "CSV: $FILE_PATH"
+          test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }
+          dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$FILE_PATH" --api "$API_BASE"
+
+  seed-prod:
+    runs-on: [self-hosted, linux, x64]
+    needs: deploy-prod
+    if: github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.seed) && github.event.inputs.environment == 'prod'
+    name: Seed listed stocks (prod)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Import CSV to API (prod)
+        env:
+          INSTANCE_NUM: ${{ github.event.inputs.instanceNumber }}
+          CSV_PATH: ${{ github.event.inputs.seedCsv }}
+        run: |
+          API_BASE="https://api-aistock-prod-${INSTANCE_NUM}.azurewebsites.net"
+          FILE_PATH="${CSV_PATH:-data/nasdaq.com/nasdaq_screener_1755436177903.csv}"
+          echo "API: $API_BASE"
+          echo "CSV: $FILE_PATH"
+          test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }
+          dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$FILE_PATH" --api "$API_BASE"

@@ -17,6 +17,7 @@ on:
       - "LICENSE"
       - "data/**"
       - "AiStockTradeApp.Cli/**"
+      - ".github/workflows/cli-ci.yml"
   pull_request:
     branches: [main]
     paths-ignore:
@@ -33,6 +34,7 @@ on:
       - "LICENSE"
       - "data/**"
       - "AiStockTradeApp.Cli/**"
+      - ".github/workflows/cli-ci.yml"
   # CI triggers temporarily disabled; manual runs only
   workflow_dispatch:
     inputs:

@@ -1,0 +1,338 @@
+# Azure DevOps pipeline for CLI CI/CD
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - AiStockTradeApp.Cli/**
+      - .azuredevops/pipelines/cli-ci.yml
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - AiStockTradeApp.Cli/**
+      - .azuredevops/pipelines/cli-ci.yml
+
+parameters:
+  - name: environment
+    displayName: "Environment to deploy to"
+    type: string
+    default: dev
+    values:
+      - dev
+      - prod
+  - name: instanceNumber
+    displayName: "Instance number for resource differentiation"
+    type: string
+    default: '002'
+  - name: seed
+    displayName: "Run seeding (import listed stocks) after deploy"
+    type: boolean
+    default: false
+  - name: seedCsv
+    displayName: "CSV path to import (relative to repo)"
+    type: string
+    default: 'data/nasdaq.com/nasdaq_screener_1755436177903.csv'
+
+variables:
+  - group: AiStockTradeApp
+  - name: AZURE_SERVICE_CONNECTION
+    value: svc_CSA_sub
+  - name: AZURE_SUBSCRIPTION_ID
+    value: '64c3d212-40ed-4c6d-a825-6adfbdf25dad'
+  - name: DOTNET_VERSION
+    value: '9.0.x'
+  - name: vmImageName
+    value: 'ubuntu-latest'
+
+pool:
+  vmImage: $(vmImageName)
+
+stages:
+  - stage: Test
+    displayName: "Test CLI and Solution"
+    jobs:
+      - job: TestCli
+        displayName: "Build CLI and run smoke test"
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            clean: true
+
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
+
+          - task: DotNetCoreCLI@2
+            displayName: "Restore CLI"
+            inputs:
+              command: 'restore'
+              projects: 'AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj'
+
+          - task: DotNetCoreCLI@2
+            displayName: "Build CLI"
+            inputs:
+              command: 'build'
+              projects: 'AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj'
+              arguments: '--configuration Release --no-restore'
+
+          - script: |
+              dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- --help
+            displayName: "CLI smoke test (--help)"
+
+          - task: DotNetCoreCLI@2
+            displayName: "Restore solution"
+            inputs:
+              command: 'restore'
+              projects: 'AiStockTradeApp.sln'
+
+          - task: DotNetCoreCLI@2
+            displayName: "Run unit tests (exclude UI)"
+            inputs:
+              command: 'test'
+              projects: 'AiStockTradeApp.sln'
+              arguments: '--no-build -c Release --verbosity normal --filter "FullyQualifiedName!~UITests"'
+
+  - stage: Build
+    displayName: "Build and Push Container Images"
+    dependsOn: Test
+    jobs:
+      - job: BuildJob
+        displayName: "Build and push images"
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            clean: true
+
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
+
+          - script: |
+              set -e
+              echo "Installing GitVersion.Tool..."
+              dotnet tool install --global GitVersion.Tool --version 5.*
+              export PATH="$PATH:$HOME/.dotnet/tools"
+              echo "Running GitVersion..."
+              RAW=$(dotnet-gitversion /config GitVersion.yml /output json 2>&1 || true)
+              echo "$RAW" | head -60
+              if ! echo "$RAW" | grep -q 'FullSemVer'; then FULL="0.0.0-local"; else FULL=$(echo "$RAW" | jq -r '.FullSemVer // "0.0.0-local"'); fi
+              echo "##vso[task.setvariable variable=FullSemVer]$FULL"
+            displayName: "Determine version (GitVersion)"
+
+          - task: AzureCLI@2
+            displayName: "Login to Azure and resolve ACR"
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                if [ "${{ parameters.environment }}" = "dev" ] || [ "${{ parameters.environment }}" = "prod" ]; then echo "Env OK"; fi
+                INSTANCE_NUM='${{ parameters.instanceNumber }}'
+                DEV_RG="rg-aistock-dev-${INSTANCE_NUM}"
+                REGISTRY_NAME=$(az acr list --resource-group "$DEV_RG" --query '[0].name' -o tsv)
+                if [ -z "$REGISTRY_NAME" ] || [ "$REGISTRY_NAME" = "null" ]; then echo "No ACR found in $DEV_RG"; exit 1; fi
+                echo "Resolved ACR: $REGISTRY_NAME"
+                echo "##vso[task.setvariable variable=RegistryName]$REGISTRY_NAME"
+
+          - script: |
+              set -e
+              az acr login --name $(RegistryName)
+              UI_REPO="$(RegistryName).azurecr.io/aistocktradeapp"
+              API_REPO="$(RegistryName).azurecr.io/aistocktradeapp-api"
+              VER="$(FullSemVer)"
+              if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
+              echo "Building UI image $UI_REPO:$VER"
+              docker build -f ./AiStockTradeApp/Dockerfile -t "$UI_REPO:$VER" --build-arg APP_VERSION="$VER" .
+              docker push "$UI_REPO:$VER"
+              echo "Building API image $API_REPO:$VER"
+              docker build -f ./AiStockTradeApp.Api/Dockerfile -t "$API_REPO:$VER" --build-arg APP_VERSION="$VER" .
+              docker push "$API_REPO:$VER"
+              echo "##vso[task.setvariable variable=UiImage;isOutput=true]$UI_REPO:$VER"
+              echo "##vso[task.setvariable variable=ApiImage;isOutput=true]$API_REPO:$VER"
+            displayName: "Build & push images"
+
+  - stage: DeployDev
+    displayName: "Deploy to Development"
+    dependsOn: Build
+    condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/develop'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), and(succeeded(), eq('${{ parameters.environment }}', 'dev')))
+    jobs:
+      - job: DeployDevJob
+        displayName: "Deploy Bicep (dev)"
+        steps:
+          - checkout: self
+            clean: true
+
+          - task: AzureCLI@2
+            displayName: "Resolve ACR and image names (dev)"
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                INSTANCE='${{ parameters.instanceNumber }}'
+                RG_DEV="rg-aistock-dev-${INSTANCE}"
+                REGISTRY_NAME=$(az acr list --resource-group "$RG_DEV" --query '[0].name' -o tsv)
+                if [ -z "$REGISTRY_NAME" ] || [ "$REGISTRY_NAME" = "null" ]; then echo "No ACR found in $RG_DEV"; exit 1; fi
+                VER="$(FullSemVer)"
+                if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
+                UI_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp:$VER"
+                API_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp-api:$VER"
+                echo "##vso[task.setvariable variable=UiImage]$UI_IMAGE"
+                echo "##vso[task.setvariable variable=ApiImage]$API_IMAGE"
+
+          - task: AzureCLI@2
+            displayName: "Deploy infra (dev)"
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                INSTANCE='${{ parameters.instanceNumber }}'
+                RG="rg-aistock-dev-${INSTANCE}"
+                UI_IMAGE='$(UiImage)'
+                API_IMAGE='$(ApiImage)'
+                echo "Deploying to $RG"
+                az deployment group create \
+                  --resource-group "$RG" \
+                  --template-file ./infrastructure/main.bicep \
+                  --parameters @./infrastructure/parameters.dev.json \
+                    instanceNumber="$INSTANCE" \
+                    containerImage="$UI_IMAGE" \
+                    containerImageApi="$API_IMAGE" \
+                    alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
+                    twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
+                    enableAzureAdOnlyAuth=true \
+                    enablePrivateSql=true \
+                    enablePrivateKeyVault=true \
+                    manageNetworking=false \
+                    manageSql=false \
+                    vnetAddressSpace=10.50.0.0/16 \
+                    appIntegrationSubnetPrefix=10.50.1.0/27 \
+                    privateEndpointSubnetPrefix=10.50.2.0/28
+
+  - stage: DeployProd
+    displayName: "Deploy to Production"
+    dependsOn: [Build, DeployDev]
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq('${{ parameters.environment }}', 'prod')))
+    jobs:
+      - job: DeployProdJob
+        displayName: "Deploy Bicep (prod)"
+        steps:
+          - checkout: self
+            clean: true
+
+          - task: AzureCLI@2
+            displayName: "Resolve ACR and image names (prod)"
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                INSTANCE='${{ parameters.instanceNumber }}'
+                RG_DEV="rg-aistock-dev-${INSTANCE}"
+                REGISTRY_NAME=$(az acr list --resource-group "$RG_DEV" --query '[0].name' -o tsv)
+                if [ -z "$REGISTRY_NAME" ] || [ "$REGISTRY_NAME" = "null" ]; then echo "No ACR found in $RG_DEV"; exit 1; fi
+                VER="$(FullSemVer)"
+                if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
+                UI_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp:$VER"
+                API_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp-api:$VER"
+                echo "##vso[task.setvariable variable=UiImage]$UI_IMAGE"
+                echo "##vso[task.setvariable variable=ApiImage]$API_IMAGE"
+
+          - task: AzureCLI@2
+            displayName: "Deploy infra (prod)"
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                INSTANCE='${{ parameters.instanceNumber }}'
+                RG="rg-aistock-prod-${INSTANCE}"
+                UI_IMAGE='$(UiImage)'
+                API_IMAGE='$(ApiImage)'
+                echo "Deploying to $RG"
+                az deployment group create \
+                  --resource-group "$RG" \
+                  --template-file ./infrastructure/main.bicep \
+                  --parameters @./infrastructure/parameters.prod.json \
+                    instanceNumber="$INSTANCE" \
+                    containerImage="$UI_IMAGE" \
+                    containerImageApi="$API_IMAGE" \
+                    alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
+                    twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
+                    enableAzureAdOnlyAuth=true \
+                    enablePrivateSql=true \
+                    enablePrivateKeyVault=true \
+                    manageNetworking=false \
+                    manageSql=false \
+                    vnetAddressSpace=10.51.0.0/16 \
+                    appIntegrationSubnetPrefix=10.51.1.0/27 \
+                    privateEndpointSubnetPrefix=10.51.2.0/28
+
+  - stage: SeedDev
+    displayName: "Seed listed stocks (dev)"
+    dependsOn: DeployDev
+    condition: and(succeeded(), eq('${{ parameters.environment }}', 'dev'), eq(${{ parameters.seed }}, true))
+    jobs:
+      - job: SeedDevJob
+        displayName: "Import CSV into Dev API"
+        steps:
+          - checkout: self
+            clean: true
+
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
+
+          - script: |
+              set -e
+              CSV_PATH='${{ parameters.seedCsv }}'
+              API_BASE="https://api-aistock-dev-${{ parameters.instanceNumber }}.azurewebsites.net"
+              echo "Using CSV: $CSV_PATH"
+              test -f "$CSV_PATH" || { echo "CSV not found: $CSV_PATH"; exit 1; }
+              dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$CSV_PATH" --api "$API_BASE"
+            displayName: "Run CLI import-listed (dev)"
+
+  - stage: SeedProd
+    displayName: "Seed listed stocks (prod)"
+    dependsOn: DeployProd
+    condition: and(succeeded(), eq('${{ parameters.environment }}', 'prod'), eq(${{ parameters.seed }}, true))
+    jobs:
+      - job: SeedProdJob
+        displayName: "Import CSV into Prod API"
+        steps:
+          - checkout: self
+            clean: true
+
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
+
+          - script: |
+              set -e
+              CSV_PATH='${{ parameters.seedCsv }}'
+              API_BASE="https://api-aistock-prod-${{ parameters.instanceNumber }}.azurewebsites.net"
+              echo "Using CSV: $CSV_PATH"
+              test -f "$CSV_PATH" || { echo "CSV not found: $CSV_PATH"; exit 1; }
+              dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$CSV_PATH" --api "$API_BASE"
+            displayName: "Run CLI import-listed (prod)"

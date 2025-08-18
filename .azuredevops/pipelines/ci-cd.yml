@@ -21,6 +21,7 @@ trigger:
       - "LICENSE"
       - "data/**"
       - "AiStockTradeApp.Cli/**"
+      - ".azuredevops/pipelines/cli-ci.yml"
 
 pr:
   branches:
@@ -41,6 +42,7 @@ pr:
       - "LICENSE"
       - "data/**"
       - "AiStockTradeApp.Cli/**"
+      - ".azuredevops/pipelines/cli-ci.yml"
 resources:
   pipelines:
     - pipeline: infrastructurePipeline
