@@ -4,6 +4,17 @@ services:
     build:
       context: .
       dockerfile: AiStockTradeApp/Dockerfile
+    ports:
+      - "8080:8080" # Expose UI on http://localhost:8080
+      # - "8081:8081" # Optionally expose HTTPS
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:8080"
+      ASPNETCORE_HTTP_PORTS: "8080"
+      HttpsRedirection__HttpsPort: "0" # disable HTTPS redirect in container
+      # Point UI to the API service inside the compose network
+      StockApi__BaseUrl: "http://aistocktradeappapi:8080"
+      StockApi__HttpBaseUrl: "http://aistocktradeappapi:8080"
     networks:
       - app-network
 
@@ -13,9 +24,12 @@ services:
       context: .
       dockerfile: AiStockTradeApp.Api/Dockerfile
     ports:
-      - "8082:8080"
+      - "8082:8080" # API available on http://localhost:8082 for external calls
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:8080"
+      ASPNETCORE_HTTP_PORTS: "8080"
+      HttpsRedirection__HttpsPort: "0" # disable HTTPS redirect in container
       ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=StockTraderDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;MultipleActiveResultSets=true"
       USE_INMEMORY_DB: "false"
     depends_on:
