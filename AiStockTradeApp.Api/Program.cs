@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
 using System.Globalization;
 using System.Text;
+using AiStockTradeApp.Api.Background;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,6 +49,9 @@ builder.Services.AddScoped<IListedStockRepository, ListedStockRepository>();
 builder.Services.AddHttpClient<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IListedStockService, ListedStockService>();
+// Background job queue for long-running tasks
+builder.Services.AddSingleton<IImportJobQueue, ImportJobQueue>();
+builder.Services.AddHostedService<ImportJobProcessor>();
 
 // CORS (optional; enable if UI is served from another origin)
 builder.Services.AddCors(options =>
@@ -233,120 +237,47 @@ app.MapGet("/api/listed-stocks/search", async ([FromQuery] string? sector, [From
 .WithName("SearchListedStocks")
 .Produces<List<ListedStock>>(StatusCodes.Status200OK);
 
-// Import screener CSV (text/csv or text/plain body)
-app.MapPost("/api/listed-stocks/import-csv", async (HttpRequest req, IListedStockService svc) =>
+// Import screener CSV (text/csv or text/plain body) - enqueue background job, return 202
+app.MapPost("/api/listed-stocks/import-csv", async (HttpRequest req, IImportJobQueue queue) =>
 {
     using var reader = new StreamReader(req.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: false);
     var content = await reader.ReadToEndAsync();
     if (string.IsNullOrWhiteSpace(content))
         return Results.BadRequest(new { error = "Empty body" });
 
-    var lines = content.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    if (lines.Length == 0) return Results.BadRequest(new { error = "No lines" });
-    int start = 0;
-    if (lines[0].StartsWith("Symbol,", StringComparison.OrdinalIgnoreCase)) start = 1; // skip header
-
-    var parsed = new List<ListedStock>(Math.Max(0, lines.Length - start));
-    for (int i = start; i < lines.Length; i++)
+    var job = new ImportJob
     {
-        var cols = ParseCsvLine(lines[i]);
-        if (cols.Count < 11) continue; // skip malformed
-        try
-        {
-            var stock = new ListedStock
-            {
-                Symbol = (cols[0] ?? string.Empty).Trim().ToUpperInvariant(),
-                Name = (cols[1] ?? string.Empty).Trim(),
-                LastSale = ToDecimal(cols[2]),
-                NetChange = ToDecimal(cols[3]),
-                PercentChange = ToPercent(cols[4]),
-                MarketCap = ToDecimal(cols[5]),
-                Country = NullIfEmpty(cols[6]),
-                IpoYear = ToNullableInt(cols[7]),
-                Volume = ToLong(cols[8]),
-                Sector = NullIfEmpty(cols[9]),
-                Industry = NullIfEmpty(cols[10]),
-                UpdatedAt = DateTime.UtcNow,
-            };
-            if (!string.IsNullOrWhiteSpace(stock.Symbol) && !string.IsNullOrWhiteSpace(stock.Name))
-                parsed.Add(stock);
-        }
-        catch { /* ignore malformed row */ }
-    }
-
-    if (parsed.Count == 0)
-        return Results.BadRequest(new { error = "No valid rows" });
-
-    await svc.BulkUpsertAsync(parsed);
-    return Results.Ok(new { count = parsed.Count });
-
-    static List<string> ParseCsvLine(string line)
-    {
-        var result = new List<string>();
-        var sb = new StringBuilder();
-        bool inQuotes = false;
-        for (int j = 0; j < line.Length; j++)
-        {
-            var ch = line[j];
-            if (ch == '"')
-            {
-                if (inQuotes && j + 1 < line.Length && line[j + 1] == '"')
-                {
-                    sb.Append('"');
-                    j++; // skip escaped quote
-                }
-                else
-                {
-                    inQuotes = !inQuotes;
-                }
-            }
-            else if (ch == ',' && !inQuotes)
-            {
-                result.Add(sb.ToString());
-                sb.Clear();
-            }
-            else
-            {
-                sb.Append(ch);
-            }
-        }
-        result.Add(sb.ToString());
-        return result;
-    }
-
-    static decimal ToDecimal(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return 0m;
-        s = s.Replace("$", string.Empty).Replace(",", string.Empty).Trim();
-        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
-    }
-
-    static decimal ToPercent(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return 0m;
-        s = s.Replace("%", string.Empty).Trim();
-        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
-    }
-
-    static long ToLong(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return 0L;
-        s = s.Replace(",", string.Empty).Trim();
-        return long.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0L;
-    }
-
-    static int? ToNullableInt(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return null;
-        return int.TryParse(s.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : null;
-    }
-
-    static string? NullIfEmpty(string? s)
-        => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        Content = content,
+        SourceName = req.Headers.ContainsKey("X-File-Name") ? req.Headers["X-File-Name"].ToString() : null
+    };
+    var status = queue.Enqueue(job);
+    var location = $"/api/listed-stocks/import-jobs/{status.Id}";
+    return Results.Accepted(location, new { jobId = status.Id, status = status.Status.ToString(), location });
 })
 .WithName("ImportListedStocksCsv")
-.Produces(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status202Accepted)
 .Produces(StatusCodes.Status400BadRequest);
+
+// Get job status
+app.MapGet("/api/listed-stocks/import-jobs/{id}", (Guid id, IImportJobQueue queue) =>
+{
+    return queue.TryGetStatus(id, out var status) && status != null
+        ? Results.Ok(new
+        {
+            jobId = status.Id,
+            status = status.Status.ToString(),
+            createdAt = status.CreatedAt,
+            startedAt = status.StartedAt,
+            completedAt = status.CompletedAt,
+            total = status.TotalItems,
+            processed = status.ProcessedItems,
+            error = status.Error
+        })
+        : Results.NotFound();
+})
+.WithName("GetImportJobStatus")
+.Produces(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound);
 
 app.MapDelete("/api/listed-stocks", async (IListedStockService svc) =>
 {

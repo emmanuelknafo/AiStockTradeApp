@@ -21,6 +21,9 @@ public class Program
                 cfg.AddCommand<ImportListedCommand>("import-listed")
                     .WithDescription("Import a screener CSV into the API listed-stocks catalog")
                     .WithExample(new[] { "import-listed", "--file", "./data/nasdaq.com/screener.csv", "--api", "https://localhost:5001" });
+                cfg.AddCommand<CheckJobCommand>("check-job")
+                    .WithDescription("Check background job status by jobId")
+                    .WithExample(new[] { "check-job", "--job", "<GUID>", "--api", "https://localhost:5001" });
         });
         return await app.RunAsync(args);
     }
@@ -94,10 +97,30 @@ public sealed class ImportListedCommand : AsyncCommand<ImportListedSettings>
             http.Timeout = TimeSpan.FromMinutes(2);
             var url = settings.ApiBase.TrimEnd('/') + "/api/listed-stocks/import-csv";
             var content = new StringContent(csv, System.Text.Encoding.UTF8, "text/csv");
+            try { content.Headers.Add("X-File-Name", Path.GetFileName(settings.FilePath)); } catch { }
             AnsiConsole.MarkupLine($"[green]POST[/] {url} ({csv.Length} bytes)");
             var resp = await http.PostAsync(url, content);
             var body = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode)
+            if (resp.StatusCode == System.Net.HttpStatusCode.Accepted)
+            {
+                // Background job accepted; parse job info
+                AnsiConsole.MarkupLine("[green]Import accepted and queued.[/]");
+                try
+                {
+                    var doc = System.Text.Json.JsonDocument.Parse(body);
+                    var jobId = doc.RootElement.GetProperty("jobId").GetGuid();
+                    var location = doc.RootElement.TryGetProperty("location", out var locProp) ? locProp.GetString() : null;
+                    AnsiConsole.MarkupLine($"JobId: [cyan]{jobId}[/]");
+                    if (!string.IsNullOrEmpty(location)) AnsiConsole.MarkupLine($"Status URL: [blue]{location}[/]");
+                    AnsiConsole.MarkupLine("Use: aistock-cli check-job --job <GUID> --api <BASEURL> to track progress.");
+                }
+                catch
+                {
+                    AnsiConsole.WriteLine(body);
+                }
+                return 0;
+            }
+            else if (!resp.IsSuccessStatusCode)
             {
                 AnsiConsole.MarkupLine($"[red]Import failed:[/] {(int)resp.StatusCode} {resp.ReasonPhrase}");
                 AnsiConsole.WriteLine(body);
@@ -111,6 +134,84 @@ public sealed class ImportListedCommand : AsyncCommand<ImportListedSettings>
         {
             AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
             return 1;
+        }
+    }
+}
+
+public sealed class CheckJobSettings : CommandSettings
+{
+    [CommandOption("--job <GUID>")]
+    [Description("Background job ID to check")] 
+    public string JobId { get; init; } = string.Empty;
+
+    [CommandOption("--api <BASEURL>")]
+    [Description("API base URL (e.g., https://localhost:5001)")]
+    public string ApiBase { get; init; } = "http://localhost:5000";
+
+    [CommandOption("--watch")] 
+    [Description("Continuously poll until job completes or fails")] 
+    public bool Watch { get; init; }
+
+    [CommandOption("--intervalSec <N>")]
+    [Description("Polling interval seconds when --watch (default 3)")]
+    [DefaultValue(3)]
+    public int IntervalSec { get; init; } = 3;
+
+    public override ValidationResult Validate()
+    {
+        if (!Guid.TryParse(JobId, out _))
+            return ValidationResult.Error("--job must be a valid GUID");
+        if (string.IsNullOrWhiteSpace(ApiBase))
+            return ValidationResult.Error("--api is required");
+        return ValidationResult.Success();
+    }
+}
+
+public sealed class CheckJobCommand : AsyncCommand<CheckJobSettings>
+{
+    public override async Task<int> ExecuteAsync(CommandContext context, CheckJobSettings settings)
+    {
+        var url = settings.ApiBase.TrimEnd('/') + $"/api/listed-stocks/import-jobs/{settings.JobId}";
+        using var http = new HttpClient();
+        http.Timeout = TimeSpan.FromSeconds(30);
+
+        async Task<int> Once()
+        {
+            try
+            {
+                var body = await http.GetStringAsync(url);
+                var doc = System.Text.Json.JsonDocument.Parse(body);
+                var status = doc.RootElement.GetProperty("status").GetString() ?? "";
+                var processed = doc.RootElement.TryGetProperty("processed", out var p) ? p.GetInt32() : 0;
+                var total = doc.RootElement.TryGetProperty("total", out var t) && t.ValueKind != System.Text.Json.JsonValueKind.Null ? t.GetInt32() : 0;
+                var line = total > 0 ? $"{processed}/{total}" : processed.ToString();
+                AnsiConsole.MarkupLine($"Status: [cyan]{status}[/] Progress: [green]{line}[/]");
+                if (string.Equals(status, "Completed", StringComparison.OrdinalIgnoreCase)) return 0;
+                if (string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase))
+                {
+                    var err = doc.RootElement.TryGetProperty("error", out var e) ? e.GetString() : null;
+                    if (!string.IsNullOrEmpty(err)) AnsiConsole.MarkupLine($"[red]{err}[/]");
+                    return 2;
+                }
+                return 3; // still running
+            }
+            catch (HttpRequestException ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Request error:[/] {ex.Message}");
+                return 1;
+            }
+        }
+
+        if (!settings.Watch)
+        {
+            return await Once();
+        }
+
+        while (true)
+        {
+            var code = await Once();
+            if (code == 0 || code == 1 || code == 2) return code;
+            await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, settings.IntervalSec)));
         }
     }
 }
