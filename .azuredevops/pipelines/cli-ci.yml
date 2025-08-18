@@ -89,17 +89,17 @@ stages:
             displayName: "CLI smoke test (--help)"
 
           - task: DotNetCoreCLI@2
-            displayName: "Restore solution"
+            displayName: "Restore Unit Tests"
             inputs:
               command: 'restore'
-              projects: 'AiStockTradeApp.sln'
+              projects: 'AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj'
 
           - task: DotNetCoreCLI@2
-            displayName: "Run unit tests (exclude UI)"
+            displayName: "Run unit tests"
             inputs:
               command: 'test'
-              projects: 'AiStockTradeApp.sln'
-              arguments: '--no-build -c Release --verbosity normal --filter "FullyQualifiedName!~UITests"'
+              projects: 'AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj'
+              arguments: '--no-build -c Release --verbosity normal'
 
   - stage: Build
     displayName: "Build and Push Container Images"

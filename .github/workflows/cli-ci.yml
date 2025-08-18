@@ -63,12 +63,10 @@ jobs:
       - name: Restore solution
         run: dotnet restore AiStockTradeApp.sln
 
-      - name: Run unit tests (exclude UI tests)
+      - name: Run unit tests (unit only)
         run: |
-          dotnet test AiStockTradeApp.sln \
-            --no-build -c Release \
-            --filter "FullyQualifiedName!~UITests" \
-            -v normal
+          dotnet test AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj \
+            --no-build -c Release -v normal
 
   build:
     runs-on: [self-hosted, linux, x64]
