@@ -63,6 +63,11 @@ jobs:
       - name: Restore solution
         run: dotnet restore AiStockTradeApp.sln
 
+      - name: Build unit tests
+        run: |
+          dotnet build AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj \
+            -c Release --no-restore
+
       - name: Run unit tests (unit only)
         run: |
           dotnet test AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj \

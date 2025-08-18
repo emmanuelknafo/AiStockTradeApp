@@ -95,11 +95,25 @@ stages:
               projects: 'AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj'
 
           - task: DotNetCoreCLI@2
+            displayName: "Build unit tests"
+            inputs:
+              command: 'build'
+              projects: 'AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj'
+              arguments: '-c Release --no-restore'
+
+          - task: DotNetCoreCLI@2
             displayName: "Run unit tests"
             inputs:
-              command: 'test'
-              projects: 'AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj'
-              arguments: '--no-build -c Release --verbosity normal'
+              command: 'custom'
+              custom: 'tool'
+              arguments: '--version' # no-op; will be replaced by script step below
+
+          - script: |
+              set -e
+              dotnet --info
+              dotnet test AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj \
+                --no-build -c Release --verbosity normal
+            displayName: "Run unit tests (script)"
 
   - stage: Build
     displayName: "Build and Push Container Images"
@@ -166,7 +180,7 @@ stages:
   - stage: DeployDev
     displayName: "Deploy to Development"
     dependsOn: Build
-    condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/develop'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), and(succeeded(), eq('${{ parameters.environment }}', 'dev')))
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/develop'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq('${{ parameters.environment }}', 'dev')))
     jobs:
       - job: DeployDevJob
         displayName: "Deploy Bicep (dev)"

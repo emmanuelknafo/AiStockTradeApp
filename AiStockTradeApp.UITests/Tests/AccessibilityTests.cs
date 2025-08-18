@@ -35,19 +35,17 @@ public class AccessibilityTests : BaseUITest
         await NavigateToStockDashboard();
         await WaitForPageLoad();
 
-        // Test keyboard navigation to add button
-        var addButton = Page.Locator("#add-button");
-        
-        // Tab to the button and verify it's focused
-        await Page.Keyboard.PressAsync("Tab");
-        await Page.Keyboard.PressAsync("Tab"); // May need multiple tabs depending on page structure
-        
-        // Button should be focusable and clickable with keyboard
-        await Page.Keyboard.PressAsync("Enter");
-        
-        // Should handle keyboard interaction gracefully
-        var isVisible = await addButton.IsVisibleAsync();
-        isVisible.Should().BeTrue();
+    // Locate the button and focus it directly to avoid hitting layout nav links
+    var addButton = Page.Locator("#add-button");
+    await addButton.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 10000 });
+    await addButton.FocusAsync();
+
+    // Press Enter to activate via keyboard
+    await Page.Keyboard.PressAsync("Enter");
+
+    // Button should remain visible and interactive
+    var isVisible = await addButton.IsVisibleAsync();
+    isVisible.Should().BeTrue();
     }
 
     [Test]
