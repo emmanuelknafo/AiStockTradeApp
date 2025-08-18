@@ -130,15 +130,14 @@ public class StockDashboardPageObjectTests : BaseUITest
         totalValue.Should().NotBeNullOrEmpty();
         stockCount.Should().NotBeNullOrEmpty();
 
-        // Add a stock and verify count changes
-        await _dashboardPage.AddStock("GOOGL");
-        await _dashboardPage.WaitForStockToLoad("GOOGL");
+    // Add a stock and verify count changes without relying on price load timing
+    var originalStockCountInt = int.Parse(stockCount);
+    await _dashboardPage.AddStock("GOOGL");
+    await _dashboardPage.WaitForPortfolioCountIncrease(originalStockCountInt, timeoutMs: 20000);
 
-        var newStockCount = await _dashboardPage.GetStockCount();
-        var newStockCountInt = int.Parse(newStockCount);
-        var originalStockCountInt = int.Parse(stockCount);
-
-        newStockCountInt.Should().BeGreaterThan(originalStockCountInt);
+    var newStockCount = await _dashboardPage.GetStockCount();
+    var newStockCountInt = int.Parse(newStockCount);
+    newStockCountInt.Should().BeGreaterThan(originalStockCountInt);
     }
 
     [Test]

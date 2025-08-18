@@ -176,6 +176,32 @@ public class StockDashboardPage
         return await countElement.TextContentAsync() ?? "0";
     }
 
+    // Wait for portfolio stock count to increase beyond a known value
+    public async Task WaitForPortfolioCountIncrease(int previousCount, int timeoutMs = 20000)
+    {
+        var endTime = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var countLocator = _page.Locator("#stock-count");
+        while (DateTime.UtcNow < endTime)
+        {
+            try
+            {
+                var text = await countLocator.TextContentAsync();
+                if (int.TryParse(text, out var current) && current > previousCount)
+                {
+                    return;
+                }
+            }
+            catch
+            {
+                // Ignore transient DOM issues and keep polling
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException($"Portfolio stock count did not increase within {timeoutMs}ms");
+    }
+
     // Export Actions
     public async Task ClickExportCsv()
     {
