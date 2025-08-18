@@ -39,6 +39,8 @@ env:
 jobs:
   test-cli:
     runs-on: [self-hosted, linux, x64]
+    env:
+      USE_INMEMORY_DB: 'true'
     name: Test CLI and Solution (fast)
     steps:
       - name: Checkout code

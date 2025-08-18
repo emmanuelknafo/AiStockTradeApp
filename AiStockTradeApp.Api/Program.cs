@@ -22,7 +22,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // EF Core for caching
-var useInMemory = string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
+// Prefer configuration (so tests can inject it), fall back to environment variable
+var useInMemory =
+    string.Equals(builder.Configuration["USE_INMEMORY_DB"], "true", StringComparison.OrdinalIgnoreCase) ||
+    string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
 if (useInMemory)
 {
     builder.Services.AddDbContext<StockDataContext>(options => options.UseInMemoryDatabase("ApiCacheDb"));
