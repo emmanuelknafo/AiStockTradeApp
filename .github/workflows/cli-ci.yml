@@ -305,7 +305,7 @@ jobs:
             privateEndpointSubnetPrefix=10.51.2.0/28
           failOnStdErr: false
 
-  seed-dev:
+  seed-dev-dispatch:
     runs-on: [self-hosted, linux, x64]
     needs: deploy-dev
     if: github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.seed) && github.event.inputs.environment == 'dev'
@@ -331,7 +331,33 @@ jobs:
           test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }
           dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$FILE_PATH" --api "$API_BASE"
 
-  seed-prod:
+  seed-dev-push:
+    runs-on: [self-hosted, linux, x64]
+    needs: deploy-dev
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    name: Seed listed stocks (dev, push)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Import CSV to API (dev)
+        env:
+          INSTANCE_NUM: '002'
+          CSV_PATH: 'data/nasdaq.com/nasdaq_screener_1755436177903.csv'
+        run: |
+          API_BASE="https://api-aistock-dev-${INSTANCE_NUM}.azurewebsites.net"
+          FILE_PATH="${CSV_PATH}"
+          echo "API: $API_BASE"
+          echo "CSV: $FILE_PATH"
+          test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }
+          dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$FILE_PATH" --api "$API_BASE"
+
+  seed-prod-dispatch:
     runs-on: [self-hosted, linux, x64]
     needs: deploy-prod
     if: github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.seed) && github.event.inputs.environment == 'prod'
@@ -352,6 +378,32 @@ jobs:
         run: |
           API_BASE="https://api-aistock-prod-${INSTANCE_NUM}.azurewebsites.net"
           FILE_PATH="${CSV_PATH:-data/nasdaq.com/nasdaq_screener_1755436177903.csv}"
+          echo "API: $API_BASE"
+          echo "CSV: $FILE_PATH"
+          test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }
+          dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$FILE_PATH" --api "$API_BASE"
+
+  seed-prod-push:
+    runs-on: [self-hosted, linux, x64]
+    needs: deploy-prod
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: Seed listed stocks (prod, push)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Import CSV to API (prod)
+        env:
+          INSTANCE_NUM: '002'
+          CSV_PATH: 'data/nasdaq.com/nasdaq_screener_1755436177903.csv'
+        run: |
+          API_BASE="https://api-aistock-prod-${INSTANCE_NUM}.azurewebsites.net"
+          FILE_PATH="${CSV_PATH}"
           echo "API: $API_BASE"
           echo "CSV: $FILE_PATH"
           test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }

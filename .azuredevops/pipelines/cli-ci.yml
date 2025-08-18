@@ -166,7 +166,7 @@ stages:
                 az acr login --name $(RegistryName)
                 UI_REPO="$(RegistryName).azurecr.io/aistocktradeapp"
                 API_REPO="$(RegistryName).azurecr.io/aistocktradeapp-api"
-                VER="$(FullSemVer)"
+                VER="${VER:-}"
                 if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
                 echo "Building UI image $UI_REPO:$VER"
                 docker build -f ./AiStockTradeApp/Dockerfile -t "$UI_REPO:$VER" --build-arg APP_VERSION="$VER" .
@@ -176,6 +176,8 @@ stages:
                 docker push "$API_REPO:$VER"
                 echo "##vso[task.setvariable variable=UiImage;isOutput=true]$UI_REPO:$VER"
                 echo "##vso[task.setvariable variable=ApiImage;isOutput=true]$API_REPO:$VER"
+            env:
+              VER: $(FullSemVer)
 
   - stage: DeployDev
     displayName: "Deploy to Development"
@@ -187,6 +189,12 @@ stages:
         steps:
           - checkout: self
             clean: true
+
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
 
           - task: AzureCLI@2
             displayName: "Resolve ACR and image names (dev)"
@@ -200,12 +208,22 @@ stages:
                 RG_DEV="rg-aistock-dev-${INSTANCE}"
                 REGISTRY_NAME=$(az acr list --resource-group "$RG_DEV" --query '[0].name' -o tsv)
                 if [ -z "$REGISTRY_NAME" ] || [ "$REGISTRY_NAME" = "null" ]; then echo "No ACR found in $RG_DEV"; exit 1; fi
-                VER="$(FullSemVer)"
+                VER="${VER:-}"
+                if [ -z "$VER" ]; then
+                  echo "Version not provided by pipeline variable, computing with GitVersion..."
+                  dotnet tool install --global GitVersion.Tool --version 5.*
+                  export PATH="$PATH:$HOME/.dotnet/tools"
+                  RAW=$(dotnet-gitversion /config GitVersion.yml /output json 2>&1 || true)
+                  echo "$RAW" | head -80
+                  if echo "$RAW" | grep -q 'FullSemVer'; then VER=$(echo "$RAW" | jq -r '.FullSemVer // empty'); fi
+                fi
                 if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
                 UI_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp:$VER"
                 API_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp-api:$VER"
                 echo "##vso[task.setvariable variable=UiImage]$UI_IMAGE"
                 echo "##vso[task.setvariable variable=ApiImage]$API_IMAGE"
+            env:
+              VER: $(FullSemVer)
 
           - task: AzureCLI@2
             displayName: "Deploy infra (dev)"
@@ -249,6 +267,12 @@ stages:
           - checkout: self
             clean: true
 
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
+
           - task: AzureCLI@2
             displayName: "Resolve ACR and image names (prod)"
             inputs:
@@ -261,12 +285,22 @@ stages:
                 RG_DEV="rg-aistock-dev-${INSTANCE}"
                 REGISTRY_NAME=$(az acr list --resource-group "$RG_DEV" --query '[0].name' -o tsv)
                 if [ -z "$REGISTRY_NAME" ] || [ "$REGISTRY_NAME" = "null" ]; then echo "No ACR found in $RG_DEV"; exit 1; fi
-                VER="$(FullSemVer)"
+                VER="${VER:-}"
+                if [ -z "$VER" ]; then
+                  echo "Version not provided by pipeline variable, computing with GitVersion..."
+                  dotnet tool install --global GitVersion.Tool --version 5.*
+                  export PATH="$PATH:$HOME/.dotnet/tools"
+                  RAW=$(dotnet-gitversion /config GitVersion.yml /output json 2>&1 || true)
+                  echo "$RAW" | head -80
+                  if echo "$RAW" | grep -q 'FullSemVer'; then VER=$(echo "$RAW" | jq -r '.FullSemVer // empty'); fi
+                fi
                 if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
                 UI_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp:$VER"
                 API_IMAGE="$REGISTRY_NAME.azurecr.io/aistocktradeapp-api:$VER"
                 echo "##vso[task.setvariable variable=UiImage]$UI_IMAGE"
                 echo "##vso[task.setvariable variable=ApiImage]$API_IMAGE"
+            env:
+              VER: $(FullSemVer)
 
           - task: AzureCLI@2
             displayName: "Deploy infra (prod)"
