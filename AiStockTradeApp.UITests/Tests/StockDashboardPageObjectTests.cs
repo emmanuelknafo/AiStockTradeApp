@@ -61,15 +61,15 @@ public class StockDashboardPageObjectTests : BaseUITest
     public async Task RemoveStock_UsingPageObject_ShouldWork()
     {
         // First add a stock
-        await _dashboardPage.AddStock("MSFT");
-        var isAdded = await _dashboardPage.IsStockInWatchlist("MSFT");
+    await _dashboardPage.AddStock("AAPL");
+    var isAdded = await _dashboardPage.IsStockInWatchlist("AAPL");
         isAdded.Should().BeTrue();
 
         // Remove the stock
-        await _dashboardPage.RemoveStock("MSFT");
+    await _dashboardPage.RemoveStock("AAPL");
 
         // Verify stock was removed
-        var isRemoved = await _dashboardPage.IsStockInWatchlist("MSFT");
+    var isRemoved = await _dashboardPage.IsStockInWatchlist("AAPL");
         isRemoved.Should().BeFalse();
     }
 
