@@ -30,29 +30,29 @@ parameters:
   - name: instanceNumber
     displayName: "Instance number for resource differentiation"
     type: string
-    default: '003'
+    default: "003"
   - name: seed
     displayName: "Run seeding (import listed stocks) after deploy"
     type: boolean
-    default: false
+    default: true
   - name: seedCsv
     displayName: "CSV path to import (relative to repo)"
     type: string
-    default: 'data/nasdaq.com/nasdaq_screener_1755436177903.csv'
+    default: "data/nasdaq.com/nasdaq_screener_1755436177903.csv"
 
 variables:
   - group: AiStockTradeApp
   - name: AZURE_SERVICE_CONNECTION
     value: svc_CSA_sub
   - name: AZURE_SUBSCRIPTION_ID
-    value: '64c3d212-40ed-4c6d-a825-6adfbdf25dad'
+    value: "64c3d212-40ed-4c6d-a825-6adfbdf25dad"
   - name: DOTNET_VERSION
-    value: '9.0.x'
+    value: "9.0.x"
   - name: vmImageName
-    value: 'ubuntu-latest'
+    value: "ubuntu-latest"
   # Optional: auto-seed after deploy based on branch. Allowed values: 'none', 'dev', 'prod', 'both'
   - name: SEED_AFTER_DEPLOY
-    value: 'none'
+    value: "none"
 
 pool:
   vmImage: $(vmImageName)
@@ -77,15 +77,15 @@ stages:
           - task: DotNetCoreCLI@2
             displayName: "Restore CLI"
             inputs:
-              command: 'restore'
-              projects: 'AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj'
+              command: "restore"
+              projects: "AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj"
 
           - task: DotNetCoreCLI@2
             displayName: "Build CLI"
             inputs:
-              command: 'build'
-              projects: 'AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj'
-              arguments: '--configuration Release --no-restore'
+              command: "build"
+              projects: "AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj"
+              arguments: "--configuration Release --no-restore"
 
           - script: |
               dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- --help
@@ -94,15 +94,15 @@ stages:
           - task: DotNetCoreCLI@2
             displayName: "Restore Unit Tests"
             inputs:
-              command: 'restore'
-              projects: 'AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj'
+              command: "restore"
+              projects: "AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj"
 
           - task: DotNetCoreCLI@2
             displayName: "Build unit tests"
             inputs:
-              command: 'build'
-              projects: 'AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj'
-              arguments: '-c Release --no-restore'
+              command: "build"
+              projects: "AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj"
+              arguments: "-c Release --no-restore"
 
           - script: |
               set -e
@@ -111,7 +111,7 @@ stages:
                 --no-build -c Release --verbosity normal
             displayName: "Run unit tests (script)"
             env:
-              USE_INMEMORY_DB: 'true'
+              USE_INMEMORY_DB: "true"
 
   - stage: Build
     displayName: "Build and Push Container Images"

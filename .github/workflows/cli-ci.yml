@@ -4,34 +4,34 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - 'AiStockTradeApp.Cli/**'
-      - '.github/workflows/cli-ci.yml'
+      - "AiStockTradeApp.Cli/**"
+      - ".github/workflows/cli-ci.yml"
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy to'
+        description: "Environment to deploy to"
         required: true
-        default: 'dev'
+        default: "dev"
         type: choice
         options: [dev, prod]
       instanceNumber:
-        description: 'Instance number for resource differentiation'
+        description: "Instance number for resource differentiation"
         required: true
-        default: '002'
+        default: "002"
         type: string
       seed:
-        description: 'Run seeding (import listed stocks) after deploy'
+        description: "Run seeding (import listed stocks) after deploy"
         required: false
-        default: false
         type: boolean
+        default: true
       seedCsv:
-        description: 'CSV path to import (relative to repo)'
+        description: "CSV path to import (relative to repo)"
         required: false
-        default: 'data/nasdaq.com/nasdaq_screener_1755436177903.csv'
+        default: "data/nasdaq.com/nasdaq_screener_1755436177903.csv"
         type: string
 
 env:
-  DOTNET_VERSION: '9.0.x'
+  DOTNET_VERSION: "9.0.x"
   AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
   AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -40,7 +40,7 @@ jobs:
   test-cli:
     runs-on: [self-hosted, linux, x64]
     env:
-      USE_INMEMORY_DB: 'true'
+      USE_INMEMORY_DB: "true"
     name: Test CLI and Solution (fast)
     steps:
       - name: Checkout code
@@ -95,7 +95,7 @@ jobs:
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v0
         with:
-          versionSpec: '5.x'
+          versionSpec: "5.x"
 
       - name: Determine Version
         id: gitversion
@@ -347,8 +347,8 @@ jobs:
 
       - name: Import CSV to API (dev)
         env:
-          INSTANCE_NUM: '002'
-          CSV_PATH: 'data/nasdaq.com/nasdaq_screener_1755436177903.csv'
+          INSTANCE_NUM: "002"
+          CSV_PATH: "data/nasdaq.com/nasdaq_screener_1755436177903.csv"
         run: |
           API_BASE="https://api-aistock-dev-${INSTANCE_NUM}.azurewebsites.net"
           FILE_PATH="${CSV_PATH}"
@@ -399,8 +399,8 @@ jobs:
 
       - name: Import CSV to API (prod)
         env:
-          INSTANCE_NUM: '002'
-          CSV_PATH: 'data/nasdaq.com/nasdaq_screener_1755436177903.csv'
+          INSTANCE_NUM: "002"
+          CSV_PATH: "data/nasdaq.com/nasdaq_screener_1755436177903.csv"
         run: |
           API_BASE="https://api-aistock-prod-${INSTANCE_NUM}.azurewebsites.net"
           FILE_PATH="${CSV_PATH}"
