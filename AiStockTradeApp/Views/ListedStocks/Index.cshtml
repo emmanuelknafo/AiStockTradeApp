@@ -1,0 +1,121 @@
+@{
+    ViewData["Title"] = "Listed Stocks";
+}
+
+<div class="container">
+  <header class="app-header">
+    <h1>Listed Stocks</h1>
+    <div class="header-controls">
+      <a class="control-btn" href="@Url.Action("Dashboard","Stock")">← Back to Dashboard</a>
+    </div>
+  </header>
+
+  <div class="search-bar">
+    <div class="search-container" style="gap:8px;display:flex;flex-wrap:wrap;align-items:center;">
+      <input id="q" type="text" placeholder="Search symbol or company name" style="min-width:240px" />
+      <select id="sector" style="min-width:200px"><option value="">All Sectors</option></select>
+      <select id="industry" style="min-width:240px"><option value="">All Industries</option></select>
+      <button id="apply-filters">Apply</button>
+      <span id="result-count" style="margin-left:8px;color:#666"></span>
+    </div>
+  </div>
+
+  <div style="overflow:auto;">
+    <table id="stocks-table" class="data-table" style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left;">Symbol</th>
+          <th style="text-align:left;">Name</th>
+          <th style="text-align:left;">Sector</th>
+          <th style="text-align:left;">Industry</th>
+          <th style="text-align:right;">Last</th>
+          <th style="text-align:right;">% Change</th>
+          <th style="text-align:right;">Market Cap</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="pagination" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+    <button id="prev-page">Prev</button>
+    <span id="page-info"></span>
+    <button id="next-page">Next</button>
+    <select id="page-size" style="margin-left:auto">
+      <option value="25">25</option>
+      <option value="50" selected>50</option>
+      <option value="100">100</option>
+    </select>
+  </div>
+</div>
+
+@section Scripts {
+<script>
+(function(){
+  const state = { page: 1, pageSize: 50, total: 0, q: '', sector: '', industry: '' };
+
+  async function fetchFacets(){
+    try {
+      const res = await fetch('@Url.Action("Facets","ListedStocks")');
+      const data = await res.json();
+      const sectorSel = document.getElementById('sector');
+      const industrySel = document.getElementById('industry');
+      data.sectors.forEach(s => { const opt = document.createElement('option'); opt.value = s; opt.textContent = s; sectorSel.appendChild(opt); });
+      data.industries.forEach(s => { const opt = document.createElement('option'); opt.value = s; opt.textContent = s; industrySel.appendChild(opt); });
+    } catch(e) { console.warn('Facets load failed', e); }
+  }
+
+  function fmtMoney(v){ return (v||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function fmtPct(v){ return ((v||0)).toFixed(2) + '%'; }
+  function fmtCap(v){ if(!v) return ''; const n = Number(v); if(n>=1e12) return (n/1e12).toFixed(2)+'T'; if(n>=1e9) return (n/1e9).toFixed(2)+'B'; if(n>=1e6) return (n/1e6).toFixed(2)+'M'; return n.toLocaleString(); }
+
+  async function load(){
+    const params = new URLSearchParams({ q: state.q||'', sector: state.sector||'', industry: state.industry||'', page: state.page, pageSize: state.pageSize });
+    const res = await fetch('@Url.Action("Data","ListedStocks")?' + params.toString());
+    const data = await res.json();
+    state.total = data.total || 0;
+    renderTable(data.items || []);
+    renderPager();
+    document.getElementById('result-count').textContent = `${state.total.toLocaleString()} results`;
+  }
+
+  function renderTable(items){
+    const tbody = document.querySelector('#stocks-table tbody');
+    tbody.innerHTML = '';
+    for(const it of items){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><a href="@Url.Action("Dashboard","Stock")?symbol=${it.symbol}">${it.symbol}</a></td>
+        <td>${it.name}</td>
+        <td>${it.sector||''}</td>
+        <td>${it.industry||''}</td>
+        <td style="text-align:right;">$${fmtMoney(it.lastSale)}</td>
+        <td style="text-align:right;">${fmtPct(it.percentChange)}</td>
+        <td style="text-align:right;">${fmtCap(it.marketCap)}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function renderPager(){
+    const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
+    document.getElementById('page-info').textContent = `Page ${state.page} of ${totalPages}`;
+    document.getElementById('prev-page').disabled = state.page <= 1;
+    document.getElementById('next-page').disabled = state.page >= totalPages;
+  }
+
+  // Events
+  document.getElementById('apply-filters').addEventListener('click', () => {
+    state.q = document.getElementById('q').value.trim();
+    state.sector = document.getElementById('sector').value;
+    state.industry = document.getElementById('industry').value;
+    state.page = 1;
+    load();
+  });
+  document.getElementById('prev-page').addEventListener('click', () => { if(state.page>1){ state.page--; load(); }});
+  document.getElementById('next-page').addEventListener('click', () => { const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize)); if(state.page<totalPages){ state.page++; load(); }});
+  document.getElementById('page-size').addEventListener('change', (e) => { state.pageSize = parseInt(e.target.value,10)||50; state.page=1; load(); });
+
+  fetchFacets().then(load);
+})();
+</script>
+}

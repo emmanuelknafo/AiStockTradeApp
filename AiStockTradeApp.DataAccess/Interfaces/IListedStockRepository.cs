@@ -8,7 +8,10 @@ namespace AiStockTradeApp.DataAccess.Interfaces
         Task UpsertAsync(ListedStock stock);
         Task BulkUpsertAsync(IEnumerable<ListedStock> stocks);
     Task<List<ListedStock>> GetAllAsync(int skip = 0, int take = 500);
-    Task<List<ListedStock>> SearchAsync(string? sector, string? industry, int skip = 0, int take = 500);
+    Task<List<ListedStock>> SearchAsync(string? sector, string? industry, string? q, int skip = 0, int take = 500);
+        Task<int> SearchCountAsync(string? sector, string? industry, string? q);
+        Task<List<string>> GetDistinctSectorsAsync();
+        Task<List<string>> GetDistinctIndustriesAsync();
         Task<int> CountAsync();
         Task DeleteAllAsync();
     }

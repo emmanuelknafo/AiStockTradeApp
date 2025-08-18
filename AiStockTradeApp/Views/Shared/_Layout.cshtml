@@ -8,6 +8,10 @@
 </head>
 <body>
     <main role="main">
+        <div style="padding:8px 16px; border-bottom:1px solid #eee; margin-bottom:12px;">
+            <a href="@Url.Action("Dashboard","Stock")" style="margin-right:12px;">Dashboard</a>
+            <a href="@Url.Action("Index","ListedStocks")">Listed Stocks</a>
+        </div>
         @RenderBody()
     </main>
 

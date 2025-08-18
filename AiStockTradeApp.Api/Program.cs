@@ -227,15 +227,24 @@ app.MapPost("/api/listed-stocks/bulk", async ([FromBody] IEnumerable<ListedStock
 .WithName("BulkUpsertListedStocks")
 .Produces(StatusCodes.Status200OK);
 
-app.MapGet("/api/listed-stocks/search", async ([FromQuery] string? sector, [FromQuery] string? industry, [FromQuery] int skip, [FromQuery] int take, IListedStockService svc) =>
+app.MapGet("/api/listed-stocks/search", async ([FromQuery] string? q, [FromQuery] string? sector, [FromQuery] string? industry, [FromQuery] int skip, [FromQuery] int take, IListedStockService svc) =>
 {
     skip = Math.Max(0, skip);
     take = take <= 0 || take > 2000 ? 500 : take;
-    var list = await svc.SearchAsync(sector, industry, skip, take);
-    return Results.Ok(list);
+    var list = await svc.SearchAsync(sector, industry, q, skip, take);
+    var total = await svc.SearchCountAsync(sector, industry, q);
+    return Results.Ok(new { total, items = list });
 })
 .WithName("SearchListedStocks")
-.Produces<List<ListedStock>>(StatusCodes.Status200OK);
+.Produces(StatusCodes.Status200OK);
+
+// Facets for filtering UI
+app.MapGet("/api/listed-stocks/facets/sectors", async (IListedStockService svc) => Results.Ok(await svc.GetDistinctSectorsAsync()))
+.WithName("GetSectorsFacet")
+.Produces<List<string>>(StatusCodes.Status200OK);
+app.MapGet("/api/listed-stocks/facets/industries", async (IListedStockService svc) => Results.Ok(await svc.GetDistinctIndustriesAsync()))
+.WithName("GetIndustriesFacet")
+.Produces<List<string>>(StatusCodes.Status200OK);
 
 // Import screener CSV (text/csv or text/plain body) - enqueue background job, return 202
 app.MapPost("/api/listed-stocks/import-csv", async (HttpRequest req, IImportJobQueue queue) =>

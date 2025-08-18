@@ -64,7 +64,7 @@ namespace AiStockTradeApp.DataAccess.Repositories
             await _db.SaveChangesAsync();
         }
 
-        public async Task<List<ListedStock>> SearchAsync(string? sector, string? industry, int skip = 0, int take = 500)
+        public async Task<List<ListedStock>> SearchAsync(string? sector, string? industry, string? q, int skip = 0, int take = 500)
         {
             var qry = _db.ListedStocks.AsNoTracking().AsQueryable();
             if (!string.IsNullOrWhiteSpace(sector))
@@ -77,7 +77,53 @@ namespace AiStockTradeApp.DataAccess.Repositories
                 var i = industry.Trim();
                 qry = qry.Where(x => x.Industry != null && x.Industry == i);
             }
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                var term = q.Trim();
+                qry = qry.Where(x => x.Symbol.Contains(term) || x.Name.Contains(term));
+            }
             return await qry.OrderBy(x => x.Symbol).Skip(Math.Max(0, skip)).Take(take <= 0 || take > 2000 ? 500 : take).ToListAsync();
+        }
+
+        public async Task<int> SearchCountAsync(string? sector, string? industry, string? q)
+        {
+            var qry = _db.ListedStocks.AsNoTracking().AsQueryable();
+            if (!string.IsNullOrWhiteSpace(sector))
+            {
+                var s = sector.Trim();
+                qry = qry.Where(x => x.Sector != null && x.Sector == s);
+            }
+            if (!string.IsNullOrWhiteSpace(industry))
+            {
+                var i = industry.Trim();
+                qry = qry.Where(x => x.Industry != null && x.Industry == i);
+            }
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                var term = q.Trim();
+                qry = qry.Where(x => x.Symbol.Contains(term) || x.Name.Contains(term));
+            }
+            return await qry.CountAsync();
+        }
+
+        public async Task<List<string>> GetDistinctSectorsAsync()
+        {
+            return await _db.ListedStocks.AsNoTracking()
+                .Where(x => x.Sector != null && x.Sector != "")
+                .Select(x => x.Sector!)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToListAsync();
+        }
+
+        public async Task<List<string>> GetDistinctIndustriesAsync()
+        {
+            return await _db.ListedStocks.AsNoTracking()
+                .Where(x => x.Industry != null && x.Industry != "")
+                .Select(x => x.Industry!)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToListAsync();
         }
     }
 }
