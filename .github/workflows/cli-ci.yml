@@ -241,20 +241,20 @@ jobs:
           subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-002' }}
           template: ./infrastructure/main.bicep
-          parameters: |
-            ./infrastructure/parameters.dev.json 
-            instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} 
-            containerImage=${{ needs.build.outputs.image }} 
-            containerImageApi=${{ needs.build.outputs.api_image }} 
-            alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} 
-            twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} 
-            enableAzureAdOnlyAuth=true 
-            enablePrivateSql=true 
-            enablePrivateKeyVault=true 
-            manageNetworking=false 
-            manageSql=false 
-            vnetAddressSpace=10.50.0.0/16 
-            appIntegrationSubnetPrefix=10.50.1.0/27 
+          parameters: >-
+            @./infrastructure/parameters.dev.json
+            instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}
+            containerImage=${{ needs.build.outputs.image }}
+            containerImageApi=${{ needs.build.outputs.api_image }}
+            alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }}
+            twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+            enableAzureAdOnlyAuth=true
+            enablePrivateSql=true
+            enablePrivateKeyVault=true
+            manageNetworking=false
+            manageSql=false
+            vnetAddressSpace=10.50.0.0/16
+            appIntegrationSubnetPrefix=10.50.1.0/27
             privateEndpointSubnetPrefix=10.50.2.0/28
           failOnStdErr: false
 
@@ -288,20 +288,20 @@ jobs:
           subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
           template: ./infrastructure/main.bicep
-          parameters: |
-            ./infrastructure/parameters.prod.json 
-            instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} 
-            containerImage=${{ needs.build.outputs.image }} 
-            containerImageApi=${{ needs.build.outputs.api_image }} 
-            alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} 
-            twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} 
-            enableAzureAdOnlyAuth=true 
-            enablePrivateSql=true 
-            enablePrivateKeyVault=true 
-            manageNetworking=false 
-            manageSql=false 
-            vnetAddressSpace=10.51.0.0/16 
-            appIntegrationSubnetPrefix=10.51.1.0/27 
+          parameters: >-
+            @./infrastructure/parameters.prod.json
+            instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}
+            containerImage=${{ needs.build.outputs.image }}
+            containerImageApi=${{ needs.build.outputs.api_image }}
+            alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }}
+            twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }}
+            enableAzureAdOnlyAuth=true
+            enablePrivateSql=true
+            enablePrivateKeyVault=true
+            manageNetworking=false
+            manageSql=false
+            vnetAddressSpace=10.51.0.0/16
+            appIntegrationSubnetPrefix=10.51.1.0/27
             privateEndpointSubnetPrefix=10.51.2.0/28
           failOnStdErr: false
 

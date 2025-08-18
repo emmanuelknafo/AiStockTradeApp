@@ -155,22 +155,27 @@ stages:
                 echo "Resolved ACR: $REGISTRY_NAME"
                 echo "##vso[task.setvariable variable=RegistryName]$REGISTRY_NAME"
 
-          - script: |
-              set -e
-              az acr login --name $(RegistryName)
-              UI_REPO="$(RegistryName).azurecr.io/aistocktradeapp"
-              API_REPO="$(RegistryName).azurecr.io/aistocktradeapp-api"
-              VER="$(FullSemVer)"
-              if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
-              echo "Building UI image $UI_REPO:$VER"
-              docker build -f ./AiStockTradeApp/Dockerfile -t "$UI_REPO:$VER" --build-arg APP_VERSION="$VER" .
-              docker push "$UI_REPO:$VER"
-              echo "Building API image $API_REPO:$VER"
-              docker build -f ./AiStockTradeApp.Api/Dockerfile -t "$API_REPO:$VER" --build-arg APP_VERSION="$VER" .
-              docker push "$API_REPO:$VER"
-              echo "##vso[task.setvariable variable=UiImage;isOutput=true]$UI_REPO:$VER"
-              echo "##vso[task.setvariable variable=ApiImage;isOutput=true]$API_REPO:$VER"
+          - task: AzureCLI@2
             displayName: "Build & push images"
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                az acr login --name $(RegistryName)
+                UI_REPO="$(RegistryName).azurecr.io/aistocktradeapp"
+                API_REPO="$(RegistryName).azurecr.io/aistocktradeapp-api"
+                VER="$(FullSemVer)"
+                if [ -z "$VER" ] || [ "$VER" = "0.0.0-local" ]; then echo "Invalid version"; exit 1; fi
+                echo "Building UI image $UI_REPO:$VER"
+                docker build -f ./AiStockTradeApp/Dockerfile -t "$UI_REPO:$VER" --build-arg APP_VERSION="$VER" .
+                docker push "$UI_REPO:$VER"
+                echo "Building API image $API_REPO:$VER"
+                docker build -f ./AiStockTradeApp.Api/Dockerfile -t "$API_REPO:$VER" --build-arg APP_VERSION="$VER" .
+                docker push "$API_REPO:$VER"
+                echo "##vso[task.setvariable variable=UiImage;isOutput=true]$UI_REPO:$VER"
+                echo "##vso[task.setvariable variable=ApiImage;isOutput=true]$API_REPO:$VER"
 
   - stage: DeployDev
     displayName: "Deploy to Development"
