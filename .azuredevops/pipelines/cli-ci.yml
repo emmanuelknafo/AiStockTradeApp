@@ -30,7 +30,7 @@ parameters:
   - name: instanceNumber
     displayName: "Instance number for resource differentiation"
     type: string
-    default: '002'
+    default: '003'
   - name: seed
     displayName: "Run seeding (import listed stocks) after deploy"
     type: boolean
