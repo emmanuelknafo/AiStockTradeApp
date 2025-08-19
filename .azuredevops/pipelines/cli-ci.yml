@@ -67,6 +67,34 @@ stages:
           - checkout: self
             fetchDepth: 0
             clean: true
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
+
+          - script: |
+              dotnet restore AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj
+              dotnet build AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -c Release --no-restore
+            displayName: "Restore & Build CLI"
+
+          - script: |
+              dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- --help
+            displayName: "CLI smoke test (--help)"
+
+          - script: |
+              dotnet restore AiStockTradeApp.sln
+            displayName: "Restore solution"
+
+          - script: |
+              dotnet build AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj -c Release --no-restore
+            displayName: "Build unit tests"
+
+          - script: |
+              dotnet test AiStockTradeApp.Tests/AiStockTradeApp.Tests.csproj --no-build -c Release -v normal
+            displayName: "Run unit tests (unit only)"
+            env:
+              USE_INMEMORY_DB: "true"
   - stage: SmokeDev
     displayName: "Smoke test Development API"
     dependsOn: Test
@@ -92,7 +120,7 @@ stages:
   - stage: SmokeProd
     displayName: "Smoke test Production API"
     dependsOn: [Test, SmokeDev]
-    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq('${{ parameters.environment }}', 'prod')))
+    condition: "and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/develop'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq('${{ parameters.environment }}', 'prod')))"
     jobs:
       - job: SmokeProdJob
         displayName: "Check /health (prod)"
@@ -111,11 +139,10 @@ stages:
               fi
             displayName: "Curl health endpoint (prod)"
 
-
   - stage: SeedDev
     displayName: "Seed listed stocks (dev)"
     dependsOn: SmokeDev
-    condition: and(succeeded(), or(and(eq(variables['Build.SourceBranch'], 'refs/heads/develop'), or(eq(variables['SEED_AFTER_DEPLOY'], 'dev'), eq(variables['SEED_AFTER_DEPLOY'], 'both'))), and(eq('${{ parameters.environment }}', 'dev'), eq(${{ parameters.seed }}, true))))
+    condition: "and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), and(eq(variables['Build.SourceBranch'], 'refs/heads/develop'), or(eq(variables['SEED_AFTER_DEPLOY'], 'dev'), eq(variables['SEED_AFTER_DEPLOY'], 'both'))), and(eq('${{ parameters.environment }}', 'dev'), eq(${{ parameters.seed }}, true))))"
     jobs:
       - job: SeedDevJob
         displayName: "Import CSV into Dev API"
@@ -141,7 +168,7 @@ stages:
   - stage: SeedProd
     displayName: "Seed listed stocks (prod)"
     dependsOn: SmokeProd
-    condition: and(succeeded(), or(and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), or(eq(variables['SEED_AFTER_DEPLOY'], 'prod'), eq(variables['SEED_AFTER_DEPLOY'], 'both'))), and(eq('${{ parameters.environment }}', 'prod'), eq(${{ parameters.seed }}, true))))
+    condition: "and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), and(eq('${{ parameters.environment }}', 'prod'), eq(${{ parameters.seed }}, true))))"
     jobs:
       - job: SeedProdJob
         displayName: "Import CSV into Prod API"
