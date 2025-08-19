@@ -37,6 +37,20 @@
     </table>
   </div>
 
+  <div id="history-panel" style="display:none;margin-top:16px;border:1px solid #ddd;border-radius:8px;padding:12px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <h3 id="hist-title" style="margin:0;">Historical Prices</h3>
+      <span id="hist-range" style="color:#666"></span>
+    </div>
+    <canvas id="hist-chart" height="80" style="width:100%;max-height:120px;margin-top:8px;background:#fafafa;border:1px solid #eee;"></canvas>
+    <div id="hist-table-wrap" style="overflow:auto;max-height:260px;margin-top:8px;">
+      <table class="data-table" style="width:100%;border-collapse:collapse;">
+        <thead><tr><th style="text-align:left;">Date</th><th style="text-align:right;">Open</th><th style="text-align:right;">High</th><th style="text-align:right;">Low</th><th style="text-align:right;">Close</th><th style="text-align:right;">Volume</th></tr></thead>
+        <tbody id="hist-body"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="pagination" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
     <button id="prev-page">Prev</button>
     <span id="page-info"></span>
@@ -85,7 +99,7 @@
     for(const it of items){
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><a href="@Url.Action("Dashboard","Stock")?symbol=${it.symbol}">${it.symbol}</a></td>
+        <td><a class="symbol-link" data-symbol="${it.symbol}" href="#">${it.symbol}</a></td>
         <td>${it.name}</td>
         <td>${it.sector||''}</td>
         <td>${it.industry||''}</td>
@@ -94,6 +108,15 @@
         <td style="text-align:right;">${fmtCap(it.marketCap)}</td>`;
       tbody.appendChild(tr);
     }
+
+    // attach symbol click handlers
+    tbody.querySelectorAll('a.symbol-link').forEach(a => {
+      a.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const sym = a.getAttribute('data-symbol');
+        await loadHistory(sym);
+      });
+    });
   }
 
   function renderPager(){
@@ -116,6 +139,86 @@
   document.getElementById('page-size').addEventListener('change', (e) => { state.pageSize = parseInt(e.target.value,10)||50; state.page=1; load(); });
 
   fetchFacets().then(load);
+
+  async function loadHistory(symbol){
+    const panel = document.getElementById('history-panel');
+    const title = document.getElementById('hist-title');
+    const rangeEl = document.getElementById('hist-range');
+    const body = document.getElementById('hist-body');
+    const canvas = document.getElementById('hist-chart');
+    const ctx = canvas.getContext('2d');
+    title.textContent = `Historical Prices: ${symbol}`;
+    rangeEl.textContent = 'loading...';
+    body.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
+    panel.style.display = 'block';
+
+    try {
+      const res = await fetch('@Url.Action("Historical","ListedStocks")?symbol=' + encodeURIComponent(symbol) + '&take=120');
+      const rows = await res.json();
+      if(!Array.isArray(rows) || rows.length === 0){
+        body.innerHTML = '<tr><td colspan="6">No historical data</td></tr>';
+        rangeEl.textContent = '';
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        return;
+      }
+      // sort by date ascending
+      rows.sort((a,b)=> new Date(a.date) - new Date(b.date));
+      const first = rows[0].date?.substring(0,10) || '';
+      const last = rows[rows.length-1].date?.substring(0,10) || '';
+      rangeEl.textContent = `${first} → ${last} (${rows.length})`;
+
+      // table
+      body.innerHTML = '';
+      for(const r of rows.slice().reverse()){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${(r.date||'').substring(0,10)}</td>
+                        <td style="text-align:right;">$${fmtMoney(r.open)}</td>
+                        <td style="text-align:right;">$${fmtMoney(r.high)}</td>
+                        <td style="text-align:right;">$${fmtMoney(r.low)}</td>
+                        <td style="text-align:right;">$${fmtMoney(r.close)}</td>
+                        <td style="text-align:right;">${(r.volume||0).toLocaleString()}</td>`;
+        body.appendChild(tr);
+      }
+
+      // mini line chart of closes
+      const closes = rows.map(r => Number(r.close||0));
+      const w = canvas.clientWidth || 800;
+      canvas.width = w; // ensure correct pixel width
+      const h = canvas.height;
+      ctx.clearRect(0,0,w,h);
+      const min = Math.min(...closes);
+      const max = Math.max(...closes);
+      const pad = 6;
+      const n = closes.length;
+      const xStep = (w - pad*2) / Math.max(1, n-1);
+      function y(v){
+        if(max===min) return h/2; 
+        return h - pad - ((v - min) / (max - min)) * (h - pad*2);
+      }
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#0a84ff';
+      ctx.beginPath();
+      for(let i=0;i<n;i++){
+        const x = pad + i * xStep;
+        const yv = y(closes[i]);
+        if(i===0) ctx.moveTo(x,yv); else ctx.lineTo(x,yv);
+      }
+      ctx.stroke();
+      // area fill
+      const grad = ctx.createLinearGradient(0,0,0,h);
+      grad.addColorStop(0,'rgba(10,132,255,0.25)');
+      grad.addColorStop(1,'rgba(10,132,255,0.0)');
+      ctx.fillStyle = grad;
+      ctx.lineTo(pad + (n-1)*xStep, h-pad);
+      ctx.lineTo(pad, h-pad);
+      ctx.closePath();
+      ctx.fill();
+    } catch(err){
+      body.innerHTML = `<tr><td colspan="6">Error loading history: ${err}</td></tr>`;
+      rangeEl.textContent = '';
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+    }
+  }
 })();
 </script>
 }

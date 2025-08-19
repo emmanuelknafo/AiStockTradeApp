@@ -42,6 +42,19 @@ namespace AiStockTradeApp.Controllers
             return Json(new { sectors, industries });
         }
 
+        [HttpGet]
+        public async Task<IActionResult> Historical(string symbol, DateTime? from = null, DateTime? to = null, int? take = 60)
+        {
+            if (string.IsNullOrWhiteSpace(symbol)) return BadRequest("symbol required");
+            var qp = new List<string>();
+            if (from.HasValue) qp.Add($"from={Uri.EscapeDataString(from.Value.ToString("yyyy-MM-dd"))}");
+            if (to.HasValue) qp.Add($"to={Uri.EscapeDataString(to.Value.ToString("yyyy-MM-dd"))}");
+            if (take.HasValue && take.Value > 0) qp.Add($"take={take.Value}");
+            var rel = $"/api/historical-prices/{Uri.EscapeDataString(symbol.ToUpperInvariant())}" + (qp.Count>0?"?"+string.Join('&', qp):string.Empty);
+            var rows = await GetWithFallbackAsync<List<HistoricalRow>>(rel) ?? new();
+            return Json(rows);
+        }
+
         private async Task<T?> GetWithFallbackAsync<T>(string relative)
         {
             var url = _primaryBaseUrl.TrimEnd('/') + relative;
@@ -58,5 +71,6 @@ namespace AiStockTradeApp.Controllers
 
         public class SearchResponse { public int total { get; set; } public List<SearchItem> items { get; set; } = new(); }
         public class SearchItem { public string symbol { get; set; } = string.Empty; public string name { get; set; } = string.Empty; public string? sector { get; set; } public string? industry { get; set; } public decimal lastSale { get; set; } public decimal percentChange { get; set; } public decimal marketCap { get; set; } }
+    public class HistoricalRow { public DateTime date { get; set; } public string symbol { get; set; } = string.Empty; public decimal open { get; set; } public decimal high { get; set; } public decimal low { get; set; } public decimal close { get; set; } public long volume { get; set; } }
     }
 }
