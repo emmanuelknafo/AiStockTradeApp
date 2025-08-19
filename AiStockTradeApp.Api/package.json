@@ -1,0 +1,15 @@
+{
+  "name": "playwright-aspnet",
+  "version": "1.0.0",
+  "description": "Playwright setup for ASP.NET 9.0 container",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx playwright test",
+    "install:playwright": "npx playwright install --with-deps"
+  },
+  "author": "Emmanuel Knafo",
+  "license": "MIT",
+  "dependencies": {
+    "@playwright/test": "^1.44.1"
+  }
+}

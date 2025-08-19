@@ -73,8 +73,8 @@ function Invoke-DockerCleanUpAndUp {
     throw "Compose file not found at $composeFile"
   }
 
-  Write-Host 'Stopping and removing existing containers, networks, and volumes...' -ForegroundColor Cyan
-  & docker compose -f $composeFile down --volumes --remove-orphans | Write-Host
+  Write-Host 'Stopping containers and removing images, networks, and volumes...' -ForegroundColor Cyan
+  & docker compose -f $composeFile down --rmi all --volumes --remove-orphans | Write-Host
 
   Write-Host 'Rebuilding images with no cache...' -ForegroundColor Cyan
   & docker compose -f $composeFile build --no-cache | Write-Host
