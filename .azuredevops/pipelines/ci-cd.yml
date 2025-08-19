@@ -839,6 +839,9 @@ stages:
               scriptType: "bash"
               scriptLocation: "inlineScript"
               inlineScript: |
+                # Fail fast on any error, unset variable, or failed pipeline in a pipe
+                set -euo pipefail
+                trap 'echo "[ERROR] Build script failed at line $LINENO" >&2' ERR
                 echo "=== BUILDING AND PUSHING CONTAINER IMAGE ==="
 
                 # Parse container tags into individual arrays
@@ -848,18 +851,22 @@ stages:
                 # Build UI image
                 echo "Building UI Docker image..."
                 if [ -n "$(GitVersion.FullSemVer)" ] && [ "$(GitVersion.FullSemVer)" != "0.0.0-local" ]; then
-                  docker build --build-arg APP_VERSION=$(GitVersion.FullSemVer) -f ./AiStockTradeApp/Dockerfile -t temp-build-image-ui .
+                  docker build --pull --build-arg APP_VERSION=$(GitVersion.FullSemVer) -f ./AiStockTradeApp/Dockerfile -t temp-build-image-ui .
                 else
-                  docker build -f ./AiStockTradeApp/Dockerfile -t temp-build-image-ui .
+                  docker build --pull -f ./AiStockTradeApp/Dockerfile -t temp-build-image-ui .
                 fi
+                # Verify UI image built successfully
+                docker image inspect temp-build-image-ui >/dev/null 2>&1 || { echo "UI image build failed (temp-build-image-ui not found)"; exit 1; }
 
                 # Build API image
                 echo "Building API Docker image..."
                 if [ -n "$(GitVersion.FullSemVer)" ] && [ "$(GitVersion.FullSemVer)" != "0.0.0-local" ]; then
-                  docker build --build-arg APP_VERSION=$(GitVersion.FullSemVer) -f ./AiStockTradeApp.Api/Dockerfile -t temp-build-image-api .
+                  docker build --pull --build-arg APP_VERSION=$(GitVersion.FullSemVer) -f ./AiStockTradeApp.Api/Dockerfile -t temp-build-image-api .
                 else
-                  docker build -f ./AiStockTradeApp.Api/Dockerfile -t temp-build-image-api .
+                  docker build --pull -f ./AiStockTradeApp.Api/Dockerfile -t temp-build-image-api .
                 fi
+                # Verify API image built successfully
+                docker image inspect temp-build-image-api >/dev/null 2>&1 || { echo "API image build failed (temp-build-image-api not found)"; exit 1; }
 
                 # Push UI tags
                 for tag in "${TAG_ARRAY_UI[@]}"; do
