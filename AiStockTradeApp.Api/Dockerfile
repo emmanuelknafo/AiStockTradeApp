@@ -7,6 +7,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
+    curl \
     ca-certificates \
     fonts-liberation \
     libappindicator3-1 \
@@ -29,7 +30,16 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs  
 
-RUN npx -y playwright@1.54.0 install --with-deps
+RUN npm --version
+RUN npm install -g npm@latest
+
+#RUN npm install -g playwright
+
+RUN npm install -g npx
+RUN npx -y playwright@latest install --with-deps
+
+# check playwright is installed
+RUN playwright --version
 
 USER $APP_UID
 
