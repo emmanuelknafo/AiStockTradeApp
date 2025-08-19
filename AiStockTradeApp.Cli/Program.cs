@@ -18,6 +18,10 @@ public class Program
                .WithDescription("Download historical stock data CSV from nasdaq.com")
                .WithExample(new[] { "download-historical", "--symbol", "GOOG", "--dest", "C:/tmp/goog.csv" })
                .WithExample(new[] { "download-historical", "-s", "MSFT", "-d", "./msft.csv" });
+            cfg.AddCommand<ImportHistoricalCommand>("import-historical")
+                .WithDescription("Import a historical data CSV for a symbol into the API")
+                .WithExample(new[] { "import-historical", "--symbol", "AAPL", "--file", "./data/nasdaq.com/HistoricalData_AAPL.csv", "--api", "https://localhost:7043" })
+                .WithExample(new[] { "import-historical", "-s", "AAPL", "--file", "./aapl.csv", "--watch" });
                 cfg.AddCommand<ImportListedCommand>("import-listed")
                     .WithDescription("Import a screener CSV into the API listed-stocks catalog")
                     .WithExample(new[] { "import-listed", "--file", "./data/nasdaq.com/screener.csv", "--api", "https://localhost:5001" });
@@ -26,6 +30,142 @@ public class Program
                     .WithExample(new[] { "check-job", "--job", "<GUID>", "--api", "https://localhost:5001" });
         });
         return await app.RunAsync(args);
+    }
+}
+
+public sealed class ImportHistoricalSettings : CommandSettings
+{
+    [CommandOption("-s|--symbol <SYMBOL>")]
+    [Description("Stock ticker symbol (e.g., AAPL)")]
+    public string Symbol { get; init; } = string.Empty;
+
+    [CommandOption("--file <PATH>")]
+    [Description("Path to the historical CSV file to import (Date,Close/Last,Volume,Open,High,Low)")]
+    public string FilePath { get; init; } = string.Empty;
+
+    [CommandOption("--api <BASEURL>")]
+    [Description("API base URL (e.g., https://localhost:7043)")]
+    public string ApiBase { get; init; } = "http://localhost:5000";
+
+    [CommandOption("--watch")] 
+    [Description("Poll job status until completion")] 
+    public bool Watch { get; init; }
+
+    [CommandOption("--intervalSec <N>")]
+    [Description("Polling interval seconds when --watch (default 3)")]
+    [DefaultValue(3)]
+    public int IntervalSec { get; init; } = 3;
+
+    public override ValidationResult Validate()
+    {
+        if (string.IsNullOrWhiteSpace(Symbol))
+            return ValidationResult.Error("--symbol is required");
+        if (string.IsNullOrWhiteSpace(FilePath) || !System.IO.File.Exists(FilePath))
+            return ValidationResult.Error("--file path is required and must exist");
+        if (string.IsNullOrWhiteSpace(ApiBase))
+            return ValidationResult.Error("--api is required");
+        return ValidationResult.Success();
+    }
+}
+
+public sealed class ImportHistoricalCommand : AsyncCommand<ImportHistoricalSettings>
+{
+    public override async Task<int> ExecuteAsync(CommandContext context, ImportHistoricalSettings settings)
+    {
+        try
+        {
+            var csv = await System.IO.File.ReadAllTextAsync(settings.FilePath);
+            using var http = new HttpClient();
+            http.Timeout = TimeSpan.FromMinutes(2);
+            var symbol = settings.Symbol.Trim().ToUpperInvariant();
+            var url = settings.ApiBase.TrimEnd('/') + $"/api/historical-prices/{symbol}/import-csv";
+            var content = new StringContent(csv, System.Text.Encoding.UTF8, "text/csv");
+            try { content.Headers.Add("X-File-Name", Path.GetFileName(settings.FilePath)); } catch { }
+            AnsiConsole.MarkupLine($"[green]POST[/] {url} ({csv.Length} bytes)");
+            var resp = await http.PostAsync(url, content);
+            var body = await resp.Content.ReadAsStringAsync();
+            if (resp.StatusCode == System.Net.HttpStatusCode.Accepted)
+            {
+                AnsiConsole.MarkupLine("[green]Import accepted and queued.[/]");
+                Guid jobId;
+                string? statusUrl = null;
+                try
+                {
+                    var doc = System.Text.Json.JsonDocument.Parse(body);
+                    jobId = doc.RootElement.GetProperty("jobId").GetGuid();
+                    statusUrl = doc.RootElement.TryGetProperty("location", out var locProp) ? locProp.GetString() : null;
+                }
+                catch
+                {
+                    AnsiConsole.WriteLine(body);
+                    return 0;
+                }
+
+                AnsiConsole.MarkupLine($"JobId: [cyan]{jobId}[/]");
+                if (!string.IsNullOrEmpty(statusUrl)) AnsiConsole.MarkupLine($"Status URL: [blue]{statusUrl}[/]");
+
+                if (!settings.Watch)
+                {
+                    AnsiConsole.MarkupLine("Use: aistock-cli check-job --job <GUID> --api <BASEURL> to track progress.");
+                    return 0;
+                }
+
+                // Watch mode: poll the shared job status endpoint
+                var checkUrl = string.IsNullOrEmpty(statusUrl)
+                    ? settings.ApiBase.TrimEnd('/') + $"/api/listed-stocks/import-jobs/{jobId}"
+                    : CombineUrl(settings.ApiBase, statusUrl);
+
+                using var pollClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+                while (true)
+                {
+                    try
+                    {
+                        var sbody = await pollClient.GetStringAsync(checkUrl);
+                        var doc = System.Text.Json.JsonDocument.Parse(sbody);
+                        var status = doc.RootElement.GetProperty("status").GetString() ?? "";
+                        var processed = doc.RootElement.TryGetProperty("processed", out var p) ? p.GetInt32() : 0;
+                        var total = doc.RootElement.TryGetProperty("total", out var t) && t.ValueKind != System.Text.Json.JsonValueKind.Null ? t.GetInt32() : 0;
+                        var line = total > 0 ? $"{processed}/{total}" : processed.ToString();
+                        AnsiConsole.MarkupLine($"Status: [cyan]{status}[/] Progress: [green]{line}[/]");
+                        if (string.Equals(status, "Completed", StringComparison.OrdinalIgnoreCase)) return 0;
+                        if (string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var err = doc.RootElement.TryGetProperty("error", out var e) ? e.GetString() : null;
+                            if (!string.IsNullOrEmpty(err)) AnsiConsole.MarkupLine($"[red]{err}[/]");
+                            return 2;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]Status check error:[/] {ex.Message}");
+                        return 1;
+                    }
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, settings.IntervalSec)));
+                }
+            }
+            else if (!resp.IsSuccessStatusCode)
+            {
+                AnsiConsole.MarkupLine($"[red]Import failed:[/] {(int)resp.StatusCode} {resp.ReasonPhrase}");
+                AnsiConsole.WriteLine(body);
+                return 2;
+            }
+            AnsiConsole.MarkupLine("[green]Import succeeded.[/]");
+            AnsiConsole.WriteLine(body);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static string CombineUrl(string baseUrl, string relativeOrAbsolute)
+    {
+        if (Uri.TryCreate(relativeOrAbsolute, UriKind.Absolute, out var abs)) return abs.ToString();
+        if (!baseUrl.EndsWith('/')) baseUrl += "/";
+        if (relativeOrAbsolute.StartsWith('/')) relativeOrAbsolute = relativeOrAbsolute.TrimStart('/');
+        return baseUrl + relativeOrAbsolute;
     }
 }
 
