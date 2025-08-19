@@ -150,6 +150,31 @@ jobs:
           test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }
           dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$FILE_PATH" --api "$API_BASE"
 
+      - name: Import historical CSVs to API (dev)
+        env:
+          INSTANCE_NUM: ${{ github.event.inputs.instanceNumber }}
+        run: |
+          API_BASE="https://api-aistock-dev-${INSTANCE_NUM}.azurewebsites.net"
+          HIST_DIR="data/nasdaq.com/Historical"
+          echo "API: $API_BASE"
+          echo "Historical dir: $HIST_DIR"
+          if [ -d "$HIST_DIR" ]; then
+            any=0
+            for FILE in "$HIST_DIR"/*.csv; do
+              if [ -e "$FILE" ]; then
+                any=1
+                BASE=$(basename "$FILE")
+                SYM=${BASE%.csv}
+                SYM=${SYM##*_}
+                echo "Importing $FILE (symbol $SYM)"
+                dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-historical --symbol "$SYM" --file "$FILE" --api "$API_BASE"
+              fi
+            done
+            if [ $any -eq 0 ]; then echo "No CSV files found in $HIST_DIR"; fi
+          else
+            echo "Historical directory not found: $HIST_DIR"
+          fi
+
   seed-dev-push:
     runs-on: [self-hosted, linux, x64]
     needs: smoke-dev
@@ -175,6 +200,31 @@ jobs:
           echo "CSV: $FILE_PATH"
           test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }
           dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$FILE_PATH" --api "$API_BASE"
+
+      - name: Import historical CSVs to API (dev)
+        env:
+          INSTANCE_NUM: "002"
+        run: |
+          API_BASE="https://api-aistock-dev-${INSTANCE_NUM}.azurewebsites.net"
+          HIST_DIR="data/nasdaq.com/Historical"
+          echo "API: $API_BASE"
+          echo "Historical dir: $HIST_DIR"
+          if [ -d "$HIST_DIR" ]; then
+            any=0
+            for FILE in "$HIST_DIR"/*.csv; do
+              if [ -e "$FILE" ]; then
+                any=1
+                BASE=$(basename "$FILE")
+                SYM=${BASE%.csv}
+                SYM=${SYM##*_}
+                echo "Importing $FILE (symbol $SYM)"
+                dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-historical --symbol "$SYM" --file "$FILE" --api "$API_BASE"
+              fi
+            done
+            if [ $any -eq 0 ]; then echo "No CSV files found in $HIST_DIR"; fi
+          else
+            echo "Historical directory not found: $HIST_DIR"
+          fi
 
   seed-prod-dispatch:
     runs-on: [self-hosted, linux, x64]
@@ -202,6 +252,31 @@ jobs:
           test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }
           dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$FILE_PATH" --api "$API_BASE"
 
+      - name: Import historical CSVs to API (prod)
+        env:
+          INSTANCE_NUM: ${{ github.event.inputs.instanceNumber }}
+        run: |
+          API_BASE="https://api-aistock-prod-${INSTANCE_NUM}.azurewebsites.net"
+          HIST_DIR="data/nasdaq.com/Historical"
+          echo "API: $API_BASE"
+          echo "Historical dir: $HIST_DIR"
+          if [ -d "$HIST_DIR" ]; then
+            any=0
+            for FILE in "$HIST_DIR"/*.csv; do
+              if [ -e "$FILE" ]; then
+                any=1
+                BASE=$(basename "$FILE")
+                SYM=${BASE%.csv}
+                SYM=${SYM##*_}
+                echo "Importing $FILE (symbol $SYM)"
+                dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-historical --symbol "$SYM" --file "$FILE" --api "$API_BASE"
+              fi
+            done
+            if [ $any -eq 0 ]; then echo "No CSV files found in $HIST_DIR"; fi
+          else
+            echo "Historical directory not found: $HIST_DIR"
+          fi
+
   seed-prod-push:
     runs-on: [self-hosted, linux, x64]
     needs: smoke-prod
@@ -227,3 +302,28 @@ jobs:
           echo "CSV: $FILE_PATH"
           test -f "$FILE_PATH" || { echo "CSV file not found: $FILE_PATH"; exit 1; }
           dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-listed --file "$FILE_PATH" --api "$API_BASE"
+
+      - name: Import historical CSVs to API (prod)
+        env:
+          INSTANCE_NUM: "002"
+        run: |
+          API_BASE="https://api-aistock-prod-${INSTANCE_NUM}.azurewebsites.net"
+          HIST_DIR="data/nasdaq.com/Historical"
+          echo "API: $API_BASE"
+          echo "Historical dir: $HIST_DIR"
+          if [ -d "$HIST_DIR" ]; then
+            any=0
+            for FILE in "$HIST_DIR"/*.csv; do
+              if [ -e "$FILE" ]; then
+                any=1
+                BASE=$(basename "$FILE")
+                SYM=${BASE%.csv}
+                SYM=${SYM##*_}
+                echo "Importing $FILE (symbol $SYM)"
+                dotnet run --project AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj -- import-historical --symbol "$SYM" --file "$FILE" --api "$API_BASE"
+              fi
+            done
+            if [ $any -eq 0 ]; then echo "No CSV files found in $HIST_DIR"; fi
+          else
+            echo "Historical directory not found: $HIST_DIR"
+          fi
