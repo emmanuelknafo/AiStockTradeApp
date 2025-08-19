@@ -2,7 +2,6 @@
 
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
-USER $APP_UID
 
 # Install required dependencies for Playwright
 RUN apt-get update && apt-get install -y \
@@ -28,19 +27,14 @@ RUN apt-get update && apt-get install -y \
 
 # Install Node.js (required for Playwright)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs
+    apt-get install -y nodejs  
+
+RUN npx -y playwright@1.54.0 install --with-deps
+
+USER $APP_UID
 
 # Set working directory
 WORKDIR /app
-
-
-# Copy and install Node.js dependencies
-COPY package.json package-lock.json ./
-RUN npm install
-
-# Install Playwright and its browser dependencies
-RUN npx playwright install --with-deps
-
 
 EXPOSE 8080
 EXPOSE 8081
