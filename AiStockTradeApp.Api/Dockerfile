@@ -33,13 +33,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
 RUN npm --version
 RUN npm install -g npm@latest
 
-#RUN npm install -g playwright
-
-RUN npm install -g npx
+# Install Playwright browsers and OS deps using npx (npx is bundled with npm >= 7)
 RUN npx -y playwright@latest install --with-deps
 
-# check playwright is installed
-RUN playwright --version
+# check playwright is available
+RUN npx -y playwright@latest --version
 
 USER $APP_UID
 
