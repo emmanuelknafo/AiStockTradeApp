@@ -42,11 +42,17 @@ param(
   [string]$SqlDatabase = 'StockTraderDb',
   [string]$ApiProfile = 'https',
   [string]$UiProfile = 'https',
-  [switch]$UseHttps = $true
+  [switch]$UseHttps
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Compute effective HTTPS setting (defaults to true unless explicitly disabled)
+$UseHttpsEffective = $true
+if ($PSBoundParameters.ContainsKey('UseHttps')) {
+  $UseHttpsEffective = $UseHttps.IsPresent
+}
 
 # Resolve paths
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | ForEach-Object { $_.Path }
@@ -103,8 +109,8 @@ function Invoke-DockerCleanUpAndUp {
   & docker compose -f $composeFile ps
 }
 
-function Ensure-DevHttpsCert {
-  if (-not $UseHttps) { return }
+function Enable-DevHttpsCert {
+  if (-not $UseHttpsEffective) { return }
   if (-not (Test-CommandExists -Name 'dotnet')) { return }
   try {
     & dotnet dev-certs https --check | Out-Null
@@ -121,14 +127,17 @@ function Start-LocalProcesses {
   if (-not (Test-Path $apiProj)) { throw "API project not found: $apiProj" }
   if (-not (Test-Path $uiProj))  { throw "UI project not found: $uiProj" }
 
-  Ensure-DevHttpsCert
+  Enable-DevHttpsCert
 
   $cs = "Server=$SqlServer;Database=$SqlDatabase;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true"
   Write-Host "Using connection string: $cs" -ForegroundColor DarkCyan
 
-  # Pre-restore to avoid concurrent NuGet operations causing file contention
+  # Pre-restore and pre-build to avoid concurrent builds causing file contention (e.g., CS2012 on shared projects)
+  $slnPath = Join-Path $repoRoot 'AiStockTradeApp.sln'
   Write-Host 'Restoring solution packages...' -ForegroundColor Cyan
-  & dotnet restore (Join-Path $repoRoot 'AiStockTradeApp.sln') | Write-Host
+  & dotnet restore $slnPath | Write-Host
+  Write-Host 'Building solution (Debug)...' -ForegroundColor Cyan
+  & dotnet build $slnPath -c Debug | Write-Host
 
   # Launch API with environment passed safely via Start-Process -Environment
   $apiEnv = @{
@@ -136,12 +145,36 @@ function Start-LocalProcesses {
     'USE_INMEMORY_DB' = 'false';
     'ASPNETCORE_ENVIRONMENT' = 'Development'
   }
-  $apiArgs = @('-NoExit','-Command',"dotnet run --project `"$apiProj`" --launch-profile $ApiProfile")
+  # Use --no-build to prevent a second concurrent build
+  $apiArgs = @('-NoExit','-Command',"dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile")
   Write-Host 'Launching API in a new PowerShell window...' -ForegroundColor Cyan
   Start-Process -FilePath 'pwsh' -ArgumentList $apiArgs -WorkingDirectory $repoRoot -Environment $apiEnv | Out-Null
 
-  # Stagger UI start to minimize simultaneous builds
-  Start-Sleep -Seconds 6
+  # Wait for API to be responsive before starting UI to avoid race conditions
+  $apiHealthUrlHttp = 'http://localhost:5256/health'
+  $apiHealthUrlHttps = 'https://localhost:7032/health'
+  $timeoutSec = 120
+  $pollIntervalSec = 2
+  $deadline = (Get-Date).AddSeconds($timeoutSec)
+  $apiReady = $false
+  Write-Host "Waiting for API to be ready at $apiHealthUrlHttp (fallback: $apiHealthUrlHttps)..." -ForegroundColor Cyan
+  while ((Get-Date) -lt $deadline) {
+    try {
+      # Prefer HTTP to avoid cert trust issues
+      $resp = Invoke-WebRequest -Uri $apiHealthUrlHttp -Method GET -TimeoutSec 5 -ErrorAction Stop
+      if ($resp.StatusCode -eq 200) { $apiReady = $true; break }
+    } catch { }
+    try {
+      $resp2 = Invoke-WebRequest -Uri $apiHealthUrlHttps -Method GET -TimeoutSec 5 -SkipCertificateCheck:$true -ErrorAction Stop
+      if ($resp2.StatusCode -eq 200) { $apiReady = $true; break }
+    } catch { }
+    Start-Sleep -Seconds $pollIntervalSec
+  }
+  if (-not $apiReady) {
+    Write-Warning "API did not respond healthy within ${timeoutSec}s. UI will not be started to avoid failures. Check the API window for errors."
+    return
+  }
+  Write-Host 'API is healthy. Starting UI...' -ForegroundColor Green
 
   # Launch UI with API endpoint pointing to the locally running API
   $uiEnv = @{
@@ -149,7 +182,8 @@ function Start-LocalProcesses {
     'StockApi__BaseUrl' = 'https://localhost:7032';
     'StockApi__HttpBaseUrl' = 'http://localhost:5256'
   }
-  $uiArgs = @('-NoExit','-Command',"dotnet run --project `"$uiProj`" --launch-profile $UiProfile")
+  # Use --no-build to prevent a second concurrent build
+  $uiArgs = @('-NoExit','-Command',"dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile")
   Write-Host 'Launching UI in a new PowerShell window...' -ForegroundColor Cyan
   Start-Process -FilePath 'pwsh' -ArgumentList $uiArgs -WorkingDirectory $repoRoot -Environment $uiEnv | Out-Null
 
