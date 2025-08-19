@@ -20,6 +20,21 @@
     </div>
   </div>
 
+  <!-- Move history panel above the list/table -->
+  <div id="history-panel" style="display:none;margin-top:16px;border:1px solid #ddd;border-radius:8px;padding:12px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <h3 id="hist-title" style="margin:0;">Historical Prices</h3>
+      <span id="hist-range" style="color:#666"></span>
+    </div>
+    <canvas id="hist-chart" height="80" style="width:100%;max-height:120px;margin-top:8px;background:#fafafa;border:1px solid #eee;"></canvas>
+    <div id="hist-table-wrap" style="overflow:auto;max-height:260px;margin-top:8px;">
+      <table class="data-table" style="width:100%;border-collapse:collapse;">
+        <thead><tr><th style="text-align:left;">Date</th><th style="text-align:right;">Open</th><th style="text-align:right;">High</th><th style="text-align:right;">Low</th><th style="text-align:right;">Close</th><th style="text-align:right;">Volume</th></tr></thead>
+        <tbody id="hist-body"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div style="overflow:auto;">
     <table id="stocks-table" class="data-table" style="width:100%;border-collapse:collapse;">
       <thead>
@@ -35,20 +50,6 @@
       </thead>
       <tbody></tbody>
     </table>
-  </div>
-
-  <div id="history-panel" style="display:none;margin-top:16px;border:1px solid #ddd;border-radius:8px;padding:12px;">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <h3 id="hist-title" style="margin:0;">Historical Prices</h3>
-      <span id="hist-range" style="color:#666"></span>
-    </div>
-    <canvas id="hist-chart" height="80" style="width:100%;max-height:120px;margin-top:8px;background:#fafafa;border:1px solid #eee;"></canvas>
-    <div id="hist-table-wrap" style="overflow:auto;max-height:260px;margin-top:8px;">
-      <table class="data-table" style="width:100%;border-collapse:collapse;">
-        <thead><tr><th style="text-align:left;">Date</th><th style="text-align:right;">Open</th><th style="text-align:right;">High</th><th style="text-align:right;">Low</th><th style="text-align:right;">Close</th><th style="text-align:right;">Volume</th></tr></thead>
-        <tbody id="hist-body"></tbody>
-      </table>
-    </div>
   </div>
 
   <div class="pagination" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
@@ -151,6 +152,7 @@
     rangeEl.textContent = 'loading...';
     body.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
     panel.style.display = 'block';
+  try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
 
     try {
       const res = await fetch('@Url.Action("Historical","ListedStocks")?symbol=' + encodeURIComponent(symbol) + '&take=120');
