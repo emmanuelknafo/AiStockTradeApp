@@ -12,7 +12,36 @@ namespace AiStockTradeApp.Services.Implementations
         public HistoricalPriceService(IHistoricalPriceRepository repo) => _repo = repo;
 
         public Task<List<HistoricalPrice>> GetAsync(string symbol, DateTime? from = null, DateTime? to = null, int? take = null)
-            => _repo.GetAsync(symbol.ToUpperInvariant(), from, to, take);
+            => GetOrFetchAsync(symbol, from, to, take);
+
+        private async Task<List<HistoricalPrice>> GetOrFetchAsync(string symbol, DateTime? from, DateTime? to, int? take)
+        {
+            if (string.IsNullOrWhiteSpace(symbol)) return new List<HistoricalPrice>();
+            symbol = symbol.ToUpperInvariant();
+            var existing = await _repo.GetAsync(symbol, from, to, take);
+            if (existing.Count > 0)
+                return existing;
+
+            // Only auto-fetch when no date filters are specified (full history) to reduce surprises
+            if (from.HasValue || to.HasValue)
+                return existing;
+
+            try
+            {
+                var csv = await HistoricalDataFetcher.TryDownloadHistoricalCsvAsync(symbol, timeoutSec: 70);
+                if (!string.IsNullOrWhiteSpace(csv))
+                {
+                    await ImportCsvAsync(symbol, csv, sourceName: "nasdaq.com");
+                    // Re-query a subset (respect take if provided)
+                    return await _repo.GetAsync(symbol, null, null, take);
+                }
+            }
+            catch
+            {
+                // Swallow fetch errors; return empty when external fetch fails
+            }
+            return existing;
+        }
 
         public Task UpsertManyAsync(IEnumerable<HistoricalPrice> prices)
             => _repo.UpsertManyAsync(prices);
