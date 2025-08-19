@@ -26,8 +26,33 @@ FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "./AiStockTradeApp.Api.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
+# Pre-download Playwright browsers into /ms-playwright so runtime has no outbound dependency for installs
+RUN apt-get update \ 
+	&& apt-get install -y --no-install-recommends ca-certificates curl gnupg \ 
+	&& bash /root/.nuget/packages/microsoft.playwright/1.54.0/build/Playwright.sh install \ 
+	&& rm -rf /var/lib/apt/lists/*
+
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
 WORKDIR /app
+USER root
+# Install Playwright runtime OS dependencies required by Firefox/Chromium in container
+RUN apt-get update \ 
+	&& apt-get install -y --no-install-recommends \
+	   libasound2 \
+	   libatk-bridge2.0-0 libatk1.0-0 \
+	   libcups2 libdbus-1-3 libdrm2 libgbm1 \
+	   libglib2.0-0 libnss3 \
+	   libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 \
+	   libpango-1.0-0 \
+	   libwayland-client0 libwayland-egl1 libwayland-server0 \
+	   libxss1 libxshmfence1 \
+	   xdg-utils libu2f-udev libvulkan1 \
+	   fonts-liberation ca-certificates curl \ 
+	&& rm -rf /var/lib/apt/lists/*
+
+# Copy pre-downloaded browsers
+COPY --from=publish /ms-playwright /ms-playwright
+USER $APP_UID
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "AiStockTradeApp.Api.dll"]
