@@ -640,6 +640,27 @@ jobs:
           if [ -z "$VERSION" ] || [ "$VERSION" = "0.0.0-local" ]; then
             echo "No valid semantic version computed; skipping tag push."; exit 0; fi
           if [[ "$VERSION" != v* ]]; then VERSION="v$VERSION"; fi
+
+          # Skip creating tag if the commit range modified workflow files, to avoid
+          # GitHub App 'workflows' permission enforcement when tagging such commits.
+          CHANGED_WORKFLOWS=0
+          if [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "Checking changes between before=${{ github.event.before }} and sha=${{ github.sha }} for workflow file modifications..."
+            if git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep -E '^\.github/workflows/' >/dev/null 2>&1; then
+              CHANGED_WORKFLOWS=1
+            fi
+          else
+            echo "No 'before' SHA available; checking this commit only for workflow file modifications..."
+            if git diff-tree --no-commit-id --name-only -r "${{ github.sha }}" | grep -E '^\.github/workflows/' >/dev/null 2>&1; then
+              CHANGED_WORKFLOWS=1
+            fi
+          fi
+
+          if [ "$CHANGED_WORKFLOWS" -eq 1 ]; then
+            echo "Detected changes to .github/workflows/* in this run's commit(s); skipping tag creation to avoid workflows permission error.";
+            exit 0;
+          fi
+
           git fetch --tags --depth=1 || true
             if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
             echo "Tag $VERSION already exists; skipping creation."; exit 0; fi

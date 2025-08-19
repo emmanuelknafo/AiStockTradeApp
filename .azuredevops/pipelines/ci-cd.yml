@@ -898,6 +898,14 @@ stages:
                 git config user.email "ci-bot@users.noreply.local"
                 # Ensure tags are current before creating new one
                 echo "Preparing to create tag $VERSION on commit $(Build.SourceVersion)"
+
+                # If this commit modified any workflow files, skip tag creation to avoid
+                # GitHub App 'workflows' permission rejection when pushing the tag.
+                if git diff-tree --no-commit-id --name-only -r "$(Build.SourceVersion)" | grep -E '^\.github/workflows/' >/dev/null 2>&1; then
+                  echo "Detected changes to .github/workflows/* in commit $(Build.SourceVersion); skipping tag creation/push.";
+                  exit 0;
+                fi
+
                 git fetch --tags --prune || true
                 if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
                   echo "Tag $VERSION already exists; skipping."; exit 0; fi
