@@ -11,6 +11,7 @@ namespace AiStockTradeApp.DataAccess
 
     public DbSet<StockData> StockData { get; set; }
     public DbSet<ListedStock> ListedStocks { get; set; }
+    public DbSet<HistoricalPrice> HistoricalPrices { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -91,6 +92,18 @@ namespace AiStockTradeApp.DataAccess
                 // Helpful filter indexes
                 entity.HasIndex(e => e.Sector);
                 entity.HasIndex(e => e.Industry);
+            });
+
+            // Configure HistoricalPrice entity
+            modelBuilder.Entity<HistoricalPrice>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Symbol).HasMaxLength(10).IsRequired();
+                entity.HasIndex(e => new { e.Symbol, e.Date }).IsUnique();
+                entity.Property(e => e.Open).HasPrecision(18, 4);
+                entity.Property(e => e.High).HasPrecision(18, 4);
+                entity.Property(e => e.Low).HasPrecision(18, 4);
+                entity.Property(e => e.Close).HasPrecision(18, 4);
             });
         }
     }

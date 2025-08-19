@@ -126,6 +126,22 @@ GET /api/stocks/search?query={searchTerm}
 ```
 GET /api/stocks/{symbol}/prices?interval=daily&outputsize=compact
 GET /api/stocks/{symbol}/prices?from=2023-01-01&to=2023-12-31
+
+Additionally in this solution (minimal API):
+
+- Get historical prices stored in DB
+```
+GET /api/historical-prices/{symbol}?from=2025-08-01&to=2025-08-19&take=30
+```
+
+- Import historical CSV for a symbol (AAPL style: Date,Close/Last,Volume,Open,High,Low)
+```
+POST /api/historical-prices/{symbol}/import-csv
+Content-Type: text/csv or text/plain
+```
+Headers: optional `X-File-Name: HistoricalData_AAPL.csv`
+Response: 202 Accepted with job status location
+
 ```
 
 **Query Parameters:**

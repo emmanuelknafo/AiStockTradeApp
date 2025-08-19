@@ -48,10 +48,12 @@ else
 // Data access + domain services
 builder.Services.AddScoped<IStockDataRepository, StockDataRepository>();
 builder.Services.AddScoped<IListedStockRepository, ListedStockRepository>();
+builder.Services.AddScoped<IHistoricalPriceRepository, HistoricalPriceRepository>();
 // HttpClient for external providers used by StockDataService
 builder.Services.AddHttpClient<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IListedStockService, ListedStockService>();
+builder.Services.AddScoped<IHistoricalPriceService, HistoricalPriceService>();
 // Background job queue for long-running tasks
 builder.Services.AddSingleton<IImportJobQueue, ImportJobQueue>();
 builder.Services.AddHostedService<ImportJobProcessor>();
@@ -169,6 +171,18 @@ app.MapGet("/api/stocks/historical", async ([FromQuery] string symbol, [FromQuer
 .Produces<List<ChartDataPoint>>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status400BadRequest);
 
+// Historical prices (DB-backed)
+app.MapGet("/api/historical-prices/{symbol}", async (string symbol, [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int? take, IHistoricalPriceService svc) =>
+{
+    if (string.IsNullOrWhiteSpace(symbol))
+        return Results.BadRequest(new { error = "Symbol is required" });
+    var list = await svc.GetAsync(symbol, from, to, take);
+    return Results.Ok(list);
+})
+.WithName("GetHistoricalPrices")
+.Produces<List<HistoricalPrice>>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest);
+
 app.MapGet("/api/stocks/suggestions", async ([FromQuery] string query, IStockDataService svc) =>
 {
     if (string.IsNullOrWhiteSpace(query))
@@ -267,6 +281,29 @@ app.MapPost("/api/listed-stocks/import-csv", async (HttpRequest req, IImportJobQ
     return Results.Accepted(location, new { jobId = status.Id, status = status.Status.ToString(), location });
 })
 .WithName("ImportListedStocksCsv")
+.Produces(StatusCodes.Status202Accepted)
+.Produces(StatusCodes.Status400BadRequest);
+
+// Import historical prices CSV for a symbol
+app.MapPost("/api/historical-prices/{symbol}/import-csv", async (string symbol, HttpRequest req, IImportJobQueue queue) =>
+{
+    using var reader = new StreamReader(req.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: false);
+    var content = await reader.ReadToEndAsync();
+    if (string.IsNullOrWhiteSpace(content))
+        return Results.BadRequest(new { error = "Empty body" });
+
+    var job = new ImportJob
+    {
+        Content = content,
+        SourceName = req.Headers.ContainsKey("X-File-Name") ? req.Headers["X-File-Name"].ToString() : null,
+        Type = "HistoricalPricesCsv",
+        Symbol = symbol
+    };
+    var status = queue.Enqueue(job);
+    var location = $"/api/listed-stocks/import-jobs/{status.Id}";
+    return Results.Accepted(location, new { jobId = status.Id, status = status.Status.ToString(), location });
+})
+.WithName("ImportHistoricalPricesCsv")
 .Produces(StatusCodes.Status202Accepted)
 .Produces(StatusCodes.Status400BadRequest);
 

@@ -16,6 +16,7 @@ public sealed class ImportJob
     public Guid Id { get; init; } = Guid.NewGuid();
     public string Type { get; init; } = "ListedStocksCsv";
     public string? SourceName { get; init; }
+    public string? Symbol { get; init; }
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     public string Content { get; init; } = string.Empty;
 }
