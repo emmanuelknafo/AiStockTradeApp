@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
 using AiStockTradeApp.DataAccess.Interfaces;
 using AiStockTradeApp.Entities;
 using AiStockTradeApp.Services.Interfaces;
@@ -9,7 +11,16 @@ namespace AiStockTradeApp.Services.Implementations
     public class HistoricalPriceService : IHistoricalPriceService
     {
         private readonly IHistoricalPriceRepository _repo;
-        public HistoricalPriceService(IHistoricalPriceRepository repo) => _repo = repo;
+        private readonly Microsoft.Extensions.Logging.ILogger<HistoricalPriceService>? _logger;
+        private readonly Microsoft.ApplicationInsights.TelemetryClient? _telemetry;
+        public HistoricalPriceService(IHistoricalPriceRepository repo,
+            Microsoft.Extensions.Logging.ILogger<HistoricalPriceService>? logger = null,
+            Microsoft.ApplicationInsights.TelemetryClient? telemetry = null)
+        {
+            _repo = repo;
+            _logger = logger;
+            _telemetry = telemetry;
+        }
 
         public Task<List<HistoricalPrice>> GetAsync(string symbol, DateTime? from = null, DateTime? to = null, int? take = null)
             => GetOrFetchAsync(symbol, from, to, take);
@@ -28,17 +39,33 @@ namespace AiStockTradeApp.Services.Implementations
 
             try
             {
-                var csv = await HistoricalDataFetcher.TryDownloadHistoricalCsvAsync(symbol, timeoutSec: 70);
+                _logger?.LogInformation("HistoricalPriceService: attempting online fetch for {Symbol} (no cached data)", symbol);
+                _telemetry?.TrackEvent(new Microsoft.ApplicationInsights.DataContracts.EventTelemetry("HistoricalPrices.Fetch.Start")
+                {
+                    Properties = { { "symbol", symbol } }
+                });
+                var csv = await HistoricalDataFetcher.TryDownloadHistoricalCsvAsync(symbol, timeoutSec: 70, _logger, _telemetry);
                 if (!string.IsNullOrWhiteSpace(csv))
                 {
                     await ImportCsvAsync(symbol, csv, sourceName: "nasdaq.com");
                     // Re-query a subset (respect take if provided)
+                    _logger?.LogInformation("HistoricalPriceService: import completed for {Symbol}", symbol);
+                    _telemetry?.TrackEvent(new Microsoft.ApplicationInsights.DataContracts.EventTelemetry("HistoricalPrices.Fetch.Success")
+                    {
+                        Properties = { { "symbol", symbol } }
+                    });
                     return await _repo.GetAsync(symbol, null, null, take);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallow fetch errors; return empty when external fetch fails
+                // Do not fail API; log and emit telemetry for diagnostics
+                _logger?.LogWarning(ex, "HistoricalPriceService: online fetch failed for {Symbol}", symbol);
+                _telemetry?.TrackException(ex, new Dictionary<string, string>
+                {
+                    { "symbol", symbol },
+                    { "stage", "service-fetch" }
+                });
             }
             return existing;
         }

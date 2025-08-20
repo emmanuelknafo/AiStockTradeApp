@@ -15,7 +15,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+// Note: Using Swagger (AddEndpointsApiExplorer + AddSwaggerGen); minimal AddOpenApi helper not used.
+
+// Application Insights (reads connection string/instrumentation key from appsettings/env: APPLICATIONINSIGHTS_CONNECTION_STRING)
+builder.Services.AddApplicationInsightsTelemetry();
 
 // Add Swagger services for UI
 builder.Services.AddEndpointsApiExplorer();
@@ -53,6 +56,12 @@ builder.Services.AddScoped<IHistoricalPriceRepository, HistoricalPriceRepository
 builder.Services.AddHttpClient<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IListedStockService, ListedStockService>();
+// Register TelemetryClient for DI
+builder.Services.AddSingleton<Microsoft.ApplicationInsights.TelemetryClient>(sp =>
+    sp.GetRequiredService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>() is { } config
+        ? new Microsoft.ApplicationInsights.TelemetryClient(config)
+        : new Microsoft.ApplicationInsights.TelemetryClient()
+);
 builder.Services.AddScoped<IHistoricalPriceService, HistoricalPriceService>();
 // Background job queue for long-running tasks
 builder.Services.AddSingleton<IImportJobQueue, ImportJobQueue>();
@@ -70,8 +79,6 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-    
     // Enable Swagger UI
     app.UseSwagger();
     app.UseSwaggerUI(c =>

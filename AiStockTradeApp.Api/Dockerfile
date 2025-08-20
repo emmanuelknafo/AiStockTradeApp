@@ -60,5 +60,11 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# Ensure app files are owned by the non-root user and Playwright's embedded Node is executable
+USER root
+RUN chown -R $APP_UID:$APP_UID /app \
+    && chown -R $APP_UID:$APP_UID /ms-playwright \
+    && chmod -R a+rX /ms-playwright \
+    && if [ -d "/app/.playwright" ]; then chmod -R a+rx /app/.playwright; fi
 USER $APP_UID
 ENTRYPOINT ["dotnet", "AiStockTradeApp.Api.dll"]

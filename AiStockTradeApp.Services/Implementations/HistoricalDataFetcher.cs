@@ -1,4 +1,7 @@
 using Microsoft.Playwright;
+using Microsoft.Extensions.Logging;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.DataContracts;
 using System.Text.RegularExpressions;
 
 namespace AiStockTradeApp.Services.Implementations;
@@ -7,7 +10,7 @@ public static class HistoricalDataFetcher
 {
     private static int _installOnce;
 
-    public static async Task<string?> TryDownloadHistoricalCsvAsync(string symbol, int timeoutSec = 60)
+    public static async Task<string?> TryDownloadHistoricalCsvAsync(string symbol, int timeoutSec = 60, ILogger? logger = null, TelemetryClient? telemetry = null)
     {
         symbol = symbol.Trim().ToLowerInvariant();
         var url = $"https://www.nasdaq.com/market-activity/stocks/{symbol}/historical?page=1&rows_per_page=10&timeline=y10";
@@ -17,12 +20,7 @@ public static class HistoricalDataFetcher
         using var pw = await Playwright.CreateAsync();
 
         var isLinux = OperatingSystem.IsLinux();
-        var launchOptions = new BrowserTypeLaunchOptions
-        {
-            Headless = true
-        };
-
-        // On Linux containers (WSL2/Azure Web Apps), Chromium with these flags is more reliable than Firefox
+        var launchOptions = new BrowserTypeLaunchOptions { Headless = true };
         if (isLinux)
         {
             launchOptions.Args = new[]
@@ -43,7 +41,6 @@ public static class HistoricalDataFetcher
             };
         }
 
-        // Prefer Firefox on non-Linux (per original intent), otherwise use Chromium on Linux
         await using var browser = isLinux
             ? await pw.Chromium.LaunchAsync(launchOptions)
             : await pw.Firefox.LaunchAsync(new() { Headless = true });
@@ -54,8 +51,15 @@ public static class HistoricalDataFetcher
             UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
             ViewportSize = new() { Width = 1280, Height = 900 }
         });
+
         var page = await ctx.NewPageAsync();
         page.SetDefaultTimeout(Math.Max(10, timeoutSec) * 1000);
+
+        logger?.LogInformation("HistoricalDataFetcher starting for {Symbol} on {OS}", symbol, isLinux ? "Linux" : "Non-Linux");
+        telemetry?.TrackEvent(new EventTelemetry("HistoricalDataFetcher.Start")
+        {
+            Properties = { { "symbol", symbol }, { "os", isLinux ? "linux" : "other" } }
+        });
 
         try
         {
@@ -63,21 +67,32 @@ public static class HistoricalDataFetcher
         }
         catch (Exception ex)
         {
-            // best effort (helps diagnose platform issues)
-            try { Console.WriteLine($"[HistoricalDataFetcher] Goto failed: {ex.Message}"); } catch { }
+            logger?.LogWarning(ex, "HistoricalDataFetcher navigation failed for {Symbol}", symbol);
+            telemetry?.TrackException(ex, new Dictionary<string, string>
+            {
+                { "stage", "goto" },
+                { "symbol", symbol },
+                { "url", url }
+            });
         }
 
         await TryAcceptCookiesAsync(page, 10000);
 
-    var loc = await FindDownloadControlAsync(page, Math.Max(10, timeoutSec) * 1000);
+        var loc = await FindDownloadControlAsync(page, Math.Max(10, timeoutSec) * 1000);
         if (loc is null)
         {
+            logger?.LogWarning("HistoricalDataFetcher could not find download control for {Symbol}", symbol);
+            telemetry?.TrackEvent(new EventTelemetry("HistoricalDataFetcher.NoControl")
+            {
+                Properties = { { "symbol", symbol } }
+            });
             return null;
         }
 
         await loc.ScrollIntoViewIfNeededAsync();
         try { await loc.HoverAsync(new() { Timeout = 1500 }); } catch { }
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var dl = await page.RunAndWaitForDownloadAsync(async () =>
@@ -87,12 +102,25 @@ public static class HistoricalDataFetcher
             var stream = await dl.CreateReadStreamAsync();
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
-            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            var csv = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            stopwatch.Stop();
+            logger?.LogInformation("HistoricalDataFetcher succeeded via download API for {Symbol} in {ElapsedMs}ms, bytes={Length}", symbol, stopwatch.Elapsed.TotalMilliseconds, csv?.Length ?? 0);
+            telemetry?.TrackEvent(new EventTelemetry("HistoricalDataFetcher.Success")
+            {
+                Metrics = { { "elapsedMs", stopwatch.Elapsed.TotalMilliseconds }, { "bytes", csv?.Length ?? 0 } },
+                Properties = { { "symbol", symbol }, { "path", "download" }, { "browser", isLinux ? "chromium" : "firefox" } }
+            });
+            return csv;
         }
         catch (Exception ex)
         {
-            // Fallback: capture network response that looks like CSV
-            try { Console.WriteLine($"[HistoricalDataFetcher] Download API failed, fallback to response sniffing. {ex.Message}"); } catch { }
+            logger?.LogWarning(ex, "HistoricalDataFetcher download API failed for {Symbol}, trying response sniffing", symbol);
+            telemetry?.TrackException(ex, new Dictionary<string, string>
+            {
+                { "stage", "download-api" },
+                { "symbol", symbol }
+            });
+
             try
             {
                 await loc.ClickAsync(new() { Force = true, Timeout = 8000 });
@@ -108,10 +136,25 @@ public static class HistoricalDataFetcher
                 }, new() { Timeout = Math.Max(10, timeoutSec) * 500 });
                 await response.FinishedAsync();
                 var body = await response.BodyAsync();
-                return System.Text.Encoding.UTF8.GetString(body);
+                var csv = System.Text.Encoding.UTF8.GetString(body);
+                stopwatch.Stop();
+                logger?.LogInformation("HistoricalDataFetcher succeeded via response sniff for {Symbol} in {ElapsedMs}ms, bytes={Length}", symbol, stopwatch.Elapsed.TotalMilliseconds, csv?.Length ?? 0);
+                telemetry?.TrackEvent(new EventTelemetry("HistoricalDataFetcher.Success")
+                {
+                    Metrics = { { "elapsedMs", stopwatch.Elapsed.TotalMilliseconds }, { "bytes", csv?.Length ?? 0 } },
+                    Properties = { { "symbol", symbol }, { "path", "response" }, { "browser", isLinux ? "chromium" : "firefox" } }
+                });
+                return csv;
             }
-            catch
+            catch (Exception ex2)
             {
+                stopwatch.Stop();
+                logger?.LogError(ex2, "HistoricalDataFetcher failed completely for {Symbol}", symbol);
+                telemetry?.TrackException(ex2, new Dictionary<string, string>
+                {
+                    { "stage", "response-sniff" },
+                    { "symbol", symbol }
+                });
                 return null;
             }
         }
@@ -155,7 +198,7 @@ public static class HistoricalDataFetcher
         yield return p => p.GetByRole(AriaRole.Link, new() { Name = "Download historical data" });
         yield return p => p.GetByRole(AriaRole.Button, new() { NameRegex = new("(?i)download.*(historical|csv)") });
         yield return p => p.GetByRole(AriaRole.Link, new() { NameRegex = new("(?i)download.*(historical|csv)") });
-        yield return p => p.GetByText(new System.Text.RegularExpressions.Regex("Download\\s+(historical|csv)", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        yield return p => p.GetByText(new Regex("Download\\s+(historical|csv)", RegexOptions.IgnoreCase));
         yield return p => p.Locator(":has-text('Download historical data')");
         yield return p => p.Locator(":has-text('Download CSV')");
         yield return p => p.Locator("a[download], button[download]");
@@ -197,12 +240,11 @@ public static class HistoricalDataFetcher
 
         try
         {
-            // Synchronous call; installation is a no-op if already installed
             Microsoft.Playwright.Program.Main(new[] { "install" });
         }
         catch
         {
-            // Best-effort; if install fails, Playwright may still work if browsers are present
+            // Best-effort
         }
 
         return Task.CompletedTask;
