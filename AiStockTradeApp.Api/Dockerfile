@@ -17,11 +17,15 @@ RUN node --version
 RUN npm install -g npm@latest
 RUN npm --version
 
+# Use a shared path for Playwright browsers so runtime (non-root) can access them
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ARG PLAYWRIGHT_VERSION=1.55.0
-# Install global Playwright CLI and browsers with OS deps
-RUN npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
+# Install global Playwright CLI and browsers with OS deps into the shared path
+RUN mkdir -p /ms-playwright \
+    && npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
     && playwright install --with-deps \
-    && playwright --version
+    && playwright --version \
+    && chmod -R a+rX /ms-playwright
 
 
 USER $APP_UID
@@ -55,11 +59,6 @@ RUN dotnet publish "./AiStockTradeApp.Api.csproj" -c $BUILD_CONFIGURATION -o /ap
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-USER root
-# Ensure a shared path for Playwright browsers and install .NET browsers
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN mkdir -p /ms-playwright \
-    && dotnet Microsoft.Playwright.CLI.dll install \
-    && chmod -R a+rX /ms-playwright
 USER $APP_UID
 ENTRYPOINT ["dotnet", "AiStockTradeApp.Api.dll"]
