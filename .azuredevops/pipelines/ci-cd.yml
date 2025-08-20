@@ -940,10 +940,12 @@ stages:
 
           - task: AzureCLI@2
             displayName: "Build and push Docker images (UI + API)"
+            continueOnError: false
             inputs:
               azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
               scriptType: "bash"
               scriptLocation: "inlineScript"
+              failOnStandardError: true
               inlineScript: |
                 # Fail fast on any error, unset variable, or failed pipeline in a pipe
                 set -euo pipefail
