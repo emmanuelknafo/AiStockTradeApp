@@ -17,13 +17,12 @@ RUN node --version
 RUN npm install -g npm@latest
 RUN npm --version
 
-# Install Playwright browsers and OS deps using npx (npx is bundled with npm >= 7)
-RUN npx -y playwright@latest install --with-deps
+ARG PLAYWRIGHT_VERSION=1.55.0
+# Install global Playwright CLI and browsers with OS deps
+RUN npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
+    && playwright install --with-deps \
+    && playwright --version
 
-# check playwright is available
-RUN npx -y playwright@latest --version
-
-RUN playwright --version
 
 USER $APP_UID
 
