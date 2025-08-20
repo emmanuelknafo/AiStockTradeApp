@@ -406,7 +406,11 @@ stages:
                 exit 1
               fi
               echo "Installed browsers in:"
-              ls -R ~/.cache/ms-playwright | head -200 || true
+              # Resolve and export browsers path for subsequent tasks
+              PW_PATH="$HOME/.cache/ms-playwright"
+              echo "PLAYWRIGHT_BROWSERS_PATH resolved to: $PW_PATH"
+              echo "##vso[task.setvariable variable=PLAYWRIGHT_BROWSERS_PATH]$PW_PATH"
+              ls -R "$PW_PATH" | head -200 || true
 
               echo "Playwright CLI version AFTER install (generic):"; npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
               if [ -n "$PW_VER" ]; then echo "Playwright CLI version AFTER install (pinned ${PW_VER}):"; npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
@@ -450,6 +454,40 @@ stages:
               PLAYWRIGHT_API_BASE_URL: "http://localhost:5256"
               StockApi__BaseUrl: "http://localhost:5256"
               StockApi__HttpBaseUrl: "http://localhost:5256"
+
+          - script: |
+              # Start API in background
+              echo "Starting API in background on http://localhost:5256 ..."
+              cd AiStockTradeApp.Api
+              nohup dotnet run --no-build --configuration Release --no-launch-profile --urls http://localhost:5256 > api.log 2>&1 &
+              API_PID=$!
+              echo "Started API with PID: $API_PID"
+              echo $API_PID > api.pid
+
+              # Wait for API to be ready (health endpoint)
+              echo "Waiting for API to start..."
+              timeout=120
+              while [ $timeout -gt 0 ]; do
+                if curl -f http://localhost:5256/health >/dev/null 2>&1; then
+                  echo "API is ready!"
+                  break
+                fi
+                echo "Waiting for API... ($timeout seconds remaining)"
+                sleep 2
+                timeout=$((timeout-2))
+              done
+
+              if [ $timeout -le 0 ]; then
+                echo "API failed to start within timeout"
+                echo "API logs:"
+                cat api.log || true
+                exit 1
+              fi
+            displayName: "Start API in background"
+            env:
+              ASPNETCORE_ENVIRONMENT: "Development"
+              ASPNETCORE_URLS: "http://localhost:5256"
+              USE_INMEMORY_DB: "true"
 
           - script: |
               echo "Waiting for application to start..."
@@ -533,8 +571,9 @@ stages:
               DISPLAY: ":99.0"
               CI: "true"
               AZURE_PIPELINES: "true"
-              PLAYWRIGHT_BROWSERS_PATH: "~/.cache/ms-playwright"
+              PLAYWRIGHT_BROWSERS_PATH: "$(PLAYWRIGHT_BROWSERS_PATH)"
               USE_INMEMORY_DB: "true" # Use EF in-memory provider for faster UI tests
+              DISABLE_UI_TEST_AUTOSTART: "1" # Pipeline is starting UI and API
 
           - script: |
               echo "Listing all tests in UITests project..."
@@ -546,7 +585,7 @@ stages:
             inputs:
               command: "test"
               projects: "AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj"
-              arguments: '--no-build --configuration Release --verbosity diagnostic --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings --logger "console;verbosity=diagnostic" --results-directory "$(Agent.TempDirectory)"'
+              arguments: '--no-build --configuration Release --verbosity diagnostic --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings --logger "console;verbosity=diagnostic" --results-directory "$(Agent.TempDirectory)" --diag "$(Agent.TempDirectory)/vstest-diag.txt"'
               publishTestResults: false
             env:
               ASPNETCORE_ENVIRONMENT: "Development"
@@ -559,12 +598,22 @@ stages:
               DEBUG: "pw:api"
               CI: "true"
               AZURE_PIPELINES: "true"
-              PLAYWRIGHT_BROWSERS_PATH: "~/.cache/ms-playwright"
+              PLAYWRIGHT_BROWSERS_PATH: "$(PLAYWRIGHT_BROWSERS_PATH)"
               NODE_PATH: "$(System.DefaultWorkingDirectory)/AiStockTradeApp.UITests/node_modules"
               USE_INMEMORY_DB: "true" # In-memory DB accelerates UI tests
               VSTEST_RESULTS_DIRECTORY: "$(Agent.TempDirectory)"
+              DISABLE_UI_TEST_AUTOSTART: "1"
             condition: succeededOrFailed()
             timeoutInMinutes: 25
+
+          - task: Bash@3
+            displayName: "Show VSTest diagnostic log (if present)"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                echo "VSTest diag log (tail):"
+                tail -n 400 "$(Agent.TempDirectory)/vstest-diag.txt" 2>/dev/null || echo "No diag log present"
 
           - task: Bash@3
             displayName: "Diagnostics: List UI TRX in Agent.TempDirectory"
@@ -648,6 +697,19 @@ stages:
               # Cleanup any remaining dotnet processes
               pkill -f "dotnet.*AiStockTradeApp" || true
             displayName: "Stop application"
+            condition: always()
+
+          - script: |
+              echo "Stopping API..."
+              if [ -f "AiStockTradeApp.Api/api.pid" ]; then
+                API_PID=$(cat AiStockTradeApp.Api/api.pid)
+                echo "Stopping API with PID: $API_PID"
+                kill $API_PID || true
+                sleep 5
+              fi
+              # Cleanup any remaining API dotnet processes
+              pkill -f "dotnet.*AiStockTradeApp.Api" || true
+            displayName: "Stop API"
             condition: always()
 
           # No SQL container used; cleanup not required
