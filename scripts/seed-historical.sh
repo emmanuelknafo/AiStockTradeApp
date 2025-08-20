@@ -222,9 +222,8 @@ N=0
 succ=0
 fail=0
 echo "Starting historical imports..."
-set +e
 for fullpath in "${FILES[@]}"; do
-  ((N++))
+  ((++N))
   echo "Processing file $N/$TOTAL: $fullpath"
   name="$(basename "$fullpath")"
   symbol="$(get_symbol_from_filename "$name")"
@@ -264,6 +263,5 @@ for fullpath in "${FILES[@]}"; do
   if [[ $rc -eq 0 ]]; then succ=$((succ+1)); fi
 
 done
-set -e
 
 echo "Seed historical import completed. Success: $succ, Failed: $fail, Total: $TOTAL"
