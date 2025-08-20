@@ -126,12 +126,50 @@ enable_dev_https_cert() {
   fi
 
   if dotnet dev-certs https --check >/dev/null 2>&1; then
-    return 0
+    : # cert exists
+  else
+    echo "Creating and trusting .NET developer HTTPS certificate..."
+    dotnet dev-certs https --trust || true
   fi
 
-  echo "Trusting .NET developer HTTPS certificate..."
-  # On Linux this may require user interaction or be a no-op depending on distro
-  dotnet dev-certs https --trust || true
+  # Try to import dev cert into Ubuntu trust store so HttpClient/curl trust it
+  # Export to PFX and convert to CRT, then install into /usr/local/share/ca-certificates
+  local PFX_DIR="$HOME/.aspnet/https"
+  local PFX_PATH="$PFX_DIR/aspnet-dev-cert.pfx"
+  local PFX_PASS="dotnet-devcert"
+  local TMP_CRT
+  TMP_CRT="$(mktemp)" || TMP_CRT="/tmp/dotnet-dev-cert.crt"
+
+  mkdir -p "$PFX_DIR"
+  if dotnet dev-certs https -ep "$PFX_PATH" -p "$PFX_PASS" >/dev/null 2>&1; then
+    if command_exists openssl; then
+      if openssl pkcs12 -in "$PFX_PATH" -nokeys -clcerts -out "$TMP_CRT" -passin pass:"$PFX_PASS" >/dev/null 2>&1; then
+        # Install requires root; attempt with sudo if available
+        if command_exists sudo; then
+          if sudo cp "$TMP_CRT" /usr/local/share/ca-certificates/dotnet-dev-cert.crt >/dev/null 2>&1; then
+            sudo update-ca-certificates >/dev/null 2>&1 || true
+            echo "Linux trust store updated for .NET dev cert."
+          fi
+        elif [[ -w /usr/local/share/ca-certificates ]]; then
+          cp "$TMP_CRT" /usr/local/share/ca-certificates/dotnet-dev-cert.crt >/dev/null 2>&1 || true
+          update-ca-certificates >/dev/null 2>&1 || true
+          echo "Linux trust store updated for .NET dev cert (no sudo)."
+        else
+          echo "Note: Could not add dev cert to system trust without sudo. HTTPS may still warn."
+        fi
+      fi
+    else
+      echo "Note: openssl not found; skipping Linux trust store import for dev cert."
+    fi
+    rm -f "$TMP_CRT" 2>/dev/null || true
+  fi
+
+  # If running in WSL, also try to trust cert on Windows so default browser trusts it
+  if grep -qi "microsoft" /proc/version 2>/dev/null; then
+    if command -v powershell.exe >/dev/null 2>&1; then
+      powershell.exe -NoProfile -Command "dotnet dev-certs https --trust" >/dev/null 2>&1 || true
+    fi
+  fi
 }
 
 start_local_processes() {

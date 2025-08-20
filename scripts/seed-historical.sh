@@ -6,8 +6,8 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # Defaults (mirroring the PowerShell script)
-FOLDER=""
-APIBASE="http://localhost:5256"
+FOLDER="data/nasdaq.com/Historical"
+APIBASE="https://localhost:7032"
 PATTERN='HistoricalData_*_*.csv'
 WATCH=false
 DRYRUN=false
@@ -20,12 +20,12 @@ Usage: $0 [--folder PATH] [--api-base URL] [--pattern GLOB] [--watch] [--dry-run
 
 Defaults:
   --folder        <repo>/data/nasdaq.com/Historical
-  --api-base      http://localhost:5256
+  --api-base      https://localhost:7032
   --pattern       HistoricalData_*_*.csv
 
 Examples:
   $0
-  $0 --api-base http://localhost:5256 --watch
+  $0 --api-base https://localhost:7032 --watch
   $0 --folder ./data/nasdaq.com/Historical --pattern 'HistoricalData_*_AAPL.csv' --dry-run
   $0 --listed-file ./data/nasdaq.com/nasdaq_screener_2025.csv
 EOF
@@ -74,11 +74,17 @@ CLIPROJ="$REPO_ROOT/AiStockTradeApp.Cli/AiStockTradeApp.Cli.csproj"
 if [[ ! -f "$CLIPROJ" ]]; then echo "CLI project not found: $CLIPROJ" >&2; exit 1; fi
 
 # Gather files by pattern, sorted by name, null-safe
-mapfile -d '' -t FILES < <(find "$FOLDER" -maxdepth 1 -type f -name "$PATTERN" -printf '%f\0' | sort -z)
+# Try the provided pattern first; if none, fall back to a broader pattern HistoricalData_*.csv
+mapfile -d '' -t FILES < <(find "$FOLDER" -maxdepth 1 -type f -iname "$PATTERN" -printf '%f\0' | LC_ALL=C sort -z)
 if [[ ${#FILES[@]} -eq 0 ]]; then
-  echo "No files found matching pattern '$PATTERN' in $FOLDER" >&2
+  mapfile -d '' -t FILES < <(find "$FOLDER" -maxdepth 1 -type f -iname 'HistoricalData_*.csv' -printf '%f\0' | LC_ALL=C sort -z)
+fi
+if [[ ${#FILES[@]} -eq 0 ]]; then
+  echo "No files found in $FOLDER matching '$PATTERN' or fallback 'HistoricalData_*.csv'" >&2
+  echo "Tip: Check filenames or pass --pattern 'YourPattern.csv' and/or --folder PATH" >&2
   exit 0
 fi
+echo "Found ${#FILES[@]} file(s) to import in: $FOLDER"
 
 # Build the CLI once (Debug)
 echo "Building CLI (Debug)..."
