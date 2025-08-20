@@ -19,31 +19,25 @@ public static class HistoricalDataFetcher
 
         using var pw = await Playwright.CreateAsync();
 
-        var isLinux = OperatingSystem.IsLinux();
+
+        // Always use Firefox for Nasdaq scraping (most reliable for HTTP/2 and anti-bot)
         var launchOptions = new BrowserTypeLaunchOptions { Headless = true };
-        if (isLinux)
+        if (OperatingSystem.IsLinux())
         {
+            // Add Linux container flags for extra safety (not strictly required for Firefox, but harmless)
             launchOptions.Args = new[]
             {
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-renderer-backgrounding",
-                "--disable-web-security",
-                "--disable-features=TranslateUI",
-                "--disable-ipc-flooding-protection",
-                "--disable-blink-features=AutomationControlled"
+                "--disable-dev-shm-usage"
             };
         }
-
-        await using var browser = isLinux
-            ? await pw.Chromium.LaunchAsync(launchOptions)
-            : await pw.Firefox.LaunchAsync(new() { Headless = true });
+        logger?.LogInformation("HistoricalDataFetcher: using Firefox for {Symbol} (OS={OS})", symbol, OperatingSystem.IsLinux() ? "Linux" : "Non-Linux");
+        telemetry?.TrackEvent(new Microsoft.ApplicationInsights.DataContracts.EventTelemetry("HistoricalDataFetcher.Browser")
+        {
+            Properties = { { "symbol", symbol }, { "browser", "firefox" }, { "os", OperatingSystem.IsLinux() ? "linux" : "other" } }
+        });
+        await using var browser = await pw.Firefox.LaunchAsync(launchOptions);
 
         await using var ctx = await browser.NewContextAsync(new()
         {
