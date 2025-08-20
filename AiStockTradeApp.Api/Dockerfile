@@ -55,4 +55,11 @@ RUN dotnet publish "./AiStockTradeApp.Api.csproj" -c $BUILD_CONFIGURATION -o /ap
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+USER root
+# Ensure a shared path for Playwright browsers and install .NET browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN mkdir -p /ms-playwright \
+    && dotnet Microsoft.Playwright.CLI.dll install \
+    && chmod -R a+rX /ms-playwright
+USER $APP_UID
 ENTRYPOINT ["dotnet", "AiStockTradeApp.Api.dll"]

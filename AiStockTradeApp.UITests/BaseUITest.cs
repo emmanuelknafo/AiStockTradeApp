@@ -72,6 +72,14 @@ public class BaseUITest : PageTest
     [OneTimeSetUp]
     public async Task GlobalSetup()
     {
+        // Ensure Playwright browsers are installed where they might be missing (Linux/WSL/CI)
+        try
+        {
+            // Install Playwright browsers (no system deps to avoid sudo on local/WSL)
+            Microsoft.Playwright.Program.Main(new[] { "install" });
+        }
+        catch { /* best-effort */ }
+
         // Check if the application is running before starting tests
         await TestSetupHelper.WaitForApplicationStartup(BaseUrl, timeoutSeconds: 10);
     }

@@ -5,14 +5,49 @@ namespace AiStockTradeApp.Services.Implementations;
 
 public static class HistoricalDataFetcher
 {
+    private static int _installOnce;
+
     public static async Task<string?> TryDownloadHistoricalCsvAsync(string symbol, int timeoutSec = 60)
     {
         symbol = symbol.Trim().ToLowerInvariant();
         var url = $"https://www.nasdaq.com/market-activity/stocks/{symbol}/historical?page=1&rows_per_page=10&timeline=y10";
+
+        await EnsurePlaywrightInstalledAsync();
+
         using var pw = await Playwright.CreateAsync();
 
-        // Prefer Firefox per request
-        await using var browser = await pw.Firefox.LaunchAsync(new() { Headless = true });
+        var isLinux = OperatingSystem.IsLinux();
+        var launchOptions = new BrowserTypeLaunchOptions
+        {
+            Headless = true
+        };
+
+        // On Linux containers (WSL2/Azure Web Apps), Chromium with these flags is more reliable than Firefox
+        if (isLinux)
+        {
+            launchOptions.Args = new[]
+            {
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-web-security",
+                "--disable-features=TranslateUI",
+                "--disable-ipc-flooding-protection",
+                "--disable-blink-features=AutomationControlled"
+            };
+        }
+
+        // Prefer Firefox on non-Linux (per original intent), otherwise use Chromium on Linux
+        await using var browser = isLinux
+            ? await pw.Chromium.LaunchAsync(launchOptions)
+            : await pw.Firefox.LaunchAsync(new() { Headless = true });
+
         await using var ctx = await browser.NewContextAsync(new()
         {
             AcceptDownloads = true,
@@ -26,9 +61,10 @@ public static class HistoricalDataFetcher
         {
             await page.GotoAsync(url, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
         }
-        catch
+        catch (Exception ex)
         {
-            // best effort
+            // best effort (helps diagnose platform issues)
+            try { Console.WriteLine($"[HistoricalDataFetcher] Goto failed: {ex.Message}"); } catch { }
         }
 
         await TryAcceptCookiesAsync(page, 10000);
@@ -53,9 +89,10 @@ public static class HistoricalDataFetcher
             await stream.CopyToAsync(ms);
             return System.Text.Encoding.UTF8.GetString(ms.ToArray());
         }
-        catch
+        catch (Exception ex)
         {
             // Fallback: capture network response that looks like CSV
+            try { Console.WriteLine($"[HistoricalDataFetcher] Download API failed, fallback to response sniffing. {ex.Message}"); } catch { }
             try
             {
                 await loc.ClickAsync(new() { Force = true, Timeout = 8000 });
@@ -151,5 +188,23 @@ public static class HistoricalDataFetcher
             }
         }
         catch { }
+    }
+
+    private static Task EnsurePlaywrightInstalledAsync()
+    {
+        if (Interlocked.Exchange(ref _installOnce, 1) == 1)
+            return Task.CompletedTask;
+
+        try
+        {
+            // Synchronous call; installation is a no-op if already installed
+            Microsoft.Playwright.Program.Main(new[] { "install" });
+        }
+        catch
+        {
+            // Best-effort; if install fails, Playwright may still work if browsers are present
+        }
+
+        return Task.CompletedTask;
     }
 }
