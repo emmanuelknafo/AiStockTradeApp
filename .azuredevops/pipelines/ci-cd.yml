@@ -362,24 +362,44 @@ stages:
               custom: "tool"
               arguments: "install --global dotnet-ef"
 
+          - task: NodeTool@0
+            displayName: "Setup Node.js (for Playwright CLI checks)"
+            inputs:
+              versionSpec: "20.x"
+
           # SQL Server container not required for UI tests; using in-memory DB
 
           # Removed EF Core database update for UI tests: app handles migrations on startup (post-deployment)
 
-          - task: NodeTool@0
-            displayName: "Setup Node.js"
-            inputs:
-              versionSpec: "18.x"
-
+          # Install Playwright browsers for .NET (matches Microsoft.Playwright package version)
           - script: |
-              echo "Installing Playwright via npm (JS driver used by .NET binding)..."
-              cd AiStockTradeApp.UITests
-              npm ci || npm install
-              npx playwright install --with-deps chromium
-              npx playwright --version
-              echo "Listing browser cache..."
-              ls -R ~/.cache/ms-playwright || true
-            displayName: "Install Playwright browsers"
+              set -e
+              echo "Building UITests to generate Playwright install scripts..."
+              dotnet build AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj --configuration Release --no-restore
+
+              echo "Installing Playwright browsers (with OS deps) using .NET script..."
+              PLAYWRIGHT_SCRIPT="AiStockTradeApp.UITests/bin/Release/net9.0/playwright.sh"
+              if [ ! -f "$PLAYWRIGHT_SCRIPT" ]; then
+                echo "Expected Playwright script not found at $PLAYWRIGHT_SCRIPT" >&2
+                echo "Directory listing:"; ls -la AiStockTradeApp.UITests/bin/Release/ || true
+                exit 1
+              fi
+              echo "Node version: $(node --version 2>/dev/null || echo 'not found')"
+              echo "npm version:  $(npm --version 2>/dev/null || echo 'not found')"
+              echo "Determining Microsoft.Playwright package version from csproj..."
+              PW_VER=$(grep -oP '(?<=<PackageReference Include="Microsoft.Playwright" Version=")[^"]+' AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj || true)
+              echo "Microsoft.Playwright package version: ${PW_VER:-unknown}"
+              echo "Playwright CLI version BEFORE install (generic):"; npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
+              if [ -n "$PW_VER" ]; then echo "Playwright CLI version BEFORE install (pinned ${PW_VER}):"; npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
+              # Install all supported browsers (chromium, firefox, webkit)
+              bash "$PLAYWRIGHT_SCRIPT" install --with-deps
+              echo "Installed browsers in:"
+              ls -R ~/.cache/ms-playwright | head -200 || true
+
+              echo "Playwright CLI version AFTER install (generic):"; npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
+              if [ -n "$PW_VER" ]; then echo "Playwright CLI version AFTER install (pinned ${PW_VER}):"; npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
+              echo "Verified Microsoft.Playwright package version: ${PW_VER:-unknown}"
+            displayName: "Install Playwright browsers (.NET)"
 
           - script: |
               # Start application in background
@@ -460,14 +480,20 @@ stages:
               echo "Testing application accessibility..."
               curl -v http://localhost:5000 || echo "Application not responding"
 
-              echo "Skipping X11 display probe (not required for headless Chromium)"
+              echo "Skipping X11 display probe (not required for headless browsers)"
 
-              echo "Checking Playwright installation (npx)..."
-              (cd AiStockTradeApp.UITests && npx playwright --version) || echo "Playwright CLI not available"
-
-              echo "Checking if Playwright browsers are installed..."
-              ls -la /ms/playwright/ || echo "Playwright browser cache not found"
-              find ~/.cache/ms-playwright -name "chromium*" -type d | head -5 || echo "Chromium browser not found"
+              echo "Checking Playwright CLI versions (generic and pinned)..."
+              echo "Node version: $(node --version 2>/dev/null || echo 'not found')"
+              echo "npm version:  $(npm --version 2>/dev/null || echo 'not found')"
+              PW_VER=$(grep -oP '(?<=<PackageReference Include="Microsoft.Playwright" Version=")[^"]+' AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj || true)
+              echo "Microsoft.Playwright package version: ${PW_VER:-unknown}"
+              npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
+              if [ -n "$PW_VER" ]; then npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
+              echo "Checking installed Playwright browsers in cache..."
+              for b in chromium firefox webkit; do
+                echo "Listing cache entries for $b:";
+                find ~/.cache/ms-playwright -maxdepth 1 -type d -name "$b*" | head -5 || true;
+              done
 
               echo "Testing simple browser launch..."
               echo "Testing simple browser launch via dotnet playwright (dry run using codegen list)..."
@@ -495,6 +521,7 @@ stages:
               DISPLAY: ":99.0"
               CI: "true"
               AZURE_PIPELINES: "true"
+              PLAYWRIGHT_BROWSERS_PATH: "~/.cache/ms-playwright"
               USE_INMEMORY_DB: "true" # Use EF in-memory provider for faster UI tests
 
           - script: |
@@ -520,6 +547,7 @@ stages:
               DEBUG: "pw:api"
               CI: "true"
               AZURE_PIPELINES: "true"
+              PLAYWRIGHT_BROWSERS_PATH: "~/.cache/ms-playwright"
               NODE_PATH: "$(System.DefaultWorkingDirectory)/AiStockTradeApp.UITests/node_modules"
               USE_INMEMORY_DB: "true" # In-memory DB accelerates UI tests
               VSTEST_RESULTS_DIRECTORY: "$(Agent.TempDirectory)"

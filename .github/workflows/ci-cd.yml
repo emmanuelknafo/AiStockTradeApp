@@ -332,12 +332,33 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
 
-      - name: Install Playwright browsers
+      - name: Install Playwright browsers (via .NET script)
         run: |
-          npx playwright install
-          npx playwright install-deps
+          set -e
+          echo "Building UITests to generate Playwright install scripts..."
+          dotnet build AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj --configuration Release --no-restore
+
+          echo "Installing Playwright browsers with OS deps using .NET script..."
+          PLAYWRIGHT_SCRIPT="AiStockTradeApp.UITests/bin/Release/net9.0/playwright.sh"
+          if [ ! -f "$PLAYWRIGHT_SCRIPT" ]; then
+            echo "Expected Playwright script not found at $PLAYWRIGHT_SCRIPT" >&2
+            echo "Directory listing:"; ls -la AiStockTradeApp.UITests/bin/Release/ || true
+            exit 1
+          fi
+          echo "Node version: $(node --version 2>/dev/null || echo 'not found')"
+          echo "npm version:  $(npm --version 2>/dev/null || echo 'not found')"
+          echo "Determining Microsoft.Playwright package version from csproj..."
+          PW_VER=$(grep -oP '(?<=<PackageReference Include="Microsoft.Playwright" Version=")[^"]+' AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj || true)
+          echo "Microsoft.Playwright package version: ${PW_VER:-unknown}"
+          echo "Playwright CLI version BEFORE install (generic):"; npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
+          if [ -n "$PW_VER" ]; then echo "Playwright CLI version BEFORE install (pinned ${PW_VER}):"; npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
+          bash "$PLAYWRIGHT_SCRIPT" install --with-deps
+          echo "Playwright CLI version AFTER install (generic):"; npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
+          if [ -n "$PW_VER" ]; then echo "Playwright CLI version AFTER install (pinned ${PW_VER}):"; npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
+          echo "Installed browsers (head):"
+          ls -R ~/.cache/ms-playwright | head -100 || true
 
       - name: Start application in background
         run: |
