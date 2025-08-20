@@ -378,12 +378,9 @@ stages:
               dotnet build AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj --configuration Release --no-restore
 
               echo "Installing Playwright browsers (with OS deps) using .NET script..."
-              PLAYWRIGHT_SCRIPT="AiStockTradeApp.UITests/bin/Release/net9.0/playwright.sh"
-              if [ ! -f "$PLAYWRIGHT_SCRIPT" ]; then
-                echo "Expected Playwright script not found at $PLAYWRIGHT_SCRIPT" >&2
-                echo "Directory listing:"; ls -la AiStockTradeApp.UITests/bin/Release/ || true
-                exit 1
-              fi
+              PLAYWRIGHT_DIR="AiStockTradeApp.UITests/bin/Release/net9.0"
+              SH_SCRIPT="$PLAYWRIGHT_DIR/playwright.sh"
+              PS_SCRIPT="$PLAYWRIGHT_DIR/playwright.ps1"
               echo "Node version: $(node --version 2>/dev/null || echo 'not found')"
               echo "npm version:  $(npm --version 2>/dev/null || echo 'not found')"
               echo "Determining Microsoft.Playwright package version from csproj..."
@@ -392,7 +389,22 @@ stages:
               echo "Playwright CLI version BEFORE install (generic):"; npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
               if [ -n "$PW_VER" ]; then echo "Playwright CLI version BEFORE install (pinned ${PW_VER}):"; npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
               # Install all supported browsers (chromium, firefox, webkit)
-              bash "$PLAYWRIGHT_SCRIPT" install --with-deps
+              if [ -f "$SH_SCRIPT" ]; then
+                echo "Using bash playwright.sh script"
+                bash "$SH_SCRIPT" install --with-deps
+              elif [ -f "$PS_SCRIPT" ]; then
+                echo "Using PowerShell playwright.ps1 script"
+                if ! command -v pwsh >/dev/null 2>&1; then
+                  echo "pwsh not found; installing PowerShell..."
+                  sudo apt-get update -y && sudo apt-get install -y powershell
+                fi
+                pwsh -NoLogo -NoProfile -File "$PS_SCRIPT" install --with-deps
+              else
+                echo "No playwright install script found in $PLAYWRIGHT_DIR" >&2
+                echo "Directory listing of $PLAYWRIGHT_DIR:"; ls -la "$PLAYWRIGHT_DIR" || true
+                echo "Directory listing of parent:"; ls -la AiStockTradeApp.UITests/bin/Release/ || true
+                exit 1
+              fi
               echo "Installed browsers in:"
               ls -R ~/.cache/ms-playwright | head -200 || true
 
