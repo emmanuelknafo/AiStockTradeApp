@@ -21,6 +21,14 @@
 .PARAMETER DryRun
   If set, list planned imports without invoking the CLI.
 
+.PARAMETER ListedFile
+  Optional path to the listed stocks screener CSV to import before historicals
+  (e.g., data\nasdaq.com\nasdaq_screener_*.csv). If not provided, the most
+  recent nasdaq_screener_*.csv in data\nasdaq.com will be used when available.
+
+.PARAMETER SkipListed
+  If set, skips the pre-step that imports listed stocks.
+
 .EXAMPLE
   ./scripts/seed-historical.ps1
 
@@ -29,11 +37,13 @@
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
-  [string]$Folder,
-  [string]$ApiBase = 'http://localhost:5256',
+  [string]$Folder = 'data/nasdaq.com/Historical',
+  [string]$ApiBase = 'http://localhost:8082',
   [string]$Pattern = 'HistoricalData_*_*.csv',
   [switch]$Watch,
-  [switch]$DryRun
+  [switch]$DryRun,
+  [string]$ListedFile,
+  [switch]$SkipListed
 )
 
 Set-StrictMode -Version Latest
@@ -67,6 +77,44 @@ if (-not $files -or $files.Count -eq 0) {
 Write-Host 'Building CLI (Debug)...' -ForegroundColor Cyan
 & dotnet build $cliProj -c Debug | Write-Host
 
+# Pre-step: Import listed stocks (screener CSV) if not skipped
+if (-not $SkipListed) {
+  try {
+    $listedPath = $null
+    if ($ListedFile -and -not [string]::IsNullOrWhiteSpace($ListedFile)) {
+      $resolved = Resolve-Path -LiteralPath $ListedFile -ErrorAction Stop
+      $listedPath = $resolved.Path
+    }
+    else {
+      $dataDir = Join-Path $repoRoot 'data/nasdaq.com'
+      if (Test-Path $dataDir) {
+        $latest = Get-ChildItem -Path $dataDir -File -Filter 'nasdaq_screener_*.csv' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($latest) { $listedPath = $latest.FullName }
+      }
+    }
+
+    if ($listedPath) {
+      Write-Host "Importing listed stocks from: $listedPath" -ForegroundColor Cyan
+      if (-not $DryRun) {
+        $listArgs = @('run', '--no-build', '--project', "$cliProj", '--', 'import-listed', '--file', "$listedPath", '--api', "$ApiBase")
+        & dotnet @listArgs
+      }
+      else {
+        Write-Host "(DryRun) Would run: aistock-cli import-listed --file `"$listedPath`" --api `"$ApiBase`"" -ForegroundColor DarkGray
+      }
+    }
+    else {
+      Write-Warning "No listed stocks CSV found. Searched parameter and data\\nasdaq.com\\nasdaq_screener_*.csv. Skipping listed import."
+    }
+  }
+  catch {
+    Write-Warning "Listed stocks import step failed: $($_.Exception.Message)"
+  }
+}
+else {
+  Write-Host 'SkipListed is set; skipping listed stocks import step.' -ForegroundColor DarkGray
+}
+
 function Get-SymbolFromFilename {
   param([Parameter(Mandatory)][System.IO.FileInfo]$File)
   $nameNoExt = [System.IO.Path]::GetFileNameWithoutExtension($File.Name)
@@ -87,14 +135,14 @@ foreach ($f in $files) {
   Write-Host "[$n/$total] Importing $symbol from '$($f.Name)'" -ForegroundColor Green
   if ($DryRun) { continue }
 
-  $args = @(
-    'run','--no-build','--project',"$cliProj",'--',
-    'import-historical','--symbol',"$symbol",'--file',"$($f.FullName)",'--api',"$ApiBase"
+  $cliArgs = @(
+    'run', '--no-build', '--project', "$cliProj", '--',
+    'import-historical', '--symbol', "$symbol", '--file', "$($f.FullName)", '--api', "$ApiBase"
   )
-  if ($Watch.IsPresent) { $args += '--watch' }
+  if ($Watch.IsPresent) { $cliArgs += '--watch' }
 
   try {
-    & dotnet @args
+    & dotnet @cliArgs
   }
   catch {
     Write-Warning "Import failed for ${symbol}: $($_.Exception.Message)"

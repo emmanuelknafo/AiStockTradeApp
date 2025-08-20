@@ -10,28 +10,15 @@ RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    xdg-utils \
-    libgbm1 \
-    libnss3 \
-    libxss1 \
-    libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js (required for Playwright)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs  
 
-RUN npm --version
+RUN node --version
 RUN npm install -g npm@latest
+RUN npm --version
 
 # Install Playwright browsers and OS deps using npx (npx is bundled with npm >= 7)
 RUN npx -y playwright@latest install --with-deps
