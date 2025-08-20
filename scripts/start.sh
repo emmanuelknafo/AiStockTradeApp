@@ -7,19 +7,23 @@ IFS=$'\n\t'
 
 # Defaults (match PowerShell defaults where reasonable)
 MODE="Local"
-SQL_SERVER='.'
+SQL_SERVER='localhost'
 SQL_DATABASE='StockTraderDb'
 API_PROFILE='https'
 UI_PROFILE='https'
 USE_HTTPS=true
+USE_INMEMORY=false
+CONNECTION_STRING=""
 
 print_usage() {
   cat <<EOF
-Usage: $0 [--mode Docker|Local] [--sql-server HOST] [--sql-database NAME] [--api-profile NAME] [--ui-profile NAME] [--no-https]
+Usage: $0 [--mode Docker|Local] [--sql-server HOST] [--sql-database NAME] [--api-profile NAME] [--ui-profile NAME] [--use-inmemory] [--connection-string CS] [--no-https]
 
 Examples:
   $0 --mode Docker
   $0 --mode Local --sql-server . --sql-database StockTraderDb
+  $0 --mode Local --use-inmemory
+  $0 --mode Local --connection-string "Server=localhost,1433;Database=StockTraderDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
 EOF
 }
 
@@ -36,6 +40,10 @@ while [[ $# -gt 0 ]]; do
       API_PROFILE="$2"; shift 2;;
     --ui-profile)
       UI_PROFILE="$2"; shift 2;;
+    --use-inmemory)
+      USE_INMEMORY=true; shift 1;;
+    --connection-string)
+      CONNECTION_STRING="$2"; shift 2;;
     --no-https)
       USE_HTTPS=false; shift 1;;
     -h|--help)
@@ -142,8 +150,19 @@ start_local_processes() {
 
   enable_dev_https_cert
 
-  cs="Server=$SQL_SERVER;Database=$SQL_DATABASE;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true"
+  # Compose connection string if not supplied explicitly
+  if [[ -n "$CONNECTION_STRING" ]]; then
+    cs="$CONNECTION_STRING"
+  else
+    cs="Server=$SQL_SERVER;Database=$SQL_DATABASE;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true"
+  fi
   echo "Using connection string: $cs"
+
+  # Warn if running in WSL/Linux with SQL_SERVER set to '.' (Windows-only alias)
+  if [[ "$SQL_SERVER" == "." ]] && grep -qi "microsoft" /proc/version 2>/dev/null; then
+    echo "Note: SQL Server host '.' is a Windows alias and usually won't resolve in WSL2." >&2
+    echo "      Consider --use-inmemory or set --sql-server <hostname/ip> or --connection-string ..." >&2
+  fi
 
   echo "Restoring solution packages..."
   dotnet restore "$SLN_PATH"
@@ -156,7 +175,7 @@ start_local_processes() {
   # Environment for API
   (
     export ConnectionStrings__DefaultConnection="$cs"
-    export USE_INMEMORY_DB="false"
+    if [[ "$USE_INMEMORY" == true ]]; then export USE_INMEMORY_DB="true"; else export USE_INMEMORY_DB="false"; fi
     export ASPNETCORE_ENVIRONMENT="Development"
     cd "$REPO_ROOT"
     nohup dotnet run --no-build --project "$API_PROJ" --launch-profile "$API_PROFILE" >"$api_log" 2>&1 &
@@ -198,6 +217,7 @@ start_local_processes() {
 
   if [[ "$api_ready" != true ]]; then
     echo "Warning: API did not respond healthy within ${timeout_sec}s. UI will not be started to avoid failures. Check $api_log for API output." >&2
+    echo "Tip: If you're on WSL2 and don't have SQL Server accessible, run with --use-inmemory or use --connection-string to a reachable SQL instance." >&2
     return 0
   fi
 
@@ -212,7 +232,73 @@ start_local_processes() {
     nohup dotnet run --no-build --project "$UI_PROJ" --launch-profile "$UI_PROFILE" >"$ui_log" 2>&1 &
   )
 
+  # Wait for UI to be responsive
+  # Decide health URLs based on profile
+  ui_health_http=""
+  ui_health_https=""
+  ui_url_http=""
+  ui_url_https=""
+  case "$UI_PROFILE" in
+    https|HTTPS)
+      ui_health_http='http://localhost:5259/health'
+      ui_health_https='https://localhost:7043/health'
+      ui_url_http='http://localhost:5259'
+      ui_url_https='https://localhost:7043'
+      ;;
+    http|HTTP)
+      ui_health_http='http://localhost:5000/health'
+      ui_url_http='http://localhost:5000'
+      ;;
+    *)
+      # Fallback: try both sets
+      ui_health_http='http://localhost:5259/health'
+      ui_health_https='https://localhost:7043/health'
+      ui_url_http='http://localhost:5259'
+      ui_url_https='https://localhost:7043'
+      ;;
+  esac
+
+  timeout_sec=120
+  poll_interval_sec=2
+  deadline=$((SECONDS + timeout_sec))
+  ui_ready=false
+  echo "Waiting for UI to be ready at ${ui_health_http:-n/a} ${ui_health_https:+(fallback: $ui_health_https)}..."
+  while [[ $SECONDS -lt $deadline ]]; do
+    if command_exists curl; then
+      if [[ -n "$ui_health_http" ]] && curl --silent --show-error --fail --max-time 5 "$ui_health_http" >/dev/null 2>&1; then
+        ui_ready=true; break
+      fi
+      if [[ -n "$ui_health_https" ]] && curl --silent --show-error --insecure --fail --max-time 5 "$ui_health_https" >/dev/null 2>&1; then
+        ui_ready=true; break
+      fi
+    elif command_exists wget; then
+      if [[ -n "$ui_health_http" ]] && wget -q --tries=1 --timeout=5 -O - "$ui_health_http" >/dev/null 2>&1; then
+        ui_ready=true; break
+      fi
+      if [[ -n "$ui_health_https" ]] && wget --no-check-certificate -q --tries=1 --timeout=5 -O - "$ui_health_https" >/dev/null 2>&1; then
+        ui_ready=true; break
+      fi
+    else
+      echo "No http client (curl/wget) found to perform UI health checks." >&2
+      break
+    fi
+    sleep $poll_interval_sec
+  done
+
+  if [[ "$ui_ready" != true ]]; then
+    echo "Warning: UI did not respond healthy within ${timeout_sec}s. Check $ui_log for UI output." >&2
+  else
+    echo "UI is healthy."
+  fi
+
+  # Output quick-access URLs
   echo "Local processes started. API logs: $api_log, UI logs: $ui_log"
+  echo "API URLs:"
+  echo "  - HTTP:  http://localhost:5256/index.html"
+  echo "  - HTTPS: https://localhost:7032/index.html"
+  echo "UI URLs:"
+  if [[ -n "$ui_url_http" ]]; then echo "  - HTTP:  $ui_url_http"; fi
+  if [[ -n "$ui_url_https" ]]; then echo "  - HTTPS: $ui_url_https"; fi
 }
 
 case "$MODE" in
