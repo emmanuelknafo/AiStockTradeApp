@@ -344,4 +344,167 @@ app.MapDelete("/api/listed-stocks", async (IListedStockService svc) =>
 .WithName("DeleteAllListedStocks")
 .Produces(StatusCodes.Status204NoContent);
 
+// Seed ListedStocks from embedded CSV on first run if empty
+await SeedListedStocksIfEmptyAsync(app.Services);
+
 app.Run();
+
+static async Task SeedListedStocksIfEmptyAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Seeder");
+    var db = scope.ServiceProvider.GetRequiredService<StockDataContext>();
+    var svc = scope.ServiceProvider.GetRequiredService<IListedStockService>();
+
+    try
+    {
+        var count = await db.ListedStocks.CountAsync();
+        if (count > 0)
+        {
+            logger.LogInformation("ListedStocks already seeded: {Count} rows.", count);
+            return;
+        }
+
+        // Locate seed file copied during publish. Prefer newest file if multiple.
+        var baseDir = AppContext.BaseDirectory;
+        var seedDir = Path.Combine(baseDir, "SeedData");
+        if (!Directory.Exists(seedDir))
+        {
+            logger.LogWarning("Seed directory not found: {Dir}", seedDir);
+            return;
+        }
+
+        var files = Directory.GetFiles(seedDir, "*.csv");
+        if (files.Length == 0)
+        {
+            logger.LogWarning("No seed CSV files found in {Dir}", seedDir);
+            return;
+        }
+
+        var seedFile = files.OrderByDescending(File.GetLastWriteTimeUtc).First();
+        logger.LogInformation("Seeding ListedStocks from {File}...", Path.GetFileName(seedFile));
+
+        var lines = await File.ReadAllLinesAsync(seedFile);
+        if (lines.Length == 0)
+        {
+            logger.LogWarning("Seed file {File} is empty.", seedFile);
+            return;
+        }
+
+        var start = 0;
+        if (lines[0].StartsWith("Symbol,", StringComparison.OrdinalIgnoreCase)) start = 1;
+
+        var buffer = new List<ListedStock>(capacity: 1000);
+        for (int i = start; i < lines.Length; i++)
+        {
+            var cols = SplitCsvLine(lines[i]);
+            if (cols.Count < 11) continue;
+            try
+            {
+                var stock = new ListedStock
+                {
+                    Symbol = (cols[0] ?? string.Empty).Trim().ToUpperInvariant(),
+                    Name = (cols[1] ?? string.Empty).Trim(),
+                    LastSale = ToDecimal(cols[2]),
+                    NetChange = ToDecimal(cols[3]),
+                    PercentChange = ToPercent(cols[4]),
+                    MarketCap = ToDecimal(cols[5]),
+                    Country = NullIfEmpty(cols[6]),
+                    IpoYear = ToNullableInt(cols[7]),
+                    Volume = ToLong(cols[8]),
+                    Sector = NullIfEmpty(cols[9]),
+                    Industry = NullIfEmpty(cols[10]),
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                if (!string.IsNullOrWhiteSpace(stock.Symbol) && !string.IsNullOrWhiteSpace(stock.Name))
+                    buffer.Add(stock);
+            }
+            catch
+            {
+                // skip malformed rows
+            }
+        }
+
+        if (buffer.Count == 0)
+        {
+            logger.LogWarning("No valid rows parsed from seed file {File}.", seedFile);
+            return;
+        }
+
+        // Upsert in chunks to avoid large transactions
+        const int batchSize = 500;
+        for (int i = 0; i < buffer.Count; i += batchSize)
+        {
+            var batch = buffer.Skip(i).Take(batchSize).ToArray();
+            await svc.BulkUpsertAsync(batch);
+            logger.LogInformation("Seeded {Count} listed stocks ({Progress}/{Total}).", batch.Length, Math.Min(i + batch.Length, buffer.Count), buffer.Count);
+        }
+        logger.LogInformation("Completed seeding ListedStocks: {Total} records.", buffer.Count);
+    }
+    catch (Exception ex)
+    {
+        // Do not block app startup on seed errors; just log it.
+        var log = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Seeder");
+        log.LogError(ex, "Error seeding ListedStocks.");
+    }
+
+    // Local helpers (CSV parsing & conversions)
+    static List<string> SplitCsvLine(string line)
+    {
+        var result = new List<string>();
+        var sb = new StringBuilder();
+        bool inQuotes = false;
+        for (int j = 0; j < line.Length; j++)
+        {
+            var ch = line[j];
+            if (ch == '"')
+            {
+                if (inQuotes && j + 1 < line.Length && line[j + 1] == '"')
+                {
+                    sb.Append('"');
+                    j++; // skip escaped quote
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
+            }
+            else if (ch == ',' && !inQuotes)
+            {
+                result.Add(sb.ToString());
+                sb.Clear();
+            }
+            else
+            {
+                sb.Append(ch);
+            }
+        }
+        result.Add(sb.ToString());
+        return result;
+    }
+
+    static decimal ToDecimal(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return 0m;
+        s = s.Replace("$", string.Empty).Replace(",", string.Empty).Trim();
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
+    }
+    static decimal ToPercent(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return 0m;
+        s = s.Replace("%", string.Empty).Trim();
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
+    }
+    static long ToLong(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return 0L;
+        s = s.Replace(",", string.Empty).Trim();
+        return long.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0L;
+    }
+    static int? ToNullableInt(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        return int.TryParse(s.Trim(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+    }
+    static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+}

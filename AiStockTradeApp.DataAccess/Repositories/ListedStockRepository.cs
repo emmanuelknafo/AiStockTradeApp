@@ -41,10 +41,39 @@ namespace AiStockTradeApp.DataAccess.Repositories
 
         public async Task BulkUpsertAsync(IEnumerable<ListedStock> stocks)
         {
-            foreach (var s in stocks)
+            var list = stocks as IList<ListedStock> ?? stocks.ToList();
+            if (list.Count == 0) return;
+
+            // Prefetch existing records for symbols in this batch
+            var symbols = list.Select(s => s.Symbol).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
+            var existing = await _db.ListedStocks.Where(x => symbols.Contains(x.Symbol)).ToDictionaryAsync(x => x.Symbol);
+
+            foreach (var stock in list)
             {
-                await UpsertAsync(s);
+                if (string.IsNullOrWhiteSpace(stock.Symbol)) continue;
+                if (!existing.TryGetValue(stock.Symbol, out var entity))
+                {
+                    // New entity
+                    _db.ListedStocks.Add(stock);
+                }
+                else
+                {
+                    // Update existing tracked entity
+                    entity.Name = stock.Name;
+                    entity.LastSale = stock.LastSale;
+                    entity.NetChange = stock.NetChange;
+                    entity.PercentChange = stock.PercentChange;
+                    entity.MarketCap = stock.MarketCap;
+                    entity.Country = stock.Country;
+                    entity.IpoYear = stock.IpoYear;
+                    entity.Volume = stock.Volume;
+                    entity.Sector = stock.Sector;
+                    entity.Industry = stock.Industry;
+                    entity.UpdatedAt = DateTime.UtcNow;
+                }
             }
+
+            await _db.SaveChangesAsync();
         }
 
         public async Task<List<ListedStock>> GetAllAsync(int skip = 0, int take = 500)

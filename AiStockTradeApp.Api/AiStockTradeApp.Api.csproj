@@ -23,4 +23,14 @@
     <ProjectReference Include="..\AiStockTradeApp.Services\AiStockTradeApp.Services.csproj" />
   </ItemGroup>
 
+  <!-- Include seed CSV(s) from repository data folder in publish output -->
+  <ItemGroup>
+    <Content Include="../data/nasdaq.com/*.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <!-- Link under SeedData/ in output -->
+      <Link>SeedData/%(FileName)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
+
 </Project>
