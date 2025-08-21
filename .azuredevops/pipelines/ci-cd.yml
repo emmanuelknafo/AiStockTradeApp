@@ -945,7 +945,6 @@ stages:
               azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
               scriptType: "bash"
               scriptLocation: "inlineScript"
-              failOnStandardError: true
               inlineScript: |
                 # Fail fast on any error, unset variable, or failed pipeline in a pipe
                 set -euo pipefail
