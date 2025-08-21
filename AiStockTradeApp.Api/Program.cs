@@ -57,11 +57,10 @@ builder.Services.AddScoped<IHistoricalPriceRepository, HistoricalPriceRepository
 builder.Services.AddHttpClient<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IListedStockService, ListedStockService>();
-// Register TelemetryClient for DI
+// Register TelemetryClient for DI (avoid obsolete default ctor)
 builder.Services.AddSingleton<Microsoft.ApplicationInsights.TelemetryClient>(sp =>
-    sp.GetRequiredService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>() is { } config
-        ? new Microsoft.ApplicationInsights.TelemetryClient(config)
-        : new Microsoft.ApplicationInsights.TelemetryClient()
+    new Microsoft.ApplicationInsights.TelemetryClient(
+        sp.GetRequiredService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>())
 );
 builder.Services.AddScoped<IHistoricalPriceService, HistoricalPriceService>();
 // Background job queue for long-running tasks
