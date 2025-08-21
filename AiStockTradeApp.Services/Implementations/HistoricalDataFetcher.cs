@@ -234,7 +234,20 @@ public static class HistoricalDataFetcher
 
         try
         {
-            Microsoft.Playwright.Program.Main(new[] { "install" });
+            // Prefer Firefox only to minimize download size/time, aligning with our enforced browser choice
+            // Skip install if browsers already exist in shared path
+            var sharedPath = Environment.GetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH");
+            if (!string.IsNullOrWhiteSpace(sharedPath))
+            {
+                try
+                {
+                    if (Directory.Exists(Path.Combine(sharedPath, "firefox")))
+                        return Task.CompletedTask;
+                }
+                catch { }
+            }
+
+            Microsoft.Playwright.Program.Main(new[] { "install", "firefox" });
         }
         catch
         {

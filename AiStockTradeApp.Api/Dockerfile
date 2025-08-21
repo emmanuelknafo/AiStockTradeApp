@@ -23,7 +23,7 @@ ARG PLAYWRIGHT_VERSION=1.55.0
 # Install global Playwright CLI and browsers with OS deps into the shared path
 RUN mkdir -p /ms-playwright \
     && npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
-    && playwright install --with-deps \
+    && playwright install --with-deps firefox \
     && playwright --version \
     && chmod -R a+rX /ms-playwright
 
