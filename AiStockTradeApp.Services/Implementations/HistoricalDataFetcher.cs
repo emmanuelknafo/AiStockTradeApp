@@ -49,10 +49,10 @@ public static class HistoricalDataFetcher
         var page = await ctx.NewPageAsync();
         page.SetDefaultTimeout(Math.Max(10, timeoutSec) * 1000);
 
-        logger?.LogInformation("HistoricalDataFetcher starting for {Symbol} on {OS}", symbol, isLinux ? "Linux" : "Non-Linux");
+        logger?.LogInformation("HistoricalDataFetcher starting for {Symbol} on {OS}", symbol, OperatingSystem.IsLinux() ? "Linux" : "Non-Linux");
         telemetry?.TrackEvent(new EventTelemetry("HistoricalDataFetcher.Start")
         {
-            Properties = { { "symbol", symbol }, { "os", isLinux ? "linux" : "other" } }
+            Properties = { { "symbol", symbol }, { "os", OperatingSystem.IsLinux() ? "linux" : "other" } }
         });
 
         try
@@ -102,7 +102,7 @@ public static class HistoricalDataFetcher
             telemetry?.TrackEvent(new EventTelemetry("HistoricalDataFetcher.Success")
             {
                 Metrics = { { "elapsedMs", stopwatch.Elapsed.TotalMilliseconds }, { "bytes", csv?.Length ?? 0 } },
-                Properties = { { "symbol", symbol }, { "path", "download" }, { "browser", isLinux ? "chromium" : "firefox" } }
+                Properties = { { "symbol", symbol }, { "path", "download" }, { "browser", "firefox" } }
             });
             return csv;
         }
@@ -136,7 +136,7 @@ public static class HistoricalDataFetcher
                 telemetry?.TrackEvent(new EventTelemetry("HistoricalDataFetcher.Success")
                 {
                     Metrics = { { "elapsedMs", stopwatch.Elapsed.TotalMilliseconds }, { "bytes", csv?.Length ?? 0 } },
-                    Properties = { { "symbol", symbol }, { "path", "response" }, { "browser", isLinux ? "chromium" : "firefox" } }
+                    Properties = { { "symbol", symbol }, { "path", "response" }, { "browser", "firefox" } }
                 });
                 return csv;
             }
