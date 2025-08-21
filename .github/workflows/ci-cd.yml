@@ -55,6 +55,18 @@ on:
         required: true
         default: "002"
         type: string
+      appServicePlanSku:
+        description: "App Service Plan SKU"
+        required: true
+        default: "P0v3"
+        type: choice
+        options:
+          - B1
+          - S1
+          - P0v3
+          - P1v3
+          - P2v3
+          - P3v3
   workflow_run:
     workflows: ["Infrastructure Deployment"]
     types: [completed]
@@ -910,7 +922,7 @@ jobs:
           # vars.* mapped via env at top to reduce linter warnings
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-002' }}
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image_api }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.50.0.0/16 appIntegrationSubnetPrefix=10.50.1.0/27 privateEndpointSubnetPrefix=10.50.2.0/28 appVersion=${{ steps.derive-version-dev.outputs.app_version }}
+          parameters: ./infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image_api }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.50.0.0/16 appIntegrationSubnetPrefix=10.50.1.0/27 privateEndpointSubnetPrefix=10.50.2.0/28 appVersion=${{ steps.derive-version-dev.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches API Managed Identity (Dev)
@@ -1182,7 +1194,7 @@ jobs:
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
           template: ./infrastructure/main.bicep
           # AAD-only auth is the standard. Bicep sets the SQL AAD admin to the API Web App MI when explicit admin values are not provided.
-          parameters: ./infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image_api }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.51.0.0/16 appIntegrationSubnetPrefix=10.51.1.0/27 privateEndpointSubnetPrefix=10.51.2.0/28 appVersion=${{ steps.derive-version-prod.outputs.app_version }}
+          parameters: ./infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image_api }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.51.0.0/16 appIntegrationSubnetPrefix=10.51.1.0/27 privateEndpointSubnetPrefix=10.51.2.0/28 appVersion=${{ steps.derive-version-prod.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches API Managed Identity (Prod)

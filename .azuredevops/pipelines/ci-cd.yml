@@ -76,6 +76,18 @@ parameters:
     type: string
     default: "003"
 
+  - name: appServicePlanSku
+    displayName: "App Service Plan SKU"
+    type: string
+    default: "P0v3"
+    values:
+      - B1
+      - S1
+      - P0v3
+      - P1v3
+      - P2v3
+      - P3v3
+
 variables:
   - group: "AiStockTradeApp" # Variable group for shared variables
   - name: AZURE_SERVICE_CONNECTION
@@ -1184,7 +1196,7 @@ stages:
                     templateLocation: "Linked artifact"
                     csmFile: "./infrastructure/main.bicep"
                     csmParametersFile: "./infrastructure/parameters.dev.json"
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -containerImageApi $(containerImageApi) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -appVersion $(appVersion) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false -manageSql false"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -containerImageApi $(containerImageApi) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY) -appVersion $(appVersion) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false -manageSql false -appServicePlanSku ${{ parameters.appServicePlanSku }}"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2
@@ -1517,7 +1529,7 @@ stages:
                     csmParametersFile: "./infrastructure/parameters.prod.json"
                     # Use containerImage variable if provided; prefer GitVersion FullSemVer tag if available
                     # containerImage variable expected to be AiStockTradeApp:<tag>
-                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -containerImageApi $(containerImageApi) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false -manageSql false -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)' -appVersion $(appVersion)"
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -containerImageApi $(containerImageApi) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true -manageNetworking false -manageSql false -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)' -appVersion $(appVersion) -appServicePlanSku ${{ parameters.appServicePlanSku }}"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2

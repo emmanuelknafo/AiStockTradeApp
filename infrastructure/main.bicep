@@ -10,7 +10,7 @@ param appName string
 param environment string = 'dev'
 
 @description('The SKU of the App Service Plan')
-param appServicePlanSku string = 'B1'
+param appServicePlanSku string = 'P0v3'
 
 @description('Container registry name')
 @minLength(5)

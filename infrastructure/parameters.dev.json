@@ -9,7 +9,7 @@
       "value": "dev"
     },
     "appServicePlanSku": {
-      "value": "B1"
+  "value": "P0v3"
     },
     "containerRegistryName": {
       "value": "aistocktracker"
