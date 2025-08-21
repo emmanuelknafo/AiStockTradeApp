@@ -10,6 +10,7 @@
   <!-- GitVersion will supply Version / AssemblyVersion / FileVersion / InformationalVersion at build time -->
   <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   <DockerComposeProjectPath>..\docker-compose.dcproj</DockerComposeProjectPath>
+  <ApplicationInsightsResourceId>/subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/microsoft.insights/components/appi-aistock-dev-002</ApplicationInsightsResourceId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.23.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="9.0.8" />
     <PackageReference Include="Azure.Identity" Version="1.15.0" />

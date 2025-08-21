@@ -10,6 +10,7 @@ using Microsoft.Data.SqlClient;
 using System.Globalization;
 using System.Text;
 using AiStockTradeApp.Api.Background;
+using Azure.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
