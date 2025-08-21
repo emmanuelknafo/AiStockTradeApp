@@ -55,6 +55,21 @@ namespace AiStockTradeApp.Controllers
             return Json(rows);
         }
 
+        [HttpGet]
+        public async Task<IActionResult> HistoricalCount()
+        {
+            var total = await GetWithFallbackAsync<long>("/api/historical-prices/count");
+            return Json(total);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> HistoricalCountBySymbol(string symbol)
+        {
+            if (string.IsNullOrWhiteSpace(symbol)) return BadRequest("symbol required");
+            var total = await GetWithFallbackAsync<long>($"/api/historical-prices/{Uri.EscapeDataString(symbol.ToUpperInvariant())}/count");
+            return Json(total);
+        }
+
         private async Task<T?> GetWithFallbackAsync<T>(string relative)
         {
             var url = _primaryBaseUrl.TrimEnd('/') + relative;

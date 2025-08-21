@@ -9,6 +9,9 @@
       <a class="control-btn" href="@Url.Action("Dashboard","Stock")">← Back to Dashboard</a>
     </div>
   </header>
+  <div class="summary-bar" style="margin:8px 0 0 0;color:#444;display:flex;gap:16px;align-items:center;">
+    <span><strong>Total historical prices:</strong> <span id="hist-total">…</span></span>
+  </div>
 
   <div class="search-bar">
     <div class="search-container" style="gap:8px;display:flex;flex-wrap:wrap;align-items:center;">
@@ -92,6 +95,8 @@
     renderTable(data.items || []);
     renderPager();
     document.getElementById('result-count').textContent = `${state.total.toLocaleString()} results`;
+  // Also fetch the global historical prices total (non-blocking)
+  refreshHistTotal();
   }
 
   function renderTable(items){
@@ -141,6 +146,15 @@
 
   fetchFacets().then(load);
 
+  async function refreshHistTotal(){
+    try {
+      const res = await fetch('@Url.Action("HistoricalCount","ListedStocks")');
+      const total = await res.json();
+      const el = document.getElementById('hist-total');
+      if (el) el.textContent = Number(total||0).toLocaleString();
+    } catch { /* ignore */ }
+  }
+
   async function loadHistory(symbol){
     const panel = document.getElementById('history-panel');
     const title = document.getElementById('hist-title');
@@ -168,6 +182,8 @@
       const first = rows[0].date?.substring(0,10) || '';
       const last = rows[rows.length-1].date?.substring(0,10) || '';
       rangeEl.textContent = `${first} → ${last} (${rows.length})`;
+  // Historical data fetch may have imported new rows; refresh global total
+  refreshHistTotal();
 
       // table
       body.innerHTML = '';

@@ -76,6 +76,9 @@ namespace AiStockTradeApp.Services.Implementations
         public Task DeleteBySymbolAsync(string symbol)
             => _repo.DeleteBySymbolAsync(symbol.ToUpperInvariant());
 
+        public Task<long> CountAsync(string? symbol = null)
+            => _repo.CountAsync(string.IsNullOrWhiteSpace(symbol) ? null : symbol.ToUpperInvariant());
+
         public async Task ImportCsvAsync(string symbol, string csvContent, string? sourceName = null)
         {
             if (string.IsNullOrWhiteSpace(symbol)) throw new ArgumentException("symbol is required");

@@ -190,6 +190,24 @@ app.MapGet("/api/historical-prices/{symbol}", async (string symbol, [FromQuery] 
 .Produces<List<HistoricalPrice>>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status400BadRequest);
 
+app.MapGet("/api/historical-prices/count", async (IHistoricalPriceService svc) =>
+{
+    var total = await svc.CountAsync();
+    return Results.Ok(total);
+})
+.WithName("GetHistoricalPricesCount")
+.Produces<long>(StatusCodes.Status200OK);
+
+app.MapGet("/api/historical-prices/{symbol}/count", async (string symbol, IHistoricalPriceService svc) =>
+{
+    if (string.IsNullOrWhiteSpace(symbol)) return Results.BadRequest(new { error = "Symbol is required" });
+    var count = await svc.CountAsync(symbol);
+    return Results.Ok(count);
+})
+.WithName("GetHistoricalPricesCountBySymbol")
+.Produces<long>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest);
+
 app.MapGet("/api/stocks/suggestions", async ([FromQuery] string query, IStockDataService svc) =>
 {
     if (string.IsNullOrWhiteSpace(query))

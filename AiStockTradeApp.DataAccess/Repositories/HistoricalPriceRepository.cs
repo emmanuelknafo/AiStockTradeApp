@@ -48,6 +48,14 @@ namespace AiStockTradeApp.DataAccess.Repositories
             return await q.ToListAsync();
         }
 
+        public async Task<long> CountAsync(string? symbol = null)
+        {
+            var q = _db.HistoricalPrices.AsNoTracking().AsQueryable();
+            if (!string.IsNullOrWhiteSpace(symbol))
+                q = q.Where(p => p.Symbol == symbol);
+            return await q.LongCountAsync();
+        }
+
         public async Task DeleteBySymbolAsync(string symbol)
         {
             var items = _db.HistoricalPrices.Where(p => p.Symbol == symbol);

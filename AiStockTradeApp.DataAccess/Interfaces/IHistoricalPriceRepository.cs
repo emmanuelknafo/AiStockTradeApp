@@ -7,6 +7,7 @@ namespace AiStockTradeApp.DataAccess.Interfaces
         Task UpsertAsync(HistoricalPrice price);
         Task UpsertManyAsync(IEnumerable<HistoricalPrice> prices);
         Task<List<HistoricalPrice>> GetAsync(string symbol, DateTime? from = null, DateTime? to = null, int? take = null);
+    Task<long> CountAsync(string? symbol = null);
         Task DeleteBySymbolAsync(string symbol);
     }
 }
