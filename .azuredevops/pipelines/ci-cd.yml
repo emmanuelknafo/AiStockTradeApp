@@ -392,17 +392,17 @@ stages:
               echo "Microsoft.Playwright package version: ${PW_VER:-unknown}"
               echo "Playwright CLI version BEFORE install (generic):"; npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
               if [ -n "$PW_VER" ]; then echo "Playwright CLI version BEFORE install (pinned ${PW_VER}):"; npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
-              # Install all supported browsers (chromium, firefox, webkit)
+              # Install only Firefox (more reliable on Linux/CI)
               if [ -f "$SH_SCRIPT" ]; then
                 echo "Using bash playwright.sh script"
-                bash "$SH_SCRIPT" install --with-deps
+                bash "$SH_SCRIPT" install --with-deps firefox
               elif [ -f "$PS_SCRIPT" ]; then
                 echo "Using PowerShell playwright.ps1 script"
                 if ! command -v pwsh >/dev/null 2>&1; then
                   echo "pwsh not found; installing PowerShell..."
                   sudo apt-get update -y && sudo apt-get install -y powershell
                 fi
-                pwsh -NoLogo -NoProfile -File "$PS_SCRIPT" install --with-deps
+                pwsh -NoLogo -NoProfile -File "$PS_SCRIPT" install --with-deps firefox
               else
                 echo "No playwright install script found in $PLAYWRIGHT_DIR" >&2
                 echo "Directory listing of $PLAYWRIGHT_DIR:"; ls -la "$PLAYWRIGHT_DIR" || true
@@ -549,10 +549,8 @@ stages:
                 find ~/.cache/ms-playwright -maxdepth 1 -type d -name "$b*" | head -5 || true;
               done
 
-              echo "Testing simple browser launch..."
-              echo "Testing simple browser launch via dotnet playwright (dry run using codegen list)..."
-              (cd AiStockTradeApp.UITests && npx playwright install chromium) || true
-              # Quick launch validation using a minimal script
+              echo "Testing simple browser launch (Firefox)..."
+              # Quick launch validation using a minimal script with Firefox
                 echo "Installing dotnet-script for inline launch probe..."
                 dotnet tool install --global dotnet-script || true
                 export PATH="$PATH:$HOME/.dotnet/tools"
@@ -560,7 +558,7 @@ stages:
               #r "nuget: Microsoft.Playwright"
               using Microsoft.Playwright;
               var pw = await Playwright.CreateAsync();
-              var browser = await pw.Chromium.LaunchAsync(new() { Headless = true, Args = new[]{"--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage"} });
+              var browser = await pw.Firefox.LaunchAsync(new() { Headless = true, Args = new[]{"--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage"} });
               var ctx = await browser.NewContextAsync();
               var page = await ctx.NewPageAsync();
               await page.GotoAsync("https://example.com");
@@ -584,20 +582,27 @@ stages:
               dotnet test AiStockTradeApp.UITests --list-tests --verbosity normal
             displayName: "List UI Tests to be executed"
 
-          - task: DotNetCoreCLI@2
-            displayName: "Run Playwright UI Tests"
+          - task: Bash@3
+            displayName: "Run Playwright UI Tests (Firefox only)"
             inputs:
-              command: "test"
-              projects: "AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj"
-              arguments: '--no-build --configuration Release --verbosity diagnostic --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings --logger "console;verbosity=diagnostic" --results-directory "$(Agent.TempDirectory)" --diag "$(Agent.TempDirectory)/vstest-diag.txt"'
-              publishTestResults: false
+              targetType: inline
+              script: |
+                set -e
+                dotnet test AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj \
+                  --no-build --configuration Release --verbosity diagnostic \
+                  --logger "trx;LogFileName=ui-test-results.trx" \
+                  --settings ./test.runsettings \
+                  --logger "console;verbosity=diagnostic" \
+                  --results-directory "$(Agent.TempDirectory)" \
+                  --diag "$(Agent.TempDirectory)/vstest-diag.txt"
             env:
               ASPNETCORE_ENVIRONMENT: "Development"
               PLAYWRIGHT_BASE_URL: "http://localhost:5000"
               PLAYWRIGHT_API_BASE_URL: "http://localhost:5256"
-              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
+              ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI; User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
               DISPLAY: ":99.0"
               PLAYWRIGHT_LAUNCH_OPTIONS: '{"headless":true,"args":["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu","--no-first-run","--no-default-browser-check","--disable-background-timer-throttling","--disable-backgrounding-occluded-windows","--disable-renderer-backgrounding"]}'
+              BROWSER: "firefox"
               PWDEBUG: "0"
               DEBUG: "pw:api"
               CI: "true"

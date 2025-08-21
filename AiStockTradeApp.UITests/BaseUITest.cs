@@ -75,8 +75,20 @@ public class BaseUITest : PageTest
         // Ensure Playwright browsers are installed where they might be missing (Linux/WSL/CI)
         try
         {
-            // Install Playwright browsers (no system deps to avoid sudo on local/WSL)
-            Microsoft.Playwright.Program.Main(new[] { "install" });
+            // Install only Firefox (more reliable on Linux/CI) and skip if already present
+            var sharedPath = Environment.GetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH");
+            if (!string.IsNullOrWhiteSpace(sharedPath))
+            {
+                try
+                {
+                    if (Directory.Exists(Path.Combine(sharedPath, "firefox")))
+                        goto SkipInstall;
+                }
+                catch { }
+            }
+
+            Microsoft.Playwright.Program.Main(new[] { "install", "firefox" });
+        SkipInstall: ;
         }
         catch { /* best-effort */ }
 
