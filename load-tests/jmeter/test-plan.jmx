@@ -34,17 +34,17 @@
         <boolProp name="ThreadGroup.scheduler">false</boolProp>
       </ThreadGroup>
       <hashTree>
-          <ConfigTestElement guiclass="TestBeanGUI" testclass="CSVDataSet" testname="CSV Paths" enabled="true">
+          <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="CSV Paths" enabled="true">
             <boolProp name="CSVDataSet.ignoreFirstLine">false</boolProp>
             <stringProp name="filename">paths.csv</stringProp>
-            <stringProp name="fileEncoding"></stringProp>
+            <stringProp name="fileEncoding">UTF-8</stringProp>
             <stringProp name="variableNames">pathFromCsv</stringProp>
             <stringProp name="delimiter">,</stringProp>
             <boolProp name="quotedData">false</boolProp>
             <boolProp name="recycle">true</boolProp>
             <boolProp name="stopThread">false</boolProp>
-            <stringProp name="shareMode">all</stringProp>
-          </ConfigTestElement>
+            <stringProp name="shareMode">current_thread</stringProp>
+          </CSVDataSet>
           <hashTree/>
           <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET ${pathFromCsv}" enabled="true">
           <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
@@ -53,7 +53,7 @@
           <stringProp name="HTTPSampler.domain">${__P(host,localhost)}</stringProp>
           <stringProp name="HTTPSampler.port">${__P(port,5000)}</stringProp>
           <stringProp name="HTTPSampler.protocol">${__P(protocol,http)}</stringProp>
-           <stringProp name="HTTPSampler.path">${__groovy(vars.get('pathFromCsv') ?: props.get('path') ?: '/health')}</stringProp>
+           <stringProp name="HTTPSampler.path">${__groovy((vars.get('pathFromCsv')?:props.get('path')?:'/health'))}</stringProp>
           <stringProp name="HTTPSampler.method">GET</stringProp>
           <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
@@ -61,7 +61,21 @@
           <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
           <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
         </HTTPSamplerProxy>
-        <hashTree>
+  <hashTree>
+          <DebugSampler guiclass="DebugSamplerGui" testclass="DebugSampler" testname="Debug Vars" enabled="true">
+            <boolProp name="displayJMeterProperties">false</boolProp>
+            <boolProp name="displayJMeterVariables">true</boolProp>
+            <boolProp name="displaySystemProperties">false</boolProp>
+          </DebugSampler>
+          <hashTree/>
+          
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Log CSV var (debugCsv)" enabled="true">
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script">if (props.get('debugCsv') == 'true') { log.info('CSV pathFromCsv=' + vars.get('pathFromCsv') + ', pathsCsv=' + props.get('pathsCsv')); }</stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
           <IfController guiclass="IfControllerPanel" testclass="IfController" testname="If path == /health" enabled="true">
             <stringProp name="IfController.condition">${__groovy((vars.get('pathFromCsv')?:props.get('path')?:'/health') == '/health')}</stringProp>
             <boolProp name="IfController.evaluateAll">false</boolProp>
