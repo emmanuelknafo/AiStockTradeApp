@@ -58,10 +58,10 @@ stages:
           #   displayName: "Pre-clean leftover artifacts"
           #   condition: always()
 
-          - script: |
-              echo "Listing test directory"
-              ls -la $(Build.SourcesDirectory)/load-tests/jmeter || true
-            displayName: "List test dir"
+          # - script: |
+          #     echo "Listing test directory"
+          #     ls -la $(Build.SourcesDirectory)/load-tests/jmeter || true
+          #   displayName: "List test dir"
 
           - script: |
               echo "Generating JMX from template..."
