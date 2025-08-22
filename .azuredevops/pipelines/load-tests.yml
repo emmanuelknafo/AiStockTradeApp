@@ -43,15 +43,14 @@ stages:
     steps:
       - checkout: self
 
-      - script: |
+      - bash: |
           set -euo pipefail
           DIR="$(Build.SourcesDirectory)/load-tests/jmeter"
           echo "Listing test directory: $DIR"
           ls -la "$DIR" || true
         displayName: 'List test dir'
-        shell: bash
 
-      - script: |
+      - bash: |
           set -euo pipefail
           echo 'Generating JMX from template...'
           sed -e "s|@@THREADS@@|$(threads)|g" -e "s|@@RAMP@@|$(ramp)|g" -e "s|@@LOOP@@|$(loop)|g" "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx" > "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
@@ -63,9 +62,8 @@ stages:
             -n -t test-plan.generated.jmx -l $(resultsFile) \
             -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
         displayName: 'Run JMeter (Docker)'
-        shell: bash
 
-      - script: |
+      - bash: |
           set -euo pipefail
           echo 'Generating HTML report from results...'
           if [ -f "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" ]; then
@@ -76,9 +74,8 @@ stages:
           fi
         displayName: 'Generate HTML report'
         condition: always()
-        shell: bash
 
-      - script: |
+      - bash: |
           set -euo pipefail
           RESULTS="$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
           REPORT_DIR="$(Build.SourcesDirectory)/load-tests/jmeter/report"
@@ -94,7 +91,6 @@ stages:
           fi
         displayName: 'Detect artifacts (set variables)'
         condition: always()
-        shell: bash
 
       - task: PublishPipelineArtifact@1
         displayName: 'Publish JMeter results'
