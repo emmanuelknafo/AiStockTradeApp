@@ -2,6 +2,12 @@ name: Load tests
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'load-tests/**'
+  pull_request:
+    paths:
+      - 'load-tests/**'
 
 jobs:
   run-jmeter:

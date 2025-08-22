@@ -106,6 +106,40 @@
               <intProp name="Assertion.test_type">8</intProp>
             </ResponseAssertion>
             <hashTree/>
+            <IfController guiclass="IfControllerPanel" testclass="IfController" testname="If Dashboard (200)" enabled="true">
+              <stringProp name="IfController.condition">${__groovy((vars.get('pathFromCsv')?:props.get('path')?:'/health') == '/Stock/Dashboard' &amp;&amp; prev.getResponseCode() == '200')}</stringProp>
+              <boolProp name="IfController.evaluateAll">false</boolProp>
+              <boolProp name="IfController.useExpression">true</boolProp>
+            </IfController>
+            <hashTree>
+              <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert title: AI-Powered Stock Tracker" enabled="true">
+                <collectionProp name="Asserion.test_strings">
+                  <stringProp name="title">AI-Powered Stock Tracker - AI Stock Tracker</stringProp>
+                </collectionProp>
+                <stringProp name="Assertion.custom_message"></stringProp>
+                <stringProp name="Assertion.test_field">Assertion.response_data</stringProp>
+                <boolProp name="Assertion.assume_success">false</boolProp>
+                <intProp name="Assertion.test_type">16</intProp>
+              </ResponseAssertion>
+              <hashTree/>
+            </hashTree>
+            <IfController guiclass="IfControllerPanel" testclass="IfController" testname="If ListedStocks (200)" enabled="true">
+              <stringProp name="IfController.condition">${__groovy((vars.get('pathFromCsv')?:props.get('path')?:'/health') == '/ListedStocks' &amp;&amp; prev.getResponseCode() == '200')}</stringProp>
+              <boolProp name="IfController.evaluateAll">false</boolProp>
+              <boolProp name="IfController.useExpression">true</boolProp>
+            </IfController>
+            <hashTree>
+              <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Assert title: Listed Stocks" enabled="true">
+                <collectionProp name="Asserion.test_strings">
+                  <stringProp name="title">Listed Stocks - AI Stock Tracker</stringProp>
+                </collectionProp>
+                <stringProp name="Assertion.custom_message"></stringProp>
+                <stringProp name="Assertion.test_field">Assertion.response_data</stringProp>
+                <boolProp name="Assertion.assume_success">false</boolProp>
+                <intProp name="Assertion.test_type">16</intProp>
+              </ResponseAssertion>
+              <hashTree/>
+            </hashTree>
           </hashTree>
         </hashTree>
         <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="results.jtl" enabled="true">

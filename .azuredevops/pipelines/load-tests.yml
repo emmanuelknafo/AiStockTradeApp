@@ -1,8 +1,21 @@
-# Azure DevOps pipeline to run JMeter load tests (manual trigger)
-# Create a pipeline in Azure DevOps and point it to this file (azure-pipelines/load-tests.yml)
+# Azure DevOps pipeline to run JMeter load tests
+# Auto-runs when files under load-tests/ change (any branch) and on PRs affecting that path.
 
-trigger: none
-pr: none
+trigger:
+  branches:
+    include:
+      - '*'
+  paths:
+    include:
+      - 'load-tests/**'
+
+pr:
+  branches:
+    include:
+      - '*'
+  paths:
+    include:
+      - 'load-tests/**'
 
 variables:
   vmImageName: 'ubuntu-latest'
