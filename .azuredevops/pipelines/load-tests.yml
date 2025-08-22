@@ -45,18 +45,18 @@ stages:
           - checkout: self
             clean: false
 
-          - script: |
-              set -e
-              # Pre-clean leftover artifacts to avoid mixing with previous runs
-              if command -v sudo >/dev/null 2>&1; then
-                sudo rm -rf "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
-                sudo rm -f  "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" || true
-              else
-                rm -rf "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
-                rm -f  "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" || true
-              fi
-            displayName: "Pre-clean leftover artifacts"
-            condition: always()
+          # - script: |
+          #     set -e
+          #     # Pre-clean leftover artifacts to avoid mixing with previous runs
+          #     if command -v sudo >/dev/null 2>&1; then
+          #       sudo rm -rf "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
+          #       sudo rm -f  "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" || true
+          #     else
+          #       rm -rf "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
+          #       rm -f  "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" || true
+          #     fi
+          #   displayName: "Pre-clean leftover artifacts"
+          #   condition: always()
 
           - script: |
               echo "Listing test directory"
