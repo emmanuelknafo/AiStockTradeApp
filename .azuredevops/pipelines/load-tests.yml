@@ -18,18 +18,6 @@ pr:
       - "load-tests/**"
       - ".azuredevops/pipelines/load-tests.yml"
 
-# variables:
-#   vmImageName: 'ubuntu-latest'
-#   jmeterImage: 'justb4/jmeter:5.5'
-#   resultsFile: 'results.jtl'
-#   host: 'app-aistock-dev-003.azurewebsites.net'
-#   port: '443'
-#   protocol: 'https'
-#   path: '/health'
-#   threads: '20'
-#   ramp: '10'
-#   loop: '1'
-
 # Force a Linux agent so bash is available
 pool:
   vmImage: "$(vmImageName)"
