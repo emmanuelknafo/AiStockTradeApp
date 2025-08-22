@@ -92,15 +92,17 @@ stages:
               jmxInputFilesSource: 'sourceCode'
               jmxInputFolderSourcePath: '$(System.DefaultWorkingDirectory)/load-tests/jmeter'
               publishResultsToBuildArtifact: true
-              artifactNameReport: 'PerfAnalyzerReport_$(Stage.StageDisplayName)'
-              artifactNameLog: 'PerfAnalyzerLogs_$(Stage.StageDisplayName)'
+              # Use build number in artifact names to guarantee uniqueness
+              artifactNameReport: 'PerfAnalyzerReport_$(Build.BuildNumber)'
+              artifactNameLog: 'PerfAnalyzerLogs_$(Build.BuildNumber)'
               failPipelineIfJMeterFails: false
               addCustomPluginsToJMeterLib: false
               jmeterURI: 'https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz'
               extractedfolderNameforJMeterBinary: 'apache-jmeter-5.6.3'
               jmeterCustomUnzippedFolderName: 'apache-jmeter-5.6.3'
-              jmeterLogFolder: 'CurrentLog_$(Stage.StageDisplayName)'
-              jmeterReportFolder: 'CurrentReport_$(Stage.StageDisplayName)'
+              # The task's defaults use System.StageName; avoid unsupported Stage.StageDisplayName
+              jmeterLogFolder: 'CurrentLog_$(System.StageName)'
+              jmeterReportFolder: 'CurrentReport_$(System.StageName)'
               telemetryDataCollection: true
               # Append standard -J properties so the test targets the expected host/port/protocol
               additionalCommandLineArguments: '-Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol)'
