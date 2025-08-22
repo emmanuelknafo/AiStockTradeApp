@@ -8,8 +8,9 @@ variables:
   vmImageName: 'ubuntu-latest'
   jmeterImage: 'justb4/jmeter:5.5'
   resultsFile: 'results.jtl'
-  host: 'localhost'
-  port: '5000'
+  host: 'app-aistock-dev-003.azurewebsites.net'
+  port: '443'
+  protocol: 'https'
   threads: '20'
   ramp: '10'
   loop: '1'
@@ -33,7 +34,7 @@ stages:
       - script: |
           echo "Running JMeter in Docker image: $(jmeterImage)"
           docker --version || true
-          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jthreads=$(threads) -Jramp=$(ramp) -Jloop=$(loop)
+          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jthreads=$(threads) -Jramp=$(ramp) -Jloop=$(loop)
         displayName: 'Run JMeter (Docker)'
 
       - task: PublishPipelineArtifact@1
