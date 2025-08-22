@@ -3,7 +3,7 @@ jmeter/results.jtl
 jmeter/*.jtl
 jmeter/*.log
 jmeter/jmeter.log
-jmeter/*.csv
+#jmeter/*.csv
 jmeter/*.tmp
 jmeter/*.bak
 jmeter/*.old
