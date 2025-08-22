@@ -32,14 +32,29 @@ stages:
         displayName: 'List test dir'
 
       - script: |
+          echo "Generating JMX from template..."
+          sed -e "s|@@THREADS@@|$(threads)|g" -e "s|@@RAMP@@|$(ramp)|g" -e "s|@@LOOP@@|$(loop)|g" "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx" > "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
+
           echo "Running JMeter in Docker image: $(jmeterImage)"
           docker --version || true
-          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jthreads=$(threads) -Jramp=$(ramp) -Jloop=$(loop)
+          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.generated.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol)
         displayName: 'Run JMeter (Docker)'
+
+      - script: |
+          echo "Generating HTML report from results..."
+          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
+        displayName: 'Generate HTML report'
 
       - task: PublishPipelineArtifact@1
         displayName: 'Publish JMeter results'
         inputs:
           targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)'
           artifact: 'jmeter-results'
+          publishLocation: 'pipeline'
+
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish JMeter HTML report'
+        inputs:
+          targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/report'
+          artifact: 'jmeter-report'
           publishLocation: 'pipeline'

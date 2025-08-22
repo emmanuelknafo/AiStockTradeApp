@@ -11,4 +11,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run JMeter (Docker)
         run: |
-          docker run --rm -v ${{ github.workspace }}/load-tests/jmeter:/tests -w /tests justb4/jmeter:5.5 -n -t test-plan.jmx -l results.jtl -Jhost=localhost -Jport=5000 -Jthreads=20 -Jramp=10 -Jloop=1
+          set -e
+          echo "Generating JMX from template..."
+          sed -e "s|@@THREADS@@|20|g" -e "s|@@RAMP@@|10|g" -e "s|@@LOOP@@|1|g" "${{ github.workspace }}/load-tests/jmeter/test-plan.jmx" > "${{ github.workspace }}/load-tests/jmeter/test-plan.generated.jmx"
+
+          echo "Running JMeter in Docker image: justb4/jmeter:5.5"
+          docker --version || true
+          docker run --rm -v "${{ github.workspace }}/load-tests/jmeter:/tests" -w /tests justb4/jmeter:5.5 -n -t test-plan.generated.jmx -l results.jtl -Jhost=app-aistock-dev-003.azurewebsites.net -Jport=443 -Jprotocol=https
+
+      - name: Generate HTML report
+        run: |
+          set -e
+          docker run --rm -v "${{ github.workspace }}/load-tests/jmeter:/tests" -w /tests justb4/jmeter:5.5 -g results.jtl -o report || true
+
+      - name: Upload JMeter artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-results
+          path: |
+            load-tests/jmeter/results.jtl
+            load-tests/jmeter/report

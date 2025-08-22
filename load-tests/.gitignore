@@ -1,3 +1,19 @@
-# Ignore JMeter results
+# Ignore JMeter results and logs
 jmeter/results.jtl
+jmeter/*.jtl
 jmeter/*.log
+jmeter/jmeter.log
+jmeter/*.csv
+jmeter/*.tmp
+jmeter/*.bak
+jmeter/*.old
+jmeter/*.lck
+
+# Generated JMX and reports
+jmeter/test-plan.generated.jmx
+jmeter/*.generated.jmx
+jmeter/report/
+
+# OS cruft
+.DS_Store
+Thumbs.db

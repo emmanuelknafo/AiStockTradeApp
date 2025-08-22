@@ -26,10 +26,10 @@
         <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
           <boolProp name="LoopController.continue_forever">false</boolProp>
-          <intProp name="LoopController.loops">${__P(loop,1)}</intProp>
+          <intProp name="LoopController.loops">@@LOOP@@</intProp>
         </elementProp>
-        <intProp name="ThreadGroup.num_threads">${__P(threads,10)}</intProp>
-        <intProp name="ThreadGroup.ramp_time">${__P(ramp,10)}</intProp>
+        <intProp name="ThreadGroup.num_threads">@@THREADS@@</intProp>
+        <intProp name="ThreadGroup.ramp_time">@@RAMP@@</intProp>
         <longProp name="ThreadGroup.duration">0</longProp>
         <boolProp name="ThreadGroup.scheduler">false</boolProp>
       </ThreadGroup>
