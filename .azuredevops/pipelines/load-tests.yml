@@ -83,3 +83,21 @@ stages:
               targetPath: "$(Build.SourcesDirectory)/load-tests/jmeter/report"
               artifact: "jmeter-report"
               publishLocation: "pipeline"
+          - task: perfanalyzer@1
+            inputs:
+              jmxSource: 'sourceCode'
+              jmxsourceRunFilePath: '$(System.DefaultWorkingDirectory)/load-tests/jmeter/test-plan.jmx'
+              jmxPropertySource: 'none'
+              jmxInputFilesSource: 'sourceCode'
+              jmxInputFolderSourcePath: '$(System.DefaultWorkingDirectory)/load-tests/jmeter'
+              publishResultsToBuildArtifact: true
+              artifactNameReport: 'PerfAnalyzerReport_$(Stage.StageDisplayName)'
+              artifactNameLog: 'PerfAnalyzerLogs_$(Stage.StageDisplayName)'
+              failPipelineIfJMeterFails: false
+              addCustomPluginsToJMeterLib: false
+              jmeterURI: 'https://dlcdn.apache.org//jmeter/binaries/apache-jmeter-5.5.tgz'
+              extractedfolderNameforJMeterBinary: 'apache-jmeter-5.5'
+              jmeterCustomUnzippedFolderName: 'apache-jmeter-5.5'
+              jmeterLogFolder: 'CurrentLog_$(Stage.StageDisplayName)'
+              jmeterReportFolder: 'CurrentReport_$(Stage.StageDisplayName)'
+              telemetryDataCollection: true
