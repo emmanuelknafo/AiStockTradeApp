@@ -1,0 +1,83 @@
+version: v0.1
+displayName: Test - 08/22/2025 05:08:29 PM
+description: JMeter load test
+testPlan: load-tests/jmeter/test-plan.azure.jmx
+testType: JMX
+engineInstances: 1
+env:
+  - name: loop
+    value: ''
+  - name: threads
+    value: ''
+  - name: ramp
+    value: ''
+  - name: host
+    value: app-aistock-dev-002.azurewebsites.net
+  - name: port
+    value: '443'
+  - name: protocol
+    value: https
+  - name: path
+    value: ''
+  - name: debugCsv
+    value: ''
+  - name: pathsCsv
+    value: ''
+resourceId: >-
+  /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.LoadTestService/loadtests/load-tests-aistock-dev-002
+configurationFiles:
+  - paths.csv
+  - results.jtl
+referenceIdentities:
+  - type: SystemAssigned
+    kind: Metrics
+appComponents:
+  - resourceId: >-
+      /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.Web/serverFarms/asp-aistock-dev-002
+    resourceName: asp-aistock-dev-002
+    resourceType: Microsoft.Web/serverFarms
+    resourceGroup: rg-aistock-dev-002
+    subscriptionId: 64c3d212-40ed-4c6d-a825-6adfbdf25dad
+    kind: linux
+  - resourceId: >-
+      /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.KeyVault/vaults/kv-aistock-dev-002
+    resourceName: kv-aistock-dev-002
+    resourceType: Microsoft.KeyVault/vaults
+    resourceGroup: rg-aistock-dev-002
+    subscriptionId: 64c3d212-40ed-4c6d-a825-6adfbdf25dad
+  - resourceId: >-
+      /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.Insights/components/appi-aistock-dev-002
+    resourceName: appi-aistock-dev-002
+    resourceType: Microsoft.Insights/components
+    resourceGroup: rg-aistock-dev-002
+    subscriptionId: 64c3d212-40ed-4c6d-a825-6adfbdf25dad
+    kind: web
+  - resourceId: >-
+      /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.Sql/servers/sql-aistock-dev-002/databases/sqldb-aistock-dev-002
+    resourceName: sql-aistock-dev-002/sqldb-aistock-dev-002
+    resourceType: Microsoft.Sql/servers/databases
+    resourceGroup: rg-aistock-dev-002
+    subscriptionId: 64c3d212-40ed-4c6d-a825-6adfbdf25dad
+    kind: v12.0,user
+  - resourceId: >-
+      /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.Web/sites/app-aistock-dev-002
+    resourceName: app-aistock-dev-002
+    resourceType: Microsoft.Web/sites
+    resourceGroup: rg-aistock-dev-002
+    subscriptionId: 64c3d212-40ed-4c6d-a825-6adfbdf25dad
+    kind: app,linux,container
+  - resourceId: >-
+      /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.Web/sites/api-aistock-dev-002
+    resourceName: api-aistock-dev-002
+    resourceType: Microsoft.Web/sites
+    resourceGroup: rg-aistock-dev-002
+    subscriptionId: 64c3d212-40ed-4c6d-a825-6adfbdf25dad
+    kind: app,linux,container
+  - resourceId: >-
+      /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.Sql/servers/sql-aistock-dev-002/databases/master
+    resourceName: sql-aistock-dev-002/master
+    resourceType: Microsoft.Sql/servers/databases
+    resourceGroup: rg-aistock-dev-002
+    subscriptionId: 64c3d212-40ed-4c6d-a825-6adfbdf25dad
+    kind: v12.0,system
+testId: ecca431f-35fd-4040-9be0-605062de0501
