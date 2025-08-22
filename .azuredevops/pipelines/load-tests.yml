@@ -95,9 +95,9 @@ stages:
               artifactNameLog: 'PerfAnalyzerLogs_$(Stage.StageDisplayName)'
               failPipelineIfJMeterFails: false
               addCustomPluginsToJMeterLib: false
-              jmeterURI: 'https://dlcdn.apache.org//jmeter/binaries/apache-jmeter-5.5.tgz'
-              extractedfolderNameforJMeterBinary: 'apache-jmeter-5.5'
-              jmeterCustomUnzippedFolderName: 'apache-jmeter-5.5'
+              jmeterURI: 'https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz'
+              extractedfolderNameforJMeterBinary: 'apache-jmeter-5.6.3'
+              jmeterCustomUnzippedFolderName: 'apache-jmeter-5.6.3'
               jmeterLogFolder: 'CurrentLog_$(Stage.StageDisplayName)'
               jmeterReportFolder: 'CurrentReport_$(Stage.StageDisplayName)'
               telemetryDataCollection: true
