@@ -71,8 +71,7 @@ stages:
               docker --version || true
               docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) \
                 -n -t test-plan.generated.jmx -l $(resultsFile) \
-                -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path) \
-                -JpathsCsv=/tests/paths.csv
+                -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
             displayName: "Run JMeter (Docker)"
 
           - script: |
