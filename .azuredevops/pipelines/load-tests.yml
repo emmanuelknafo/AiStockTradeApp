@@ -82,13 +82,34 @@ stages:
       displayName: 'Generate HTML report'
       condition: always()
 
+    - powershell: |
+        Write-Host "Detecting artifacts and setting variables..."
+        $results = "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
+        if (Test-Path $results) {
+          Write-Host "results.jtl found"
+          Write-Host "##vso[task.setvariable variable=resultsExists]true"
+        } else {
+          Write-Host "results.jtl NOT found"
+          Write-Host "##vso[task.setvariable variable=resultsExists]false"
+        }
+        $reportDir = "$(Build.SourcesDirectory)/load-tests/jmeter/report"
+        if (Test-Path $reportDir) {
+          Write-Host "report directory found"
+          Write-Host "##vso[task.setvariable variable=reportExists]true"
+        } else {
+          Write-Host "report directory NOT found"
+          Write-Host "##vso[task.setvariable variable=reportExists]false"
+        }
+      displayName: 'Detect artifacts (set variables)'
+      condition: always()
+
     - task: PublishPipelineArtifact@1
       displayName: 'Publish JMeter results'
       inputs:
         targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)'
         artifact: 'jmeter-results'
         publishLocation: 'pipeline'
-      condition: and(always(), exists('$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)'))
+      condition: and(always(), eq(variables.resultsExists, 'true'))
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish JMeter HTML report'
@@ -96,4 +117,4 @@ stages:
         targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/report'
         artifact: 'jmeter-report'
         publishLocation: 'pipeline'
-      condition: and(always(), exists('$(Build.SourcesDirectory)/load-tests/jmeter/report'))
+      condition: and(always(), eq(variables.reportExists, 'true'))
