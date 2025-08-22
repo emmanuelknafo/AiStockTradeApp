@@ -20,7 +20,7 @@ pr:
       - '.azuredevops/pipelines/load-tests.yml'
 
 variables:
-  vmImageName: 'windows-latest'
+  vmImageName: 'ubuntu-latest'
   jmeterImage: 'justb4/jmeter:5.5'
   resultsFile: 'results.jtl'
   host: 'app-aistock-dev-003.azurewebsites.net'
@@ -37,44 +37,64 @@ stages:
   displayName: 'Run JMeter load tests'
   jobs:
   - job: RunJMeter
-    displayName: 'Run JMeter (Docker)'
+    displayName: 'Run JMeter (Container Job)'
     pool:
-      vmImage: 'windows-latest'
+      vmImage: 'ubuntu-latest'
+    container: 'justb4/jmeter:5.5'
     steps:
     - checkout: self
 
-    - task: CmdLine@2
+    - bash: |
+        set -euo pipefail
+        DIR="$(Build.SourcesDirectory)/load-tests/jmeter"
+        echo "Listing test directory: $DIR"
+        ls -la "$DIR" || true
       displayName: 'List test dir'
-      inputs:
-        script: |
-          echo Listing test directory via container
-          docker run --rm --entrypoint /bin/sh -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" $(jmeterImage) -lc "ls -la /tests || true"
 
-    - task: CmdLine@2
-      displayName: 'Run JMeter (Docker)'
-      inputs:
-        script: |
-          echo Generating JMX and running JMeter via container
-          docker run --rm --entrypoint /bin/sh -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -lc "cp test-plan.jmx test-plan.generated.jmx && sed -i 's/@@THREADS@@/$(threads)/g' test-plan.generated.jmx && sed -i 's/@@RAMP@@/$(ramp)/g' test-plan.generated.jmx && sed -i 's/@@LOOP@@/$(loop)/g' test-plan.generated.jmx && rm -f $(resultsFile) || true"
-          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.generated.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
+    - bash: |
+        set -euo pipefail
+        cd "$(Build.SourcesDirectory)/load-tests/jmeter"
+        echo "Generating JMX from template..."
+        cp test-plan.jmx test-plan.generated.jmx
+        sed -i "s/@@THREADS@@/$(threads)/g" test-plan.generated.jmx
+        sed -i "s/@@RAMP@@/$(ramp)/g" test-plan.generated.jmx
+        sed -i "s/@@LOOP@@/$(loop)/g" test-plan.generated.jmx
+        echo "Cleaning old results..."
+        rm -f "$(resultsFile)" || true
+        echo "Running JMeter..."
+        jmeter -n -t test-plan.generated.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
+      displayName: 'Run JMeter'
 
-    - task: CmdLine@2
+    - bash: |
+        set -euo pipefail
+        cd "$(Build.SourcesDirectory)/load-tests/jmeter"
+        echo "Generating HTML report..."
+        if [ -f "$(resultsFile)" ]; then
+          rm -rf report || true
+          jmeter -g $(resultsFile) -o report
+        else
+          echo "Results file not found. Skipping HTML report."
+        fi
       displayName: 'Generate HTML report'
       condition: always()
-      inputs:
-        script: |
-          echo Generating HTML report via container
-          docker run --rm --entrypoint /bin/sh -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -lc "if [ -f /tests/$(resultsFile) ]; then rm -rf /tests/report || true; fi"
-          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) sh -lc "if [ -f /tests/$(resultsFile) ]; then jmeter -g $(resultsFile) -o /tests/report; else echo 'Results file not found. Skipping HTML report.'; fi"
         
 
-    - task: CmdLine@2
+    - bash: |
+        set -euo pipefail
+        RESULTS="$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
+        REPORT_DIR="$(Build.SourcesDirectory)/load-tests/jmeter/report"
+        if [ -f "$RESULTS" ]; then
+          echo "##vso[task.setvariable variable=resultsExists]true"
+        else
+          echo "##vso[task.setvariable variable=resultsExists]false"
+        fi
+        if [ -d "$REPORT_DIR" ]; then
+          echo "##vso[task.setvariable variable=reportExists]true"
+        else
+          echo "##vso[task.setvariable variable=reportExists]false"
+        fi
       displayName: 'Detect artifacts (set variables)'
       condition: always()
-      inputs:
-        script: |
-          echo Detecting artifacts via container
-          docker run --rm --entrypoint /bin/sh -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" $(jmeterImage) -lc "if [ -f /tests/$(resultsFile) ]; then echo '##vso[task.setvariable variable=resultsExists]true'; else echo '##vso[task.setvariable variable=resultsExists]false'; fi; if [ -d /tests/report ]; then echo '##vso[task.setvariable variable=reportExists]true'; else echo '##vso[task.setvariable variable=reportExists]false'; fi"
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish JMeter results'
