@@ -38,6 +38,9 @@ param instanceNumber string = '002'
 @description('Whether to deploy container registry (only for dev environment)')
 param deployContainerRegistry bool = true
 
+@description('Whether to deploy Azure Load Testing resource as part of infrastructure')
+param deployLoadTesting bool = false
+
 @description('Azure AD admin object ID for SQL Server')
 param azureAdAdminObjectId string = ''
 
@@ -95,6 +98,8 @@ var sqlDatabaseName = 'sqldb-${resourceNamePrefix}-${instanceNumber}'
 var vnetName = 'vnet-${resourceNamePrefix}-${instanceNumber}'
 var appIntegrationSubnetName = 'snet-appintegration'
 var privateEndpointSubnetName = 'snet-private-endpoints'
+var loadTestResourceName = 'load-tests-${resourceNamePrefix}-${instanceNumber}'
+var deployLoadTestingEnabled = deployLoadTesting
 // Entra-only: Always use Azure AD auth for connection strings.
 
 // Defaults for temporary SQL admin when not provided
@@ -123,13 +128,13 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2025-02
 
 // Application Insights
 resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
-  name: applicationInsightsName
-  location: location
-  kind: 'web'
-  properties: {
-    Application_Type: 'web'
-    WorkspaceResourceId: logAnalyticsWorkspace.id
-  }
+	name: applicationInsightsName
+	location: location
+	kind: 'web'
+	properties: {
+		Application_Type: 'web'
+		WorkspaceResourceId: logAnalyticsWorkspace.id
+	}
 }
 
 // Container Registry (only deployed for dev environment)
@@ -685,3 +690,6 @@ output keyVaultName string = keyVault.name
 output applicationInsightsName string = applicationInsights.name
 output vnetName string = (requireVNetIntegration && manageNetworking) ? vnetName : 'not-deployed'
 output privateSqlEnabled bool = enablePrivateSql
+
+output loadTestName string = loadTestResourceName
+output loadTestResourceId string = resourceId('Microsoft.LoadTestService/loadTests', loadTestResourceName)
