@@ -16,7 +16,22 @@ jobs:
     #runs-on: ubuntu-latest
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Pre-clean leftover artifacts
+        if: always()
+        run: |
+          set -e
+          # Remove previous root-owned artifacts to avoid checkout clean failures
+          if command -v sudo >/dev/null 2>&1; then
+            sudo rm -rf "${{ github.workspace }}/load-tests/jmeter/report" || true
+            sudo rm -f  "${{ github.workspace }}/load-tests/jmeter/results.jtl" || true
+          else
+            rm -rf "${{ github.workspace }}/load-tests/jmeter/report" || true
+            rm -f  "${{ github.workspace }}/load-tests/jmeter/results.jtl" || true
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          clean: false
       - name: Run JMeter (Docker)
         run: |
           set -e
@@ -28,12 +43,12 @@ jobs:
           # Remove previous results to avoid mixing failures from older runs
           rm -f "${{ github.workspace }}/load-tests/jmeter/results.jtl" || true
           # CSV at /tests/paths.csv drives the endpoints; -Jpath provides optional fallback if CSV missing
-          docker run --rm -v "${{ github.workspace }}/load-tests/jmeter:/tests" -w /tests justb4/jmeter:5.5 -n -t test-plan.generated.jmx -l results.jtl -Jhost=app-aistock-dev-003.azurewebsites.net -Jport=443 -Jprotocol=https -Jpath=/health
+          docker run --rm -u "$(id -u):$(id -g)" -v "${{ github.workspace }}/load-tests/jmeter:/tests" -w /tests justb4/jmeter:5.5 -n -t test-plan.generated.jmx -l results.jtl -Jhost=app-aistock-dev-003.azurewebsites.net -Jport=443 -Jprotocol=https -Jpath=/health
 
       - name: Generate HTML report
         run: |
           set -e
-          docker run --rm -v "${{ github.workspace }}/load-tests/jmeter:/tests" -w /tests justb4/jmeter:5.5 -g results.jtl -o report || true
+          docker run --rm -u "$(id -u):$(id -g)" -v "${{ github.workspace }}/load-tests/jmeter:/tests" -w /tests justb4/jmeter:5.5 -g results.jtl -o report || true
 
       - name: Upload JMeter artifacts
         uses: actions/upload-artifact@v4
