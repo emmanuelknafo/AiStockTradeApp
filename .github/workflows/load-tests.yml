@@ -5,9 +5,11 @@ on:
   push:
     paths:
       - 'load-tests/**'
+      - '.github/workflows/load-tests.yml'
   pull_request:
     paths:
       - 'load-tests/**'
+      - '.github/workflows/load-tests.yml'
 
 jobs:
   run-jmeter:
