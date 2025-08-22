@@ -42,7 +42,10 @@ stages:
 
       - script: |
           echo "Generating HTML report from results..."
-          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
+          # Ensure previous report directory is removed; JMeter requires a non-existing or empty output dir
+          rm -rf "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
+          # Generate report inside the mounted volume path (/tests maps to $(Build.SourcesDirectory)/load-tests/jmeter)
+          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o /tests/report
         displayName: 'Generate HTML report'
 
       - task: PublishPipelineArtifact@1
