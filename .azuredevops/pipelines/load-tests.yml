@@ -30,79 +30,84 @@ variables:
   ramp: '10'
   loop: '1'
 
+# Force a Linux agent so bash is available
+pool:
+  vmImage: '$(vmImageName)'
+
 stages:
 - stage: LoadTests
   displayName: 'Run JMeter load tests'
   jobs:
   - job: RunJMeter
     displayName: 'Run JMeter (Docker)'
-    pool:
-      name: 'Azure Pipelines'
-      vmImage: 'ubuntu-latest'
     steps:
-    - checkout: self
+      - checkout: self
 
-    - script: |
-        set -euo pipefail
-        DIR="$(Build.SourcesDirectory)/load-tests/jmeter"
-        echo "Listing test directory: $DIR"
-        ls -la "$DIR" || true
-      displayName: 'List test dir'
+      - script: |
+          set -euo pipefail
+          DIR="$(Build.SourcesDirectory)/load-tests/jmeter"
+          echo "Listing test directory: $DIR"
+          ls -la "$DIR" || true
+        displayName: 'List test dir'
+        shell: bash
 
-    - script: |
-        set -euo pipefail
-        echo 'Generating JMX from template...'
-        sed -e "s|@@THREADS@@|$(threads)|g" -e "s|@@RAMP@@|$(ramp)|g" -e "s|@@LOOP@@|$(loop)|g" "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx" > "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
-        echo 'Cleaning old results...'
-        rm -f "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" || true
-        echo "Running JMeter in Docker image: $(jmeterImage)"
-        docker --version || true
-        docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) \
-          -n -t test-plan.generated.jmx -l $(resultsFile) \
-          -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
-      displayName: 'Run JMeter (Docker)'
+      - script: |
+          set -euo pipefail
+          echo 'Generating JMX from template...'
+          sed -e "s|@@THREADS@@|$(threads)|g" -e "s|@@RAMP@@|$(ramp)|g" -e "s|@@LOOP@@|$(loop)|g" "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx" > "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
+          echo 'Cleaning old results...'
+          rm -f "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" || true
+          echo "Running JMeter in Docker image: $(jmeterImage)"
+          docker --version || true
+          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) \
+            -n -t test-plan.generated.jmx -l $(resultsFile) \
+            -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
+        displayName: 'Run JMeter (Docker)'
+        shell: bash
 
-    - script: |
-        set -euo pipefail
-        echo 'Generating HTML report from results...'
-        if [ -f "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" ]; then
-          rm -rf "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
-          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o /tests/report
-        else
-          echo 'Results file not found. Skipping HTML report.'
-        fi
-      displayName: 'Generate HTML report'
-      condition: always()
+      - script: |
+          set -euo pipefail
+          echo 'Generating HTML report from results...'
+          if [ -f "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" ]; then
+            rm -rf "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
+            docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o /tests/report
+          else
+            echo 'Results file not found. Skipping HTML report.'
+          fi
+        displayName: 'Generate HTML report'
+        condition: always()
+        shell: bash
 
-    - script: |
-        set -euo pipefail
-        RESULTS="$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
-        REPORT_DIR="$(Build.SourcesDirectory)/load-tests/jmeter/report"
-        if [ -f "$RESULTS" ]; then
-          echo "##vso[task.setvariable variable=resultsExists]true"
-        else
-          echo "##vso[task.setvariable variable=resultsExists]false"
-        fi
-        if [ -d "$REPORT_DIR" ]; then
-          echo "##vso[task.setvariable variable=reportExists]true"
-        else
-          echo "##vso[task.setvariable variable=reportExists]false"
-        fi
-      displayName: 'Detect artifacts (set variables)'
-      condition: always()
+      - script: |
+          set -euo pipefail
+          RESULTS="$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
+          REPORT_DIR="$(Build.SourcesDirectory)/load-tests/jmeter/report"
+          if [ -f "$RESULTS" ]; then
+            echo "##vso[task.setvariable variable=resultsExists]true"
+          else
+            echo "##vso[task.setvariable variable=resultsExists]false"
+          fi
+          if [ -d "$REPORT_DIR" ]; then
+            echo "##vso[task.setvariable variable=reportExists]true"
+          else
+            echo "##vso[task.setvariable variable=reportExists]false"
+          fi
+        displayName: 'Detect artifacts (set variables)'
+        condition: always()
+        shell: bash
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish JMeter results'
-      condition: and(always(), eq(variables.resultsExists, 'true'))
-      inputs:
-        targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)'
-        artifact: 'jmeter-results'
-        publishLocation: 'pipeline'
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish JMeter results'
+        condition: and(always(), eq(variables.resultsExists, 'true'))
+        inputs:
+          targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)'
+          artifact: 'jmeter-results'
+          publishLocation: 'pipeline'
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish JMeter HTML report'
-      condition: and(always(), eq(variables.reportExists, 'true'))
-      inputs:
-        targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/report'
-        artifact: 'jmeter-report'
-        publishLocation: 'pipeline'
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish JMeter HTML report'
+        condition: and(always(), eq(variables.reportExists, 'true'))
+        inputs:
+          targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/report'
+          artifact: 'jmeter-report'
+          publishLocation: 'pipeline'
