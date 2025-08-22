@@ -20,7 +20,7 @@ pr:
       - '.azuredevops/pipelines/load-tests.yml'
 
 variables:
-  vmImageName: 'ubuntu-latest'
+  vmImageName: 'windows-latest'
   jmeterImage: 'justb4/jmeter:5.5'
   resultsFile: 'results.jtl'
   host: 'app-aistock-dev-003.azurewebsites.net'
@@ -39,21 +39,12 @@ stages:
   - job: RunJMeter
     displayName: 'Run JMeter (Docker)'
     pool:
-      vmImage: 'ubuntu-latest'
+      vmImage: 'windows-latest'
     steps:
     - checkout: self
 
-    - bash: |
-        set -euo pipefail
-        DIR="$(Build.SourcesDirectory)/load-tests/jmeter"
-        echo "Listing test directory: $DIR"
-        if [ -d "$DIR" ]; then ls -la "$DIR"; else echo "Directory not found: $DIR"; fi
-      displayName: 'List test dir (Linux)'
-      condition: and(always(), eq(variables['Agent.OS'], 'Linux'))
-
     - task: PowerShell@2
-      displayName: 'List test dir (Windows)'
-      condition: and(always(), eq(variables['Agent.OS'], 'Windows_NT'))
+      displayName: 'List test dir'
       inputs:
         targetType: inline
         pwsh: false
@@ -62,28 +53,8 @@ stages:
           $dir = "$(Build.SourcesDirectory)/load-tests/jmeter"
           if (Test-Path $dir) { Get-ChildItem -Force -LiteralPath $dir | Format-Table -AutoSize } else { Write-Host "Directory not found: $dir" }
 
-    - bash: |
-        set -euo pipefail
-        echo "Generating JMX from template (Linux)..."
-        TPL="$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx"
-        GEN="$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
-        cp "$TPL" "$GEN"
-        sed -i "s/@@THREADS@@/$(threads)/g" "$GEN"
-        sed -i "s/@@RAMP@@/$(ramp)/g" "$GEN"
-        sed -i "s/@@LOOP@@/$(loop)/g" "$GEN"
-        echo "Running JMeter in Docker image: $(jmeterImage)"
-        docker --version
-        RESULTS="$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
-        [ -f "$RESULTS" ] && rm -f "$RESULTS" || true
-        docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) \
-          -n -t test-plan.generated.jmx -l $(resultsFile) \
-          -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
-      displayName: 'Run JMeter (Docker) - Linux'
-      condition: and(always(), eq(variables['Agent.OS'], 'Linux'))
-
     - task: PowerShell@2
-      displayName: 'Run JMeter (Docker) - Windows'
-      condition: and(always(), eq(variables['Agent.OS'], 'Windows_NT'))
+      displayName: 'Run JMeter (Docker)'
       inputs:
         targetType: inline
         pwsh: false
@@ -104,23 +75,8 @@ stages:
           if (Test-Path $results) { Remove-Item -LiteralPath $results -Force -ErrorAction SilentlyContinue }
           docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.generated.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
 
-    - bash: |
-        set -euo pipefail
-        echo "Generating HTML report (Linux)..."
-        RESULTS="$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
-        if [ -f "$RESULTS" ]; then
-          REPORT_DIR="$(Build.SourcesDirectory)/load-tests/jmeter/report"
-          [ -d "$REPORT_DIR" ] && rm -rf "$REPORT_DIR" || true
-          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o /tests/report
-        else
-          echo "Results file not found ($RESULTS). Skipping HTML report generation."
-        fi
-      displayName: 'Generate HTML report - Linux'
-      condition: and(always(), eq(variables['Agent.OS'], 'Linux'))
-
     - task: PowerShell@2
-      displayName: 'Generate HTML report - Windows'
-      condition: and(always(), eq(variables['Agent.OS'], 'Windows_NT'))
+      displayName: 'Generate HTML report'
       inputs:
         targetType: inline
         pwsh: false
@@ -138,31 +94,8 @@ stages:
           }
         
 
-    - bash: |
-        set -euo pipefail
-        echo "Detecting artifacts (Linux)"
-        RESULTS="$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
-        if [ -f "$RESULTS" ]; then
-          echo "results.jtl found"
-          echo "##vso[task.setvariable variable=resultsExists]true"
-        else
-          echo "results.jtl NOT found"
-          echo "##vso[task.setvariable variable=resultsExists]false"
-        fi
-        REPORT_DIR="$(Build.SourcesDirectory)/load-tests/jmeter/report"
-        if [ -d "$REPORT_DIR" ]; then
-          echo "report directory found"
-          echo "##vso[task.setvariable variable=reportExists]true"
-        else
-          echo "report directory NOT found"
-          echo "##vso[task.setvariable variable=reportExists]false"
-        fi
-      displayName: 'Detect artifacts (set variables) - Linux'
-      condition: and(always(), eq(variables['Agent.OS'], 'Linux'))
-
     - task: PowerShell@2
-      displayName: 'Detect artifacts (set variables) - Windows'
-      condition: and(always(), eq(variables['Agent.OS'], 'Windows_NT'))
+      displayName: 'Detect artifacts (set variables)'
       inputs:
         targetType: inline
         pwsh: false
