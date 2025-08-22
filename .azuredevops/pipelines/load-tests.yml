@@ -11,6 +11,8 @@ variables:
   host: 'app-aistock-dev-003.azurewebsites.net'
   port: '443'
   protocol: 'https'
+  # Optional fallback when CSV not found; sampler prefers CSV
+  path: '/health'
   threads: '20'
   ramp: '10'
   loop: '1'
@@ -37,7 +39,9 @@ stages:
 
           echo "Running JMeter in Docker image: $(jmeterImage)"
           docker --version || true
-          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.generated.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol)
+          # Remove previous results to avoid mixing failures from older runs
+          rm -f "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" || true
+          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.generated.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
         displayName: 'Run JMeter (Docker)'
 
       - script: |
