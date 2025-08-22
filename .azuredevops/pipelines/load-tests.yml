@@ -86,7 +86,8 @@ stages:
           - task: perfanalyzer@1
             inputs:
               jmxSource: 'sourceCode'
-              jmxsourceRunFilePath: '$(System.DefaultWorkingDirectory)/load-tests/jmeter/test-plan.jmx'
+              # Use the generated JMX with placeholders replaced by sed above
+              jmxsourceRunFilePath: '$(System.DefaultWorkingDirectory)/load-tests/jmeter/test-plan.generated.jmx'
               jmxPropertySource: 'none'
               jmxInputFilesSource: 'sourceCode'
               jmxInputFolderSourcePath: '$(System.DefaultWorkingDirectory)/load-tests/jmeter'
@@ -101,3 +102,5 @@ stages:
               jmeterLogFolder: 'CurrentLog_$(Stage.StageDisplayName)'
               jmeterReportFolder: 'CurrentReport_$(Stage.StageDisplayName)'
               telemetryDataCollection: true
+              # Append standard -J properties so the test targets the expected host/port/protocol
+              additionalCommandLineArguments: '-Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol)'
