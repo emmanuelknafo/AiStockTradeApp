@@ -43,80 +43,38 @@ stages:
     steps:
     - checkout: self
 
-    - task: PowerShell@2
+    - task: CmdLine@2
       displayName: 'List test dir'
       inputs:
-        targetType: inline
-        pwsh: false
         script: |
-          Write-Host "Listing test directory"
-          $dir = "$(Build.SourcesDirectory)/load-tests/jmeter"
-          if (Test-Path $dir) { Get-ChildItem -Force -LiteralPath $dir | Format-Table -AutoSize } else { Write-Host "Directory not found: $dir" }
+          echo Listing test directory via container
+          docker run --rm --entrypoint /bin/sh -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" $(jmeterImage) -lc "ls -la /tests || true"
 
-    - task: PowerShell@2
+    - task: CmdLine@2
       displayName: 'Run JMeter (Docker)'
       inputs:
-        targetType: inline
-        pwsh: false
         script: |
-          Write-Host "Generating JMX from template (Windows)..."
-          $tpl = "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx"
-          $gen = "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
-          $content = Get-Content -LiteralPath $tpl -Raw
-          $content = $content -replace '@@THREADS@@','$(threads)'
-          $content = $content -replace '@@RAMP@@','$(ramp)'
-          $content = $content -replace '@@LOOP@@','$(loop)'
-          Set-Content -LiteralPath $gen -Value $content -Encoding UTF8
-
-          Write-Host "Running JMeter in Docker image: $(jmeterImage)"
-          docker --version | Out-Host
-          # Remove previous results to avoid mixing failures from older runs
-          $results = "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
-          if (Test-Path $results) { Remove-Item -LiteralPath $results -Force -ErrorAction SilentlyContinue }
+          echo Generating JMX and running JMeter via container
+          docker run --rm --entrypoint /bin/sh -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -lc "cp test-plan.jmx test-plan.generated.jmx && sed -i 's/@@THREADS@@/$(threads)/g' test-plan.generated.jmx && sed -i 's/@@RAMP@@/$(ramp)/g' test-plan.generated.jmx && sed -i 's/@@LOOP@@/$(loop)/g' test-plan.generated.jmx && rm -f $(resultsFile) || true"
           docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.generated.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
 
-    - task: PowerShell@2
+    - task: CmdLine@2
       displayName: 'Generate HTML report'
+      condition: always()
       inputs:
-        targetType: inline
-        pwsh: false
         script: |
-          Write-Host "Generating HTML report from results (Windows)..."
-          $results = "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
-          if (Test-Path $results) {
-            # Ensure previous report directory is removed; JMeter requires a non-existing or empty output dir
-            $reportDir = "$(Build.SourcesDirectory)/load-tests/jmeter/report"
-            if (Test-Path $reportDir) { Remove-Item -LiteralPath $reportDir -Recurse -Force -ErrorAction SilentlyContinue }
-            # Generate report inside the mounted volume path (/tests maps to $(Build.SourcesDirectory)/load-tests/jmeter)
-            docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o /tests/report
-          } else {
-            Write-Host "Results file not found ($results). Skipping HTML report generation."
-          }
+          echo Generating HTML report via container
+          docker run --rm --entrypoint /bin/sh -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -lc "if [ -f /tests/$(resultsFile) ]; then rm -rf /tests/report || true; fi"
+          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) sh -lc "if [ -f /tests/$(resultsFile) ]; then jmeter -g $(resultsFile) -o /tests/report; else echo 'Results file not found. Skipping HTML report.'; fi"
         
 
-    - task: PowerShell@2
+    - task: CmdLine@2
       displayName: 'Detect artifacts (set variables)'
+      condition: always()
       inputs:
-        targetType: inline
-        pwsh: false
         script: |
-          Write-Host "Detecting artifacts and setting variables (Windows)..."
-          $results = "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
-          if (Test-Path $results) {
-            Write-Host "results.jtl found"
-            Write-Host "##vso[task.setvariable variable=resultsExists]true"
-          } else {
-            Write-Host "results.jtl NOT found"
-            Write-Host "##vso[task.setvariable variable=resultsExists]false"
-          }
-          $reportDir = "$(Build.SourcesDirectory)/load-tests/jmeter/report"
-          if (Test-Path $reportDir) {
-            Write-Host "report directory found"
-            Write-Host "##vso[task.setvariable variable=reportExists]true"
-          } else {
-            Write-Host "report directory NOT found"
-            Write-Host "##vso[task.setvariable variable=reportExists]false"
-          }
+          echo Detecting artifacts via container
+          docker run --rm --entrypoint /bin/sh -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" $(jmeterImage) -lc "if [ -f /tests/$(resultsFile) ]; then echo '##vso[task.setvariable variable=resultsExists]true'; else echo '##vso[task.setvariable variable=resultsExists]false'; fi; if [ -d /tests/report ]; then echo '##vso[task.setvariable variable=reportExists]true'; else echo '##vso[task.setvariable variable=reportExists]false'; fi"
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish JMeter results'
