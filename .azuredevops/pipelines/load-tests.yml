@@ -43,29 +43,44 @@ stages:
     steps:
     - checkout: self
 
-    - bash: |
-        echo "Listing test directory"
-        ls -la $(Build.SourcesDirectory)/load-tests/jmeter || true
+    - powershell: |
+        Write-Host "Listing test directory"
+        $dir = "$(Build.SourcesDirectory)/load-tests/jmeter"
+        if (Test-Path $dir) { Get-ChildItem -Force -LiteralPath $dir | Format-Table -AutoSize } else { Write-Host "Directory not found: $dir" }
       displayName: 'List test dir'
 
-    - bash: |
-        echo "Generating JMX from template..."
-        sed -e "s|@@THREADS@@|$(threads)|g" -e "s|@@RAMP@@|$(ramp)|g" -e "s|@@LOOP@@|$(loop)|g" "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx" > "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
+    - powershell: |
+        Write-Host "Generating JMX from template..."
+        $tpl = "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx"
+        $gen = "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
+        $content = Get-Content -LiteralPath $tpl -Raw
+        $content = $content -replace '@@THREADS@@','$(threads)'
+        $content = $content -replace '@@RAMP@@','$(ramp)'
+        $content = $content -replace '@@LOOP@@','$(loop)'
+        Set-Content -LiteralPath $gen -Value $content -Encoding UTF8
 
-        echo "Running JMeter in Docker image: $(jmeterImage)"
-        docker --version || true
+        Write-Host "Running JMeter in Docker image: $(jmeterImage)"
+        docker --version | Out-Host
         # Remove previous results to avoid mixing failures from older runs
-        rm -f "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)" || true
+        $results = "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
+        if (Test-Path $results) { Remove-Item -LiteralPath $results -Force -ErrorAction SilentlyContinue }
         docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.generated.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
       displayName: 'Run JMeter (Docker)'
 
-    - bash: |
-        echo "Generating HTML report from results..."
-        # Ensure previous report directory is removed; JMeter requires a non-existing or empty output dir
-        rm -rf "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
-        # Generate report inside the mounted volume path (/tests maps to $(Build.SourcesDirectory)/load-tests/jmeter)
-        docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o /tests/report
+    - powershell: |
+        Write-Host "Generating HTML report from results..."
+        $results = "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
+        if (Test-Path $results) {
+          # Ensure previous report directory is removed; JMeter requires a non-existing or empty output dir
+          $reportDir = "$(Build.SourcesDirectory)/load-tests/jmeter/report"
+          if (Test-Path $reportDir) { Remove-Item -LiteralPath $reportDir -Recurse -Force -ErrorAction SilentlyContinue }
+          # Generate report inside the mounted volume path (/tests maps to $(Build.SourcesDirectory)/load-tests/jmeter)
+          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o /tests/report
+        } else {
+          Write-Host "Results file not found ($results). Skipping HTML report generation."
+        }
       displayName: 'Generate HTML report'
+      condition: always()
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish JMeter results'
@@ -73,6 +88,7 @@ stages:
         targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)'
         artifact: 'jmeter-results'
         publishLocation: 'pipeline'
+      condition: and(always(), exists('$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)'))
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish JMeter HTML report'
@@ -80,3 +96,4 @@ stages:
         targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/report'
         artifact: 'jmeter-report'
         publishLocation: 'pipeline'
+      condition: and(always(), exists('$(Build.SourcesDirectory)/load-tests/jmeter/report'))
