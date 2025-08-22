@@ -20,6 +20,8 @@ on:
       - "data/**"
       - "AiStockTradeApp.Cli/**"
       - ".github/workflows/cli-ci.yml"
+      - ".github/workflows/load-tests.yml"
+      - "load-tests/**"
   pull_request:
     branches: [main]
     paths-ignore:
@@ -39,6 +41,8 @@ on:
       - "data/**"
       - "AiStockTradeApp.Cli/**"
       - ".github/workflows/cli-ci.yml"
+      - ".github/workflows/load-tests.yml"
+      - "load-tests/**"
   # CI triggers temporarily disabled; manual runs only
   workflow_dispatch:
     inputs:

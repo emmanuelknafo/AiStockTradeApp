@@ -1,0 +1,44 @@
+# Azure DevOps pipeline to run JMeter load tests (manual trigger)
+# Create a pipeline in Azure DevOps and point it to this file (azure-pipelines/load-tests.yml)
+
+trigger: none
+pr: none
+
+variables:
+  vmImageName: 'ubuntu-latest'
+  jmeterImage: 'justb4/jmeter:5.5'
+  resultsFile: 'results.jtl'
+  host: 'localhost'
+  port: '5000'
+  threads: '20'
+  ramp: '10'
+  loop: '1'
+
+stages:
+- stage: LoadTests
+  displayName: 'Run JMeter load tests'
+  jobs:
+  - job: RunJMeter
+    displayName: 'Run JMeter (Docker)'
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+      - checkout: self
+
+      - script: |
+          echo "Listing test directory"
+          ls -la $(Build.SourcesDirectory)/load-tests/jmeter || true
+        displayName: 'List test dir'
+
+      - script: |
+          echo "Running JMeter in Docker image: $(jmeterImage)"
+          docker --version || true
+          docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -n -t test-plan.jmx -l $(resultsFile) -Jhost=$(host) -Jport=$(port) -Jthreads=$(threads) -Jramp=$(ramp) -Jloop=$(loop)
+        displayName: 'Run JMeter (Docker)'
+
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish JMeter results'
+        inputs:
+          targetPath: '$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)'
+          artifact: 'jmeter-results'
+          publishLocation: 'pipeline'

@@ -1,0 +1,3 @@
+# Ignore JMeter results
+jmeter/results.jtl
+jmeter/*.log

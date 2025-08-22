@@ -1,0 +1,13 @@
+name: Load tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-jmeter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run JMeter (Docker)
+        run: |
+          docker run --rm -v ${{ github.workspace }}/load-tests/jmeter:/tests -w /tests justb4/jmeter:5.5 -n -t test-plan.jmx -l results.jtl -Jhost=localhost -Jport=5000 -Jthreads=20 -Jramp=10 -Jloop=1
