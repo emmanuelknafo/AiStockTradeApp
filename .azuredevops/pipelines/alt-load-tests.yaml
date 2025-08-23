@@ -1,0 +1,44 @@
+trigger:
+  branches:
+    include:
+      - "*"
+  paths:
+    include:
+      - "load-tests/**"
+      - ".azuredevops/pipelines/alt-load-tests.yml"
+
+pr:
+  branches:
+    include:
+      - "*"
+  paths:
+    include:
+      - "load-tests/**"
+      - ".azuredevops/pipelines/alt-load-tests.yml"
+
+pool:
+  vmImage: ubuntu-latest
+variables:
+  serviceConnection: svc_CSA_sub
+  loadTestResource: lt-aistock-dev-002
+  loadTestResourceGroup: rg-aistock-dev-002
+  
+stages:
+- stage: LoadTest
+  displayName: Load Test
+  jobs:
+  - job: LoadTest
+    displayName: Load Test
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: AzureLoadTest@1
+      inputs:
+        azureSubscription: svc_CSA_sub
+        loadTestConfigFile: .azuredevops/pipelines/alt-config.yaml 
+        resourceGroup: rg-aistock-dev-002
+        loadTestResource: lt-aistock-dev-002
+  
+    - publish: $(System.DefaultWorkingDirectory)/loadTest
+      artifact: results
+      

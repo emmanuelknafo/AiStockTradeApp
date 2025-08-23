@@ -24,7 +24,7 @@ env:
   - name: pathsCsv
     value: ''
 resourceId: >-
-  /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.LoadTestService/loadtests/load-tests-aistock-dev-002
+  /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.LoadTestService/loadtests/lt-aistock-dev-002
 configurationFiles:
   - paths.csv
   - results.jtl
