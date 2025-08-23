@@ -388,7 +388,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     name: Deploy Production Infrastructure
     needs: deploy-dev
-    if: github.event.inputs.environment == 'prod' && always() && (needs.deploy-dev.result == 'success' || (github.event.inputs.destroy == 'true' && needs.deploy-dev.result != 'cancelled'))
+    if: (github.event.inputs.environment == 'prod' || github.event_name == 'push' || github.event_name == 'pull_request') && always() && (needs.deploy-dev.result == 'success' || (github.event.inputs.destroy == 'true' && needs.deploy-dev.result != 'cancelled'))
     environment: ${{ format('production-{0}', github.event.inputs.instanceNumber || '002') }}
 
     permissions:

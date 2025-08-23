@@ -495,6 +495,24 @@ stages:
                         MANAGE_SQL_PARAM="--parameters manageSql=true"
                       fi
 
+                      # Determine whether ARM should manage networking resources for Prod
+                      # If the app-integration subnet exists we avoid managing networking to prevent InUseSubnetCannotBeUpdated
+                      MANAGE_NETWORKING_PARAM="--parameters manageNetworking=true"
+                      PARAMS_FILE=./infrastructure/parameters.prod.json
+                      # Extract appName and environment from parameters file using Python (available on hosted agents)
+                      APP_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.prod.json'))['parameters']['appName']['value'])")
+                      ENV_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.prod.json'))['parameters']['environment']['value'])")
+                      VNET_NAME="vnet-${APP_NAME}-${ENV_NAME}-${INSTANCE_NUM}"
+                      SUBNET_NAME="snet-appintegration"
+
+                      if az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$VNET_NAME" --name "$SUBNET_NAME" >/dev/null 2>&1; then
+                        echo "[PROD] Subnet $SUBNET_NAME exists in VNet $VNET_NAME; skipping networking management to avoid InUseSubnetCannotBeUpdated"
+                        MANAGE_NETWORKING_PARAM="--parameters manageNetworking=false"
+                      else
+                        echo "[PROD] Subnet $SUBNET_NAME not found; ARM may manage networking"
+                        MANAGE_NETWORKING_PARAM="--parameters manageNetworking=true"
+                      fi
+
                       az deployment group validate \
                         --resource-group $(azureResourceGroupProd) \
                         --template-file ./infrastructure/main.bicep \
@@ -511,7 +529,7 @@ stages:
                         --parameters vnetAddressSpace="10.41.0.0/16" \
                         --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
                         --parameters privateEndpointSubnetPrefix="10.41.2.0/28" \
-                        $MANAGE_SQL_PARAM
+                        $MANAGE_SQL_PARAM $MANAGE_NETWORKING_PARAM
 
                 - task: AzureCLI@2
                   displayName: "Deploy Prod Infrastructure"
@@ -544,6 +562,21 @@ stages:
                         MANAGE_SQL_PARAM="--parameters manageSql=true"
                       fi
 
+                      # Determine whether ARM should manage networking resources for Prod (same logic as validate)
+                      MANAGE_NETWORKING_PARAM="--parameters manageNetworking=true"
+                      APP_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.prod.json'))['parameters']['appName']['value'])")
+                      ENV_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.prod.json'))['parameters']['environment']['value'])")
+                      VNET_NAME="vnet-${APP_NAME}-${ENV_NAME}-${INSTANCE_NUM}"
+                      SUBNET_NAME="snet-appintegration"
+
+                      if az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$VNET_NAME" --name "$SUBNET_NAME" >/dev/null 2>&1; then
+                        echo "[PROD] Subnet $SUBNET_NAME exists in VNet $VNET_NAME; skipping networking management to avoid InUseSubnetCannotBeUpdated"
+                        MANAGE_NETWORKING_PARAM="--parameters manageNetworking=false"
+                      else
+                        echo "[PROD] Subnet $SUBNET_NAME not found; ARM may manage networking"
+                        MANAGE_NETWORKING_PARAM="--parameters manageNetworking=true"
+                      fi
+
                       az deployment group create \
                         --resource-group $(azureResourceGroupProd) \
                         --template-file ./infrastructure/main.bicep \
@@ -560,7 +593,7 @@ stages:
                         --parameters vnetAddressSpace="10.41.0.0/16" \
                         --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
                         --parameters privateEndpointSubnetPrefix="10.41.2.0/28" \
-                        $MANAGE_SQL_PARAM
+                        $MANAGE_SQL_PARAM $MANAGE_NETWORKING_PARAM
 
                 - task: AzureCLI@2
                   displayName: "Set Web App Managed Identity as SQL Admin (Prod)"
