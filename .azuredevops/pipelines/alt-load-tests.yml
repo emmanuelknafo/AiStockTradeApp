@@ -36,7 +36,11 @@ stages:
               echo "Preparing load test files"
               mkdir -p $(System.DefaultWorkingDirectory)/.azuredevops/pipelines/load-tests || true
               cp -v $(System.DefaultWorkingDirectory)/load-tests/paths.csv $(System.DefaultWorkingDirectory)/.azuredevops/pipelines/load-tests/paths.csv || true
-            displayName: 'Pre-step: copy load-tests files to pipeline path'
+              # copy JMX test plan files to pipeline-local path expected by AzureLoadTest task
+              cp -v $(System.DefaultWorkingDirectory)/load-tests/jmeter/test-plan.azure.jmx $(System.DefaultWorkingDirectory)/.azuredevops/pipelines/test-plan.azure.jmx || true
+              cp -v $(System.DefaultWorkingDirectory)/load-tests/jmeter/test-plan.jmx $(System.DefaultWorkingDirectory)/.azuredevops/pipelines/test-plan.jmx || true
+              cp -v $(System.DefaultWorkingDirectory)/load-tests/jmeter/test-plan.generated.jmx $(System.DefaultWorkingDirectory)/.azuredevops/pipelines/test-plan.generated.jmx || true
+            displayName: 'Pre-step: copy load-tests files and JMX plans to pipeline path'
 
           - task: AzureLoadTest@1
             inputs:
