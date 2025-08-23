@@ -26,7 +26,7 @@ env:
 resourceId: >-
   /subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/Microsoft.LoadTestService/loadtests/lt-aistock-dev-002
 configurationFiles:
-  - paths.csv
+  - load-tests/paths.csv
   - results.jtl
 referenceIdentities:
   - type: SystemAssigned

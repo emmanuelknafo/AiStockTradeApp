@@ -8,7 +8,7 @@ splitAllCSVs: false
 displayName: Test - 08/22/2025 05:08:29 PM
 description: JMeter load test
 configurationFiles:
-  - paths.csv
+  - load-tests/paths.csv
 autoStop:
   errorPercentage: 90
   timeWindow: 60
