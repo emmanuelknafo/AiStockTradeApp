@@ -98,7 +98,7 @@ var sqlDatabaseName = 'sqldb-${resourceNamePrefix}-${instanceNumber}'
 var vnetName = 'vnet-${resourceNamePrefix}-${instanceNumber}'
 var appIntegrationSubnetName = 'snet-appintegration'
 var privateEndpointSubnetName = 'snet-private-endpoints'
-var loadTestResourceName = 'load-tests-${resourceNamePrefix}-${instanceNumber}'
+var loadTestResourceName = 'lt-${resourceNamePrefix}-${instanceNumber}'
 // Entra-only: Always use Azure AD auth for connection strings.
 
 // Defaults for temporary SQL admin when not provided
