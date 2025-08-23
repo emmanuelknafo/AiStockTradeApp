@@ -118,10 +118,10 @@ pool:
 
 stages:
   - stage: Test
-    displayName: "Test Application"
+    displayName: "Run Tests"
     jobs:
       - job: TestJob
-        displayName: "Test Application"
+        displayName: "Run Tests"
         steps:
           - checkout: self
             displayName: "Checkout code"
@@ -210,10 +210,6 @@ stages:
               command: "build"
               projects: "AiStockTradeApp.sln"
               arguments: "--no-restore --configuration Release"
-
-          # SQL Server container not required for unit tests; using in-memory DB
-
-          # Removed EF Core database update: migrations will run at application startup in deployed environment
 
           - task: DotNetCoreCLI@2
             displayName: "Run tests"
@@ -1639,11 +1635,13 @@ stages:
                       # expose to subsequent tasks
                       echo "##vso[task.setvariable variable=PROD_ARM_OVERRIDES]$OVERRIDES"
 
-                - task: Bash@3
+                - task: AzureCLI@2
                   displayName: "Pre-deploy MSI sanity check (ensure API webapp MI)"
                   inputs:
-                    targetType: "inline"
-                    script: |
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
                       set -e
                       API_WEBAPP="api-aistock-prod-$(instanceNum)"
                       APP_WEBAPP="app-aistock-prod-$(instanceNum)"
