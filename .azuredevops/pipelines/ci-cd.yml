@@ -1542,31 +1542,32 @@ stages:
                       SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
 
                       # Default: allow ARM to manage SQL when server does not exist
-                      MANAGE_SQL_PARAM="--parameters manageSql=true"
+                      # Use AzureResourceManagerTemplateDeployment overrideParameters style (e.g. -manageSql true)
+                      MANAGE_SQL_PARAM="-manageSql true"
                       if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
                         echo "[PROD] SQL server exists; checking Azure AD-only auth status..."
                         AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
                         if [ "$AADONLY" = "false" ] || [ "$AADONLY" = "False" ]; then
                           echo "[PROD] Azure AD-only authentication disabled; ARM may manage SQL"
-                          MANAGE_SQL_PARAM="--parameters manageSql=true"
+                          MANAGE_SQL_PARAM="-manageSql true"
                         else
                           echo "[PROD] Azure AD-only authentication enabled or unknown; skipping SQL management"
-                          MANAGE_SQL_PARAM="--parameters manageSql=false"
+                          MANAGE_SQL_PARAM="-manageSql false"
                         fi
                       else
                         echo "[PROD] SQL server not present; ARM will manage SQL resources"
-                        MANAGE_SQL_PARAM="--parameters manageSql=true"
+                        MANAGE_SQL_PARAM="-manageSql true"
                       fi
 
                       # Determine manageNetworking param by checking if app-integration subnet exists
                       # Try both vnet name patterns (prod and dev) as conservative check
-                      MANAGE_NETWORKING_PARAM="--parameters manageNetworking=true"
+                      MANAGE_NETWORKING_PARAM="-manageNetworking true"
                       VNET_NAMES=("vnet-aistock-prod-$(instanceNum)" "vnet-aistock-dev-$(instanceNum)")
                       SUBNET_NAME="snet-appintegration"
                       for v in "${VNET_NAMES[@]}"; do
                         if az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$v" --name "$SUBNET_NAME" >/dev/null 2>&1; then
                           echo "[PROD] Found subnet $SUBNET_NAME in vnet $v; avoid updating networking in ARM"
-                          MANAGE_NETWORKING_PARAM="--parameters manageNetworking=false"
+                          MANAGE_NETWORKING_PARAM="-manageNetworking false"
                           break
                         fi
                       done
