@@ -1639,6 +1639,32 @@ stages:
                       # expose to subsequent tasks
                       echo "##vso[task.setvariable variable=PROD_ARM_OVERRIDES]$OVERRIDES"
 
+                - task: Bash@3
+                  displayName: "Pre-deploy MSI sanity check (ensure API webapp MI)"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      set -e
+                      API_WEBAPP="api-aistock-prod-$(instanceNum)"
+                      APP_WEBAPP="app-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      echo "[PROD][MSI-GUARD] Checking managed identities for $API_WEBAPP and $APP_WEBAPP in $RG_NAME"
+                      API_MI=$(az webapp identity show --name "$API_WEBAPP" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      APP_MI=$(az webapp identity show --name "$APP_WEBAPP" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      echo "[PROD][MSI-GUARD] API_MI=$API_MI"
+                      echo "[PROD][MSI-GUARD] APP_MI=$APP_MI"
+                      if [ -z "$API_MI" ]; then
+                        echo "[PROD][MSI-GUARD][ERROR] API webapp ($API_WEBAPP) has no managed identity assigned. Aborting."
+                        exit 1
+                      fi
+                      if [ "$API_MI" = "$APP_MI" ]; then
+                        echo "[PROD][MSI-GUARD][ERROR] API and UI webapps share the same managed identity ($API_MI). Aborting to avoid assigning wrong admin."
+                        exit 1
+                      fi
+                      echo "[PROD][MSI-GUARD][OK] API managed identity looks correct: $API_MI"
+                      # Expose for downstream steps
+                      echo "##vso[task.setvariable variable=MI_PRINCIPAL_ID]$API_MI"
+
                 - task: AzureResourceManagerTemplateDeployment@3
                   displayName: "Deploy Bicep template (prod - no ARM SQL admin)"
                   inputs:
