@@ -8,6 +8,7 @@ trigger:
   paths:
     include:
       - infrastructure/**
+      - ".azuredevops/pipelines/infrastructure.yml"
 
 pr:
   branches:
@@ -16,6 +17,7 @@ pr:
   paths:
     include:
       - infrastructure/**
+      - ".azuredevops/pipelines/infrastructure.yml"
 
 parameters:
   - name: environment

@@ -5,12 +5,14 @@ on:
     branches:
       - main
     paths:
-      - 'infrastructure/**'
+      - "infrastructure/**"
+      - ".github/workflows/infrastructure.yml"
   pull_request:
     branches:
       - main
     paths:
-      - 'infrastructure/**'
+      - "infrastructure/**"
+      - ".github/workflows/infrastructure.yml"
   workflow_dispatch:
     inputs:
       environment:

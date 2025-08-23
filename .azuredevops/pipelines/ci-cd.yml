@@ -25,6 +25,7 @@ trigger:
       - "AiStockTradeApp.Cli/**"
       - ".azuredevops/pipelines/cli-ci.yml"
       - ".azuredevops/pipelines/load-tests.yml"
+      - ".azuredevops/pipelines/infrastructure.yml"
       - "load-tests/**"
       - "infrastructure/**"
 
@@ -51,6 +52,7 @@ pr:
       - "AiStockTradeApp.Cli/**"
       - ".azuredevops/pipelines/cli-ci.yml"
       - ".azuredevops/pipelines/load-tests.yml"
+      - ".azuredevops/pipelines/infrastructure.yml"
       - "load-tests/**"
       - "infrastructure/**"
 resources:
