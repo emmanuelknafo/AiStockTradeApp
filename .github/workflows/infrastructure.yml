@@ -1,6 +1,16 @@
 name: Infrastructure Deployment
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infrastructure/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'infrastructure/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -60,18 +70,28 @@ jobs:
           echo "Creating dev resource group: $RG_NAME"
           az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
 
+      - name: "Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy"
+        run: |
+          set -e
+          if [ "${{ github.event.inputs.destroy }}" = "true" ]; then echo "[DEV] destroy=true; skipping preflight cleanup"; exit 0; fi
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+          SQL_SERVER_NAME="sql-aistock-dev-${{ github.event.inputs.instanceNumber }}"
+          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+            echo "[DEV] Server exists; checking Azure AD-only auth status..."
+            AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+            if [ "$AADONLY" = "true" ] || [ "$AADONLY" = "True" ]; then
+              echo "[DEV] Azure AD-only authentication is enabled on server; skipping ad-admin delete to avoid InvalidServerAzureADAdminDeleteOperation"
+            else
+              echo "[DEV] Removing any lingering AAD admin..."
+              az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+            fi
+          else
+            echo "[DEV] Server not present yet; nothing to clean."
+          fi
+
       - name: Validate Dev Bicep Template
         if: github.event.inputs.destroy != 'true'
         run: |
-          # Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
-          SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
-          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-            echo "[DEV] Cleaning any lingering AAD admin before validate..."
-            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-          fi
-
           az deployment group validate \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
             --template-file ./infrastructure/main.bicep \
@@ -82,7 +102,6 @@ jobs:
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-            --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.40.0.0/16" \
@@ -93,15 +112,6 @@ jobs:
       - name: Deploy Dev Infrastructure
         if: github.event.inputs.destroy != 'true'
         run: |
-          # Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
-          SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
-          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-            echo "[DEV] Cleaning any lingering AAD admin before deploy..."
-            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-          fi
-
           echo "Deploying dev infrastructure with container registry..."
           az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
@@ -113,7 +123,6 @@ jobs:
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
-            --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.40.0.0/16" \
@@ -367,18 +376,29 @@ jobs:
           echo "Creating prod resource group: $RG_NAME"
           az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
 
+      - name: "Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy (prod)"
+        run: |
+          set -e
+          # Ensure this step only runs for prod and when not destroying
+          if [ "${{ github.event.inputs.destroy }}" = "true" ] || [ "${{ github.event.inputs.environment }}" != "prod" ]; then echo "[PROD] Skipping prod preflight cleanup (destroy or not prod)"; exit 0; fi
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+          SQL_SERVER_NAME="sql-aistock-prod-${{ github.event.inputs.instanceNumber }}"
+          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+            echo "[PROD] Server exists; checking Azure AD-only auth status..."
+            AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+            if [ "$AADONLY" = "true" ] || [ "$AADONLY" = "True" ]; then
+              echo "[PROD] Azure AD-only authentication is enabled on server; skipping ad-admin delete to avoid InvalidServerAzureADDeleteOperation"
+            else
+              echo "[PROD] Removing any lingering AAD admin..."
+              az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+            fi
+          else
+            echo "[PROD] Server not present yet; nothing to clean."
+          fi
+
       - name: Validate Prod Bicep Template
         if: github.event.inputs.destroy != 'true'
         run: |
-          # Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
-          SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
-          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-            echo "[PROD] Cleaning any lingering AAD admin before validate..."
-            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-          fi
-
           az deployment group validate \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
             --template-file ./infrastructure/main.bicep \
@@ -390,7 +410,6 @@ jobs:
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \
-            --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.41.0.0/16" \
@@ -400,15 +419,6 @@ jobs:
       - name: Deploy Prod Infrastructure
         if: github.event.inputs.destroy != 'true'
         run: |
-          # Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
-          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
-          SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
-          if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-            echo "[PROD] Cleaning any lingering AAD admin before deploy..."
-            az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-          fi
-
           echo "Deploying prod infrastructure WITHOUT container registry..."
           az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
@@ -421,7 +431,6 @@ jobs:
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             --parameters twelveDataApiKey="${{ secrets.TWELVE_DATA_API_KEY }}" \
             --parameters deployContainerRegistry=false \
-            --parameters enableAzureAdOnlyAuth=true \
             --parameters enablePrivateSql=true \
             --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.41.0.0/16" \

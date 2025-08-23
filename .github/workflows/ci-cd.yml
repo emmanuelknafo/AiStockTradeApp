@@ -22,6 +22,7 @@ on:
       - ".github/workflows/cli-ci.yml"
       - ".github/workflows/load-tests.yml"
       - "load-tests/**"
+      - "infrastructure/**"
   pull_request:
     branches: [main]
     paths-ignore:
@@ -43,6 +44,7 @@ on:
       - ".github/workflows/cli-ci.yml"
       - ".github/workflows/load-tests.yml"
       - "load-tests/**"
+      - "infrastructure/**"
   # CI triggers temporarily disabled; manual runs only
   workflow_dispatch:
     inputs:

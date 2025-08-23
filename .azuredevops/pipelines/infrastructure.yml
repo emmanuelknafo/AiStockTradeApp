@@ -1,7 +1,21 @@
 # Azure DevOps Pipeline for Infrastructure Deployment
 # Converted from GitHub Actions workflow
 
-trigger: none # Manual trigger only
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - infrastructure/**
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - infrastructure/**
 
 parameters:
   - name: environment
@@ -85,8 +99,14 @@ stages:
                       RG_NAME="$(azureResourceGroupDev)"
                       SQL_SERVER_NAME="sql-aistock-dev-${{ parameters.instanceNumber }}"
                       if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-                        echo "[DEV] Server exists; removing any lingering AAD admin..."
-                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        echo "[DEV] Server exists; checking Azure AD-only auth status..."
+                        AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+                        if [ "$AADONLY" = "true" ] || [ "$AADONLY" = "True" ]; then
+                          echo "[DEV] Azure AD-only authentication is enabled on server; skipping ad-admin delete to avoid InvalidServerAzureADAdminDeleteOperation"
+                        else
+                          echo "[DEV] Removing any lingering AAD admin..."
+                          az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        fi
                       else
                         echo "[DEV] Server not present yet; nothing to clean."
                       fi
@@ -109,7 +129,6 @@ stages:
                         --parameters containerImageApi="aistocktradeapp-api:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
-                        --parameters enableAzureAdOnlyAuth=true \
                         --parameters enablePrivateSql=true \
                         --parameters enablePrivateKeyVault=true \
                         --parameters vnetAddressSpace="10.60.0.0/16" \
@@ -136,7 +155,6 @@ stages:
                         --parameters containerImageApi="aistocktradeapp-api:latest" \
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
-                        --parameters enableAzureAdOnlyAuth=true \
                         --parameters enablePrivateSql=true \
                         --parameters enablePrivateKeyVault=true \
                         --parameters vnetAddressSpace="10.60.0.0/16" \
@@ -387,8 +405,14 @@ stages:
                       RG_NAME="$(azureResourceGroupProd)"
                       SQL_SERVER_NAME="sql-aistock-prod-${{ parameters.instanceNumber }}"
                       if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-                        echo "[PROD] Server exists; removing any lingering AAD admin..."
-                        az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        echo "[PROD] Server exists; checking Azure AD-only auth status..."
+                        AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+                        if [ "$AADONLY" = "true" ] || [ "$AADONLY" = "True" ]; then
+                          echo "[PROD] Azure AD-only authentication is enabled on server; skipping ad-admin delete to avoid InvalidServerAzureADAdminDeleteOperation"
+                        else
+                          echo "[PROD] Removing any lingering AAD admin..."
+                          az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        fi
                       else
                         echo "[PROD] Server not present yet; nothing to clean."
                       fi
@@ -412,12 +436,11 @@ stages:
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters deployContainerRegistry=false \
-                        --parameters enableAzureAdOnlyAuth=true \
                         --parameters enablePrivateSql=true \
                         --parameters enablePrivateKeyVault=true \
-                        --parameters vnetAddressSpace="10.61.0.0/16" \
-                        --parameters appIntegrationSubnetPrefix="10.61.1.0/27" \
-                        --parameters privateEndpointSubnetPrefix="10.61.2.0/28"
+                        --parameters vnetAddressSpace="10.41.0.0/16" \
+                        --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
+                        --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
 
                 - task: AzureCLI@2
                   displayName: "Deploy Prod Infrastructure"
@@ -439,12 +462,11 @@ stages:
                         --parameters alphaVantageApiKey="$(ALPHA_VANTAGE_API_KEY)" \
                         --parameters twelveDataApiKey="$(TWELVE_DATA_API_KEY)" \
                         --parameters deployContainerRegistry=false \
-                        --parameters enableAzureAdOnlyAuth=true \
                         --parameters enablePrivateSql=true \
                         --parameters enablePrivateKeyVault=true \
-                        --parameters vnetAddressSpace="10.61.0.0/16" \
-                        --parameters appIntegrationSubnetPrefix="10.61.1.0/27" \
-                        --parameters privateEndpointSubnetPrefix="10.61.2.0/28"
+                        --parameters vnetAddressSpace="10.41.0.0/16" \
+                        --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
+                        --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
 
                 - task: AzureCLI@2
                   displayName: "Set Web App Managed Identity as SQL Admin (Prod)"
