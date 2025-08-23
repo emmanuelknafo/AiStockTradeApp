@@ -99,7 +99,6 @@ var vnetName = 'vnet-${resourceNamePrefix}-${instanceNumber}'
 var appIntegrationSubnetName = 'snet-appintegration'
 var privateEndpointSubnetName = 'snet-private-endpoints'
 var loadTestResourceName = 'load-tests-${resourceNamePrefix}-${instanceNumber}'
-var deployLoadTestingEnabled = deployLoadTesting
 // Entra-only: Always use Azure AD auth for connection strings.
 
 // Defaults for temporary SQL admin when not provided
@@ -135,6 +134,18 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
 		Application_Type: 'web'
 		WorkspaceResourceId: logAnalyticsWorkspace.id
 	}
+}
+
+// Azure Load Testing resource (optional)
+resource loadTest 'Microsoft.LoadTestService/loadTests@2022-12-01' = if (deployLoadTesting) {
+  name: loadTestResourceName
+  location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    description: 'Load Test resource for ${appName}-${environment}-${instanceNumber}'
+  }
 }
 
 // Container Registry (only deployed for dev environment)
