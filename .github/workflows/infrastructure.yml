@@ -98,8 +98,21 @@ jobs:
       - name: Validate Dev Bicep Template
         if: env.INPUT_DESTROY != 'true'
         run: |
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+          SQL_SERVER_NAME="sql-aistock-dev-${{ env.INSTANCE_NUMBER }}"
+          echo "[DEV] Checking SQL server Azure AD-only auth status..."
+          AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+          echo "[DEV] azureADOnlyAuthentication='$AADONLY'"
+          if [ "$AADONLY" = "false" ] || [ "$AADONLY" = "False" ]; then
+            echo "[DEV] Azure AD-only auth not enabled; will manage SQL (manageSql=true)"
+            MANAGE_SQL_PARAM="--parameters manageSql=true"
+          else
+            echo "[DEV] Azure AD-only auth enabled or check failed; skipping SQL management (manageSql=false)"
+            MANAGE_SQL_PARAM="--parameters manageSql=false"
+          fi
+
           az deployment group validate \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
+            --resource-group $RG_NAME \
             --template-file ./infrastructure/main.bicep \
             --parameters ./infrastructure/parameters.dev.json \
             --parameters location="${{ env.INPUT_LOCATION }}" \
@@ -113,14 +126,28 @@ jobs:
             --parameters vnetAddressSpace="10.40.0.0/16" \
             --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
             --parameters privateEndpointSubnetPrefix="10.40.2.0/28" \
-            --parameters deployLoadTesting=true
+            --parameters deployLoadTesting=true \
+            $MANAGE_SQL_PARAM
 
       - name: Deploy Dev Infrastructure
         if: env.INPUT_DESTROY != 'true'
         run: |
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
+          SQL_SERVER_NAME="sql-aistock-dev-${{ env.INSTANCE_NUMBER }}"
+          echo "[DEV] Checking SQL server Azure AD-only auth status..."
+          AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+          echo "[DEV] azureADOnlyAuthentication='$AADONLY'"
+          if [ "$AADONLY" = "false" ] || [ "$AADONLY" = "False" ]; then
+            echo "[DEV] Azure AD-only auth not enabled; will manage SQL (manageSql=true)"
+            MANAGE_SQL_PARAM="--parameters manageSql=true"
+          else
+            echo "[DEV] Azure AD-only auth enabled or check failed; skipping SQL management (manageSql=false)"
+            MANAGE_SQL_PARAM="--parameters manageSql=false"
+          fi
+
           echo "Deploying dev infrastructure with container registry..."
           az deployment group create \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
+            --resource-group $RG_NAME \
             --template-file ./infrastructure/main.bicep \
             --parameters ./infrastructure/parameters.dev.json \
             --parameters location="${{ env.INPUT_LOCATION }}" \
@@ -134,7 +161,8 @@ jobs:
             --parameters vnetAddressSpace="10.40.0.0/16" \
             --parameters appIntegrationSubnetPrefix="10.40.1.0/27" \
             --parameters privateEndpointSubnetPrefix="10.40.2.0/28" \
-            --parameters deployLoadTesting=true
+            --parameters deployLoadTesting=true \
+            $MANAGE_SQL_PARAM
 
       - name: Set Web App Managed Identity as SQL Admin (Dev)
         if: env.INPUT_DESTROY != 'true'
@@ -406,8 +434,21 @@ jobs:
       - name: Validate Prod Bicep Template
         if: env.INPUT_DESTROY != 'true'
         run: |
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+          SQL_SERVER_NAME="sql-aistock-prod-${{ env.INSTANCE_NUMBER }}"
+          echo "[PROD] Checking SQL server Azure AD-only auth status..."
+          AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+          echo "[PROD] azureADOnlyAuthentication='$AADONLY'"
+          if [ "$AADONLY" = "false" ] || [ "$AADONLY" = "False" ]; then
+            echo "[PROD] Azure AD-only auth not enabled; will manage SQL (manageSql=true)"
+            MANAGE_SQL_PARAM="--parameters manageSql=true"
+          else
+            echo "[PROD] Azure AD-only auth enabled or check failed; skipping SQL management (manageSql=false)"
+            MANAGE_SQL_PARAM="--parameters manageSql=false"
+          fi
+
           az deployment group validate \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
+            --resource-group $RG_NAME \
             --template-file ./infrastructure/main.bicep \
             --parameters ./infrastructure/parameters.prod.json \
             --parameters location="${{ env.INPUT_LOCATION }}" \
@@ -421,14 +462,28 @@ jobs:
             --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.41.0.0/16" \
             --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
-            --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
+            --parameters privateEndpointSubnetPrefix="10.41.2.0/28" \
+            $MANAGE_SQL_PARAM
 
       - name: Deploy Prod Infrastructure
         if: env.INPUT_DESTROY != 'true'
         run: |
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
+          SQL_SERVER_NAME="sql-aistock-prod-${{ env.INSTANCE_NUMBER }}"
+          echo "[PROD] Checking SQL server Azure AD-only auth status..."
+          AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+          echo "[PROD] azureADOnlyAuthentication='$AADONLY'"
+          if [ "$AADONLY" = "false" ] || [ "$AADONLY" = "False" ]; then
+            echo "[PROD] Azure AD-only auth not enabled; will manage SQL (manageSql=true)"
+            MANAGE_SQL_PARAM="--parameters manageSql=true"
+          else
+            echo "[PROD] Azure AD-only auth enabled or check failed; skipping SQL management (manageSql=false)"
+            MANAGE_SQL_PARAM="--parameters manageSql=false"
+          fi
+
           echo "Deploying prod infrastructure WITHOUT container registry..."
           az deployment group create \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
+            --resource-group $RG_NAME \
             --template-file ./infrastructure/main.bicep \
             --parameters ./infrastructure/parameters.prod.json \
             --parameters location="${{ env.INPUT_LOCATION }}" \
@@ -442,7 +497,8 @@ jobs:
             --parameters enablePrivateKeyVault=true \
             --parameters vnetAddressSpace="10.41.0.0/16" \
             --parameters appIntegrationSubnetPrefix="10.41.1.0/27" \
-            --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
+            --parameters privateEndpointSubnetPrefix="10.41.2.0/28" \
+            $MANAGE_SQL_PARAM
 
       - name: Set Web App Managed Identity as SQL Admin (Prod)
         if: env.INPUT_DESTROY != 'true'
