@@ -1,0 +1,4 @@
+GET,/
+GET,/api/health
+GET,/api/stocks
+GET,/api/portfolio
