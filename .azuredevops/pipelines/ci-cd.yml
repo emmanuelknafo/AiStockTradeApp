@@ -1375,6 +1375,609 @@ stages:
                       done
                       echo "❌ API Health check failed"; exit 1
 
+  - stage: DeployProd
+    displayName: "Deploy to Production"
+    dependsOn:
+      - Build
+      - DeployDev
+    condition: |
+      and(
+        succeeded(),
+        in(dependencies.Build.result, 'Succeeded'),
+        in(dependencies.DeployDev.result, 'Succeeded', 'Skipped'),
+        or(
+          eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+          and(
+            eq(variables['Build.Reason'], 'Manual'),
+            eq('${{ parameters.environment }}', 'prod')
+          )
+        )
+      )
+    jobs:
+      - deployment: DeployProdJob
+        displayName: "Deploy to Production"
+        environment: ${{ format('production-{0}', parameters.instanceNumber) }}
+        variables:
+          - name: instanceNum
+            value: ${{ format('{0}', parameters.instanceNumber) }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  displayName: "Checkout code"
+                  fetchDepth: 0
+                  persistCredentials: true
+                  clean: true
+
+                - task: DownloadPipelineArtifact@2
+                  displayName: "Download build outputs"
+                  inputs:
+                    artifactName: "build-outputs"
+                    downloadPath: "$(Pipeline.Workspace)/build-outputs"
+
+                - task: Bash@3
+                  displayName: "Load container image from artifact"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "=== LOADING CONTAINER IMAGE FROM ARTIFACT ==="
+                      if [ -f "$(Pipeline.Workspace)/build-outputs/container-image.txt" ]; then
+                        CONTAINER_IMAGE=$(cat $(Pipeline.Workspace)/build-outputs/container-image.txt)
+                        echo "Container image from artifact: '${CONTAINER_IMAGE}'"
+                        echo "##vso[task.setvariable variable=containerImage]${CONTAINER_IMAGE}"
+                      else
+                        echo "ERROR: container-image.txt not found in artifacts!"
+                        ls -la $(Pipeline.Workspace)/build-outputs/
+                        exit 1
+                      fi
+                - task: Bash@3
+                  displayName: "Load API container image from artifact"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "=== LOADING API CONTAINER IMAGE FROM ARTIFACT ==="
+                      if [ -f "$(Pipeline.Workspace)/build-outputs/container-image-api.txt" ]; then
+                        CONTAINER_IMAGE=$(cat $(Pipeline.Workspace)/build-outputs/container-image-api.txt)
+                        echo "API container image from artifact: '${CONTAINER_IMAGE}'"
+                        echo "##vso[task.setvariable variable=containerImageApi]${CONTAINER_IMAGE}"
+                      else
+                        echo "ERROR: container-image-api.txt not found in artifacts!"
+                        ls -la $(Pipeline.Workspace)/build-outputs/
+                        exit 1
+                      fi
+
+                - task: Bash@3
+                  displayName: "Debug Variables"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "=== DEPLOYMENT DEBUG INFO ==="
+                      echo "Stage name: DeployProd"
+                      echo "Build Source Branch: $(Build.SourceBranch)"
+                      echo "Build Reason: $(Build.Reason)"
+                      echo "Environment parameter: ${{ parameters.environment }}"
+                      echo "Instance Number: $(instanceNum)"
+                      echo "Resource Group: rg-aistock-prod-$(instanceNum)"
+                      echo "Web App Name: app-aistock-prod-$(instanceNum)"
+                      echo "Container image from artifact: $(containerImage)"
+
+                - task: AzureCLI@2
+                  displayName: "Get Azure AD information for SQL Admin"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      echo "Getting Azure AD information for SQL Server administration..."
+
+                      # Get the service principal information from the service connection
+                      # The service connection provides authentication context
+                      echo "Retrieving service principal information from connection context..."
+
+                      # Get service principal details using Azure CLI context
+                      SP_INFO=$(az account show)
+                      TENANT_ID=$(echo "$SP_INFO" | jq -r '.tenantId')
+
+                      # For Azure DevOps, we'll use a predefined service principal name or get it from variables
+                      # This should be configured in your Azure DevOps variables
+                      if [ -n "$(AZURE_CLIENT_ID)" ]; then
+                        CLIENT_ID="$(AZURE_CLIENT_ID)"
+                        echo "Using client ID from variable: $CLIENT_ID"
+                        
+                        SP_DETAILS=$(az ad sp show --id "$CLIENT_ID")
+                        SP_OBJECT_ID=$(echo "$SP_DETAILS" | jq -r '.id')
+                        SP_DISPLAY_NAME=$(echo "$SP_DETAILS" | jq -r '.displayName')
+                      else
+                        echo "AZURE_CLIENT_ID variable not set. Using account context..."
+                        # Fallback: try to get service principal from current context
+                        SUBSCRIPTION_INFO=$(az account show)
+                        SP_OBJECT_ID=$(echo "$SUBSCRIPTION_INFO" | jq -r '.user.name')
+                        SP_DISPLAY_NAME="Azure DevOps Service Principal"
+                      fi
+
+                      echo "Service principal object ID: $SP_OBJECT_ID"
+                      echo "Service principal display name: $SP_DISPLAY_NAME"
+
+                      echo "##vso[task.setvariable variable=azureAdAdminObjectId]$SP_OBJECT_ID"
+                      echo "##vso[task.setvariable variable=azureAdAdminLogin]$SP_DISPLAY_NAME"
+
+                - task: Bash@3
+                  displayName: "Derive Azure AD auth enable flag"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "Evaluating whether to enable Azure AD only auth..."
+                      # Use Azure DevOps variable syntax: $VARIABLE (already set earlier)
+                      if [ -n "$azureAdAdminObjectId" ] && [ -n "$azureAdAdminLogin" ]; then
+                        echo "Azure AD admin details present. Enabling AAD only auth."
+                        echo "##vso[task.setvariable variable=enableAdOnlyAuthFlag]true"
+                      else
+                        echo "Azure AD admin details missing (objectId='$azureAdAdminObjectId', login='$azureAdAdminLogin'). Disabling AAD only auth for this deployment."
+                        echo "##vso[task.setvariable variable=enableAdOnlyAuthFlag]false"
+                      fi
+                      echo "enableAdOnlyAuthFlag=$enableAdOnlyAuthFlag"
+
+                - task: Bash@3
+                  displayName: "Derive appVersion parameter (Prod)"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      IMG="$(containerImage)"
+                      TAG="${IMG##*:}"
+                      if echo "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+'; then
+                        echo "Semantic version detected in image tag: $TAG"
+                        echo "##vso[task.setvariable variable=appVersion]$TAG"
+                      else
+                        echo "Image tag $TAG is not semantic version; leaving appVersion empty"
+                      fi
+                - task: Bash@3
+                  displayName: "Compute manageSql/manageNetworking runtime params"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      set -e
+                      echo "Computing runtime flags for manageSql and manageNetworking (Prod)..."
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
+
+                      # Default: allow ARM to manage SQL when server does not exist
+                      MANAGE_SQL_PARAM="--parameters manageSql=true"
+                      if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+                        echo "[PROD] SQL server exists; checking Azure AD-only auth status..."
+                        AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+                        if [ "$AADONLY" = "false" ] || [ "$AADONLY" = "False" ]; then
+                          echo "[PROD] Azure AD-only authentication disabled; ARM may manage SQL"
+                          MANAGE_SQL_PARAM="--parameters manageSql=true"
+                        else
+                          echo "[PROD] Azure AD-only authentication enabled or unknown; skipping SQL management"
+                          MANAGE_SQL_PARAM="--parameters manageSql=false"
+                        fi
+                      else
+                        echo "[PROD] SQL server not present; ARM will manage SQL resources"
+                        MANAGE_SQL_PARAM="--parameters manageSql=true"
+                      fi
+
+                      # Determine manageNetworking param by checking if app-integration subnet exists
+                      # Try both vnet name patterns (prod and dev) as conservative check
+                      MANAGE_NETWORKING_PARAM="--parameters manageNetworking=true"
+                      VNET_NAMES=("vnet-aistock-prod-$(instanceNum)" "vnet-aistock-dev-$(instanceNum)")
+                      SUBNET_NAME="snet-appintegration"
+                      for v in "${VNET_NAMES[@]}"; do
+                        if az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$v" --name "$SUBNET_NAME" >/dev/null 2>&1; then
+                          echo "[PROD] Found subnet $SUBNET_NAME in vnet $v; avoid updating networking in ARM"
+                          MANAGE_NETWORKING_PARAM="--parameters manageNetworking=false"
+                          break
+                        fi
+                      done
+
+                      echo "Computed MANAGE_SQL_PARAM=$MANAGE_SQL_PARAM"
+                      echo "Computed MANAGE_NETWORKING_PARAM=$MANAGE_NETWORKING_PARAM"
+                      echo "##vso[task.setvariable variable=MANAGE_SQL_PARAM]$MANAGE_SQL_PARAM"
+                      echo "##vso[task.setvariable variable=MANAGE_NETWORKING_PARAM]$MANAGE_NETWORKING_PARAM"
+
+                - task: AzureResourceManagerTemplateDeployment@3
+                  displayName: "Deploy Bicep template (no SQL admin override)"
+                  inputs:
+                    deploymentScope: "Resource Group"
+                    azureResourceManagerConnection: "$(AZURE_SERVICE_CONNECTION)"
+                    subscriptionId: "$(AZURE_SUBSCRIPTION_ID)"
+                    action: "Create Or Update Resource Group"
+                    resourceGroupName: "rg-aistock-prod-$(instanceNum)"
+                    location: "Canada Central"
+                    templateLocation: "Linked artifact"
+                    csmFile: "./infrastructure/main.bicep"
+                    csmParametersFile: "./infrastructure/parameters.prod.json"
+                    # Use containerImage variable if provided; prefer GitVersion FullSemVer tag if available
+                    # containerImage variable expected to be AiStockTradeApp:<tag>
+                    overrideParameters: "-instanceNumber $(instanceNum) -containerImage $(containerImage) -containerImageApi $(containerImageApi) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true $(MANAGE_NETWORKING_PARAM) $(MANAGE_SQL_PARAM) -azureAdAdminObjectId $(azureAdAdminObjectId) -azureAdAdminLogin '$(azureAdAdminLogin)' -appVersion $(appVersion) -appServicePlanSku ${{ parameters.appServicePlanSku }}"
+                    deploymentMode: "Incremental"
+
+                - task: AzureCLI@2
+                  displayName: "Ensure SQL AD admin matches API Managed Identity (Prod)"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
+                      SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
+                      echo "[PROD] Ensuring SQL AD admin is set to API Web App MI..."
+                      MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] Web app MI principalId not found"; exit 1; fi
+                      # Detect AAD-only mode; deleting admin is blocked when true
+                      AAD_ONLY=$(az sql server ad-only-auth show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "azureAdOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+                      CURR_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+                      CURR_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+                      echo "[PROD] API Web App MI: $MI_PRINCIPAL_ID"; echo "[PROD] Current admin login: $CURR_LOGIN"; echo "[PROD] Current admin sid: $CURR_SID"
+                      if [ "$CURR_SID" != "$MI_PRINCIPAL_ID" ]; then
+                        echo "[PROD] Mismatch detected; updating SQL AD admin to API MI... (AAD-only=$AAD_ONLY)"
+                        if [ "$AAD_ONLY" != "true" ]; then
+                          az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                        else
+                          echo "[PROD] Skipping delete because AAD-only is enabled; will upsert via create."
+                        fi
+                        az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$MI_PRINCIPAL_ID"
+                      else
+                        echo "[PROD] Already correct; no change needed."
+                      fi
+                      # Re-verify
+                      NEW_SID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
+                      if [ "$NEW_SID" != "$MI_PRINCIPAL_ID" ]; then
+                        echo "[PROD][ERROR] Re-verify failed: SQL AD admin still not API MI (expected=$MI_PRINCIPAL_ID, found=$NEW_SID)"; exit 1
+                      fi
+                      echo "[PROD] ✅ SQL AD admin set to API Web App MI."
+
+                # Removed re-assignment of SQL admin here; infra pipeline owns that responsibility.
+
+                - task: AzureCLI@2
+                  displayName: "Setup Web App SQL Database Access (Azure AD)"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      # Do NOT 'set -e' globally; we handle retries manually
+                      INSTANCE_NUM="$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                      SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
+                      DATABASE_NAME="sqldb-aistock-prod-$(instanceNum)"
+                      ENABLE_AAD_ONLY="$(enableAdOnlyAuthFlag)"
+                      echo "[INFO] === Managed identity SQL database access setup ==="
+                      echo "[INFO] ENABLE_AAD_ONLY=${ENABLE_AAD_ONLY}"
+                      if [ "${ENABLE_AAD_ONLY}" != "true" ]; then echo "[INFO] AAD-only auth disabled; skipping."; exit 0; fi
+                      echo "[INFO] Ensuring web app managed identity enabled..."
+                      MANAGED_IDENTITY=$(az webapp identity show --name "${WEBAPP_NAME}" --resource-group "${RG_NAME}" --query principalId -o tsv 2>/dev/null || echo "")
+                      if [ -z "$MANAGED_IDENTITY" ] || [ "$MANAGED_IDENTITY" = "null" ]; then
+                        az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null
+                        sleep 8
+                        MANAGED_IDENTITY=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv)
+                      fi
+                      echo "[INFO] Managed identity principalId: $MANAGED_IDENTITY"
+                      SQL_SERVER_FQDN="${SQL_SERVER_NAME}.database.windows.net"
+                      echo "[INFO] Waiting for database '${DATABASE_NAME}' to be online..."
+                      for i in $(seq 1 18); do
+                        ACCESS_TOKEN_TMP=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>/dev/null || echo "")
+                        if [ -n "$ACCESS_TOKEN_TMP" ]; then
+                          export SQLCMDACCESSTOKEN="$ACCESS_TOKEN_TMP"
+                          if /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d master -C -l 15 -h -1 -Q "SET NOCOUNT ON; SELECT state_desc FROM sys.databases WHERE name='${DATABASE_NAME}';" | grep -qi 'ONLINE'; then
+                            echo "[INFO] Database is ONLINE (attempt $i)"; break
+                          fi
+                        fi
+                        echo "[INFO] Database not online yet (attempt $i/18); sleeping 10s..."; sleep 10
+                      done
+                      echo "[INFO] Checking configured Azure AD admin on SQL server..."
+                      ADMIN_CHECK_ATTEMPTS=12
+                      ADMIN_SEEN=0
+                      for i in $(seq 1 $ADMIN_CHECK_ATTEMPTS); do
+                        ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
+                        if [ -n "$ADMIN_LOGIN" ] && [ "$ADMIN_LOGIN" != "null" ]; then
+                          echo "[INFO] Azure AD admin detected: $ADMIN_LOGIN (attempt $i)"; ADMIN_SEEN=1; break
+                        fi
+                        echo "[INFO] Azure AD admin not yet visible (attempt $i/$ADMIN_CHECK_ATTEMPTS); waiting 10s..."
+                        sleep 10
+                      done
+                      if [ "$ADMIN_SEEN" != "1" ]; then
+                        echo "[WARN] Azure AD admin not visible after waiting. User creation may fail; continuing anyway."
+                      fi
+                      echo "[INFO] Installing sqlcmd tooling..."
+                      curl -s https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add - >/dev/null
+                      curl -s https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list >/dev/null
+                      sudo apt-get update -y >/dev/null
+                      sudo apt-get install -y mssql-tools unixodbc-dev >/dev/null
+                      if ! timeout 5 bash -c "</dev/tcp/${SQL_SERVER_NAME}.database.windows.net/1433" 2>/dev/null; then echo "[ERROR] Port 1433 unreachable"; exit 1; fi
+                      SQL_SCRIPT=$'USE [${DATABASE_NAME}];\nIF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name='"'${WEBAPP_NAME}'"') BEGIN PRINT 'Creating user ${WEBAPP_NAME}'; CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER; END;\nDECLARE @roles TABLE(r sysname); INSERT INTO @roles VALUES(\'db_datareader\'),(\'db_datawriter\'),(\'db_ddladmin\');\nDECLARE c CURSOR LOCAL FAST_FORWARD FOR SELECT r FROM @roles; OPEN c; DECLARE @r sysname; FETCH NEXT FROM c INTO @r;\nWHILE @@FETCH_STATUS=0 BEGIN IF IS_ROLEMEMBER(@r,\'${WEBAPP_NAME}\')=1 PRINT @r+\' already assigned\'; ELSE EXEC(\'ALTER ROLE \"' +QUOTENAME(@r)+ '\" ADD MEMBER [${WEBAPP_NAME}]\'); FETCH NEXT FROM c INTO @r; END CLOSE c; DEALLOCATE c;\nSELECT dp.name AS principal, r.name AS role_name FROM sys.database_principals dp JOIN sys.database_role_members rm ON dp.principal_id=rm.member_principal_id JOIN sys.database_principals r ON rm.role_principal_id=r.principal_id WHERE dp.name=\'${WEBAPP_NAME}\';'
+                      printf '%s\n' "$SQL_SCRIPT" > setup_managed_identity.sql
+
+                      echo "[INFO] Waiting for successful token-based connectivity..."
+                      LOGIN_OK=0
+                      for i in $(seq 1 12); do
+                        ACCESS_TOKEN=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>/dev/null || echo "")
+                        if [ -z "$ACCESS_TOKEN" ]; then echo "[INFO] (attempt $i) token not acquired, retrying in 10s"; sleep 10; continue; fi
+                        export SQLCMDACCESSTOKEN="$ACCESS_TOKEN"
+                        if /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d master -C -l 15 -Q "SELECT 1" >/dev/null 2>&1; then
+                          echo "[INFO] Token login succeeded on attempt $i"; LOGIN_OK=1; break
+                        else
+                          echo "[INFO] Token login failed (attempt $i); waiting 10s..."; sleep 10
+                        fi
+                      done
+                      if [ "$LOGIN_OK" != "1" ]; then
+                        echo "[WARN] Could not establish token login after retries. Skipping user creation to avoid hard failure."
+                        exit 0
+                      fi
+
+                      echo "[INFO] Executing user/role script with retries..."
+                      CREATE_OK=0
+                      for i in $(seq 1 5); do
+                        # Refresh token before each attempt (tokens ~ 1h but safe)
+                        ACCESS_TOKEN=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>/dev/null || echo "")
+                        [ -n "$ACCESS_TOKEN" ] && export SQLCMDACCESSTOKEN="$ACCESS_TOKEN"
+                        if /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 60 -i setup_managed_identity.sql; then
+                          echo "[INFO] User/role script succeeded (attempt $i)"; CREATE_OK=1; break
+                        else
+                          echo "[WARN] User/role script failed (attempt $i); sleeping 15s before retry"; sleep 15
+                        fi
+                      done
+                      if [ "$CREATE_OK" != "1" ]; then
+                        echo "[WARN] Exhausted retries creating/verifying managed identity user. Manual intervention may be required."
+                        exit 0
+                      fi
+
+                      echo "[INFO] Running identity test query..."
+                      echo "SELECT SUSER_SNAME() AS suser, CURRENT_USER AS current_user, DB_NAME() AS dbname;" > test_connection.sql
+                      /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 15 -i test_connection.sql || echo "[WARN] Identity test query failed"
+                      echo "[INFO] Verifying presence of managed identity user principal..."
+                      VERIFY_SQL=$'SET NOCOUNT ON; SELECT name,type_desc,create_date FROM sys.database_principals WHERE name='"'${WEBAPP_NAME}'"';'
+                      VERIFY_OUTPUT=$(/opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 30 -h -1 -Q "$VERIFY_SQL" 2>/dev/null || echo "")
+                      if echo "$VERIFY_OUTPUT" | grep -qi "${WEBAPP_NAME}"; then
+                        echo "[INFO] Managed identity user exists in database."
+                      else
+                        echo "[ERROR] Managed identity user ${WEBAPP_NAME} NOT FOUND after creation attempts."; exit 1
+                      fi
+                      echo "[INFO] Listing role memberships for managed identity (if any)..."
+                      ROLE_SQL=$'SET NOCOUNT ON; SELECT r.name AS role_name FROM sys.database_principals dp JOIN sys.database_role_members rm ON dp.principal_id=rm.member_principal_id JOIN sys.database_principals r ON rm.role_principal_id=r.principal_id WHERE dp.name='"'${WEBAPP_NAME}'"';'
+                      /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 30 -Q "$ROLE_SQL" || echo "[WARN] Role listing query failed"
+                      echo "[INFO] Managed identity SQL setup complete"
+
+                - task: DotNetCoreCLI@2
+                  displayName: "Setup .NET for migrations"
+                  inputs:
+                    command: "custom"
+                    custom: "tool"
+                    arguments: "install --global dotnet-ef"
+
+                - task: AzureCLI@2
+                  displayName: "Run database migrations"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      INSTANCE_NUM="$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+
+                      echo "🗄️ Checking database migration options..."
+                      echo "Resource Group: ${RG_NAME}"
+
+                      # Try to get connection string from Key Vault, but don't fail if access is denied
+                      KEY_VAULT_NAME="kv-aistock-prod-$(instanceNum)"
+                      echo "Attempting to retrieve connection string from Key Vault: ${KEY_VAULT_NAME}"
+
+                      CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv 2>/dev/null || echo "")
+
+                      if [ -z "${CONNECTION_STRING}" ]; then
+                        echo "ℹ️ Could not retrieve connection string from Key Vault."
+                        echo "This is expected for first-time deployments or when pipeline doesn't have Key Vault access."
+                        echo ""
+                        echo "🚀 Database migrations will run automatically on first app startup."
+                        echo "The application is configured to:"
+                        echo "  1. Use Azure AD managed identity authentication"
+                        echo "  2. Run Entity Framework migrations automatically"
+                        echo "  3. Create necessary database schema"
+                        echo ""
+                        echo "✅ Skipping manual migration - letting app handle it during startup"
+                      else
+                        echo "✅ Retrieved connection string from Key Vault"
+                        echo "Connection string type: $(echo "${CONNECTION_STRING}" | grep -o 'Authentication=[^;]*' || echo 'SQL Authentication')"
+                        
+                        if echo "${CONNECTION_STRING}" | grep -q "Authentication=Active Directory Default"; then
+                          echo "🔐 Using Azure AD authentication for migrations"
+                        else
+                          echo "🔑 Using SQL authentication for migrations"
+                        fi
+                        
+                        echo "Running database migrations manually..."
+                        cd AiStockTradeApp
+                        export ConnectionStrings__DefaultConnection="${CONNECTION_STRING}"
+                        
+                        # Run with verbose output
+                        echo "Starting Entity Framework migration..."
+                        dotnet ef database update --verbose
+                        
+                        if [ $? -eq 0 ]; then
+                          echo "✅ Database migrations completed successfully"
+                        else
+                          echo "⚠️ Migration failed, but this may be handled during app startup"
+                        fi
+                      fi
+
+                - task: AzureCLI@2
+                  displayName: "Update Web App Container"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+
+                      # Get registry information from DEV resource group (shared registry)
+                      DEV_RG_NAME="rg-aistock-dev-$(instanceNum)"
+                      REGISTRY_NAME=$(az acr list --resource-group "${DEV_RG_NAME}" --query '[0].name' --output tsv)
+                      REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+                      REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+                      echo "Container Image: $(containerImage)"
+                      echo "Web App Name: ${WEBAPP_NAME}"
+                      echo "Prod Resource Group: ${RG_NAME}"
+                      echo "Dev Registry Resource Group: ${DEV_RG_NAME}"
+                      echo "Shared Registry Name: ${REGISTRY_NAME}"
+
+                      if [ -z "$(containerImage)" ]; then
+                        echo "ERROR: Container image is empty!"
+                        exit 1
+                      fi
+
+                      az webapp config container set \
+                        --name "${WEBAPP_NAME}" \
+                        --resource-group "${RG_NAME}" \
+                        --container-image-name "$(containerImage)" \
+                        --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+                        --container-registry-user "${REGISTRY_USERNAME}" \
+                        --container-registry-password "${REGISTRY_PASSWORD}"
+
+                - task: AzureCLI@2
+                  displayName: "Update API Web App Container"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+
+                      # Get registry information from DEV resource group (shared registry)
+                      DEV_RG_NAME="rg-aistock-dev-$(instanceNum)"
+                      REGISTRY_NAME=$(az acr list --resource-group "${DEV_RG_NAME}" --query '[0].name' --output tsv)
+                      REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+                      REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+                      echo "API Container Image: $(containerImageApi)"
+                      echo "API Web App Name: ${WEBAPP_NAME}"
+                      echo "Prod Resource Group: ${RG_NAME}"
+                      echo "Dev Registry Resource Group: ${DEV_RG_NAME}"
+                      echo "Shared Registry Name: ${REGISTRY_NAME}"
+
+                      if [ -z "$(containerImageApi)" ]; then echo "ERROR: API container image is empty!"; exit 1; fi
+
+                      az webapp config container set \
+                        --name "${WEBAPP_NAME}" \
+                        --resource-group "${RG_NAME}" \
+                        --container-image-name "$(containerImageApi)" \
+                        --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+                        --container-registry-user "${REGISTRY_USERNAME}" \
+                        --container-registry-password "${REGISTRY_PASSWORD}"
+
+                - task: AzureCLI@2
+                  displayName: "Run Health Check"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      echo "[DIAG] Dumping resolved connection string authentication mode before health checks (shared script)..."
+                      WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      bash ./scripts/sql-conn-auth-dump.sh "$RG_NAME" "$WEBAPP_NAME" || echo "[DIAG] Script execution failed (non-fatal)"
+                      WEBAPP_NAME="app-aistock-prod-$(instanceNum)"
+                      HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+                      BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
+
+                      echo "🏥 Starting comprehensive health check..."
+                      echo "Base URL: ${BASE_URL}"
+                      echo "Health URL: ${HEALTH_URL}"
+
+                      # Wait for initial deployment
+                      echo "Waiting for deployment to be ready..."
+                      sleep 60
+
+                      # Check if the site is accessible at all
+                      echo "Testing basic site accessibility..."
+                      for i in {1..5}; do
+                        if curl -f -s "${BASE_URL}" >/dev/null 2>&1; then
+                          echo "✅ Site is accessible (attempt $i)"
+                          break
+                        else
+                          echo "⏳ Site not ready yet (attempt $i/5)..."
+                          sleep 30
+                        fi
+                      done
+
+                      # Check health endpoint specifically
+                      echo "Testing health endpoint..."
+                      for i in {1..10}; do
+                        echo "Health check attempt $i/10..."
+                        
+                        # Get detailed response
+                        HTTP_CODE=$(curl -s -o /tmp/health_response.txt -w "%{http_code}" "${HEALTH_URL}")
+                        RESPONSE_BODY=$(cat /tmp/health_response.txt 2>/dev/null || echo "No response body")
+                        
+                        echo "HTTP Status: ${HTTP_CODE}"
+                        echo "Response: ${RESPONSE_BODY}"
+                        
+                        if [ "${HTTP_CODE}" = "200" ]; then
+                          echo "✅ Health check passed!"
+                          echo "Deployment successful and application is healthy."
+                          exit 0
+                        elif [ "${HTTP_CODE}" = "503" ] || [ "${HTTP_CODE}" = "500" ]; then
+                          echo "⚠️ Application error detected (HTTP ${HTTP_CODE})"
+                          echo "This might be a database connectivity issue."
+                          
+                          # Try to get more detailed logs
+                          echo "Attempting to get application logs..."
+                          az webapp log tail --name "${WEBAPP_NAME}" --resource-group "rg-aistock-prod-$(instanceNum)" --timeout 30 || echo "Could not retrieve logs"
+                          
+                          if [ $i -eq 10 ]; then
+                            echo "❌ Health check failed after 10 attempts"
+                            echo "Last response (HTTP ${HTTP_CODE}): ${RESPONSE_BODY}"
+                            echo ""
+                            echo "🔍 Troubleshooting steps:"
+                            echo "1. Check Azure portal for app service logs"
+                            echo "2. Verify managed identity SQL user was created"
+                            echo "3. Check Key Vault access permissions"
+                            echo "4. Verify SQL Server firewall allows Azure services"
+                            exit 1
+                          fi
+                        else
+                          echo "⏳ Unexpected response (HTTP ${HTTP_CODE}), retrying..."
+                        fi
+                        
+                        sleep 30
+                      done
+
+                      echo "❌ Health check failed - no successful response received"
+                      exit 1
+
+                - task: Bash@3
+                  displayName: "Run API Health Check"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "[DIAG] Dumping resolved connection string authentication mode before API health checks (shared script)..."
+                      WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      bash ./scripts/sql-conn-auth-dump.sh "$RG_NAME" "$WEBAPP_NAME" || echo "[DIAG] Script execution failed (non-fatal)"
+                      HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+                      BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
+                      echo "🏥 Starting API health check..."
+                      echo "Base URL: ${BASE_URL}"
+                      echo "Health URL: ${HEALTH_URL}"
+                      sleep 60
+                      for i in {1..10}; do
+                        echo "API Health check attempt $i/10..."
+                        HTTP_CODE=$(curl -s -o /tmp/health_api_response.txt -w "%{http_code}" "${HEALTH_URL}")
+                        RESPONSE_BODY=$(cat /tmp/health_api_response.txt 2>/dev/null || echo "No response body")
+                        echo "HTTP Status: ${HTTP_CODE}"; echo "Response: ${RESPONSE_BODY}"
+                        if [ "${HTTP_CODE}" = "200" ]; then
+                          echo "✅ API Health check passed!"; exit 0
+                        fi
+                        sleep 30
+                      done
+                      echo "❌ API Health check failed"; exit 1
+
   - stage: SecurityScan
     displayName: "Security Scan"
     dependsOn: Build
