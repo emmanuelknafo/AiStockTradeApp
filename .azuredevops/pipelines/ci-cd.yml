@@ -1541,40 +1541,73 @@ stages:
                       RG_NAME="rg-aistock-prod-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
 
-                      # Safer defaults for Prod: avoid ARM touching networking or SQL unless necessary
-                      # Default to false to prevent ARM from attempting to update in-use subnets or AD-managed SQL
+                      # Safer, more accurate detection for Prod: search the subscription for SQL server
+                      # and for any subnet named 'snet-appintegration'. If we find them anywhere, avoid
+                      # letting ARM manage those pieces (safe default). Only let ARM create them if the
+                      # resources are definitely absent across the subscription.
                       MANAGE_SQL_PARAM="-manageSql false"
-                      if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
-                        echo "[PROD] SQL server exists; checking Azure AD-only auth status..."
-                        AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
+                      FOUND_SQL=0
+                      # First try the expected RG (fast)
+                      echo "[PROD][DEBUG] Running: az sql server show --name '$SQL_SERVER_NAME' --resource-group '$RG_NAME' -o json"
+                      SQL_SHOW_RAW=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json 2>&1 || true)
+                      echo "[PROD][DEBUG] az sql server show output (first 200 lines):";
+                      echo "$SQL_SHOW_RAW" | sed -n '1,200p' || true
+                      if echo "$SQL_SHOW_RAW" | grep -q '"name"'; then
+                        FOUND_SQL=1
+                        SQL_RG="$RG_NAME"
+                        echo "[PROD] SQL server found in expected RG: $SQL_RG"
+                      else
+                        echo "[PROD][DEBUG] az sql server show did not find server in expected RG. Searching subscription..."
+                        echo "[PROD][DEBUG] Running: az sql server list --query \"[?name=='${SQL_SERVER_NAME}'] | [0]\" -o json"
+                        SQL_LIST_RAW=$(az sql server list --query "[?name=='${SQL_SERVER_NAME}'] | [0]" -o json 2>&1 || true)
+                        echo "[PROD][DEBUG] az sql server list item (first 200 lines):";
+                        echo "$SQL_LIST_RAW" | sed -n '1,200p' || true
+                        SQL_RG=$(echo "$SQL_LIST_RAW" | jq -r '.resourceGroup // empty' 2>/dev/null || echo "")
+                        if [ -n "$SQL_RG" ]; then
+                          FOUND_SQL=1
+                          echo "[PROD] SQL server found in subscription in resource group: $SQL_RG"
+                        else
+                          echo "[PROD] SQL server not found in subscription"
+                        fi
+                      fi
+
+                      if [ $FOUND_SQL -eq 1 ]; then
+                        # If server exists, check AAD-only flag from the actual resource group (if known)
+                        echo "[PROD][DEBUG] Checking azureADOnlyAuthentication on server in RG: ${SQL_RG:-$RG_NAME}"
+                        AADONLY_RAW=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "${SQL_RG:-$RG_NAME}" -o json 2>&1 || true)
+                        echo "[PROD][DEBUG] az sql server show (for AAD check) output (first 200 lines):";
+                        echo "$AADONLY_RAW" | sed -n '1,200p' || true
+                        AADONLY=$(echo "$AADONLY_RAW" | jq -r '.properties.azureADOnlyAuthentication // empty' 2>/dev/null || echo "")
+                        echo "[PROD] Azure AD-only authentication on server: ${AADONLY:-unknown}"
+                        # If AAD-only is enabled or unknown, avoid managing SQL via ARM
                         if [ "$AADONLY" = "false" ] || [ "$AADONLY" = "False" ]; then
-                          echo "[PROD] Azure AD-only authentication disabled; ARM could manage SQL when needed, but defaulting to safe=false"
+                          echo "[PROD] Azure AD-only authentication disabled; ARM could manage SQL, but defaulting to safe=false"
                           MANAGE_SQL_PARAM="-manageSql false"
                         else
                           echo "[PROD] Azure AD-only authentication enabled or unknown; skipping SQL management"
                           MANAGE_SQL_PARAM="-manageSql false"
                         fi
                       else
-                        echo "[PROD] SQL server not present; allow ARM to manage SQL resources"
+                        # Definitively not present anywhere in the subscription: allow ARM to create it
                         MANAGE_SQL_PARAM="-manageSql true"
                       fi
 
-                      # Determine manageNetworking param by checking if app-integration subnet exists
-                      # Default to not managing networking to avoid updating an in-use subnet
+                      # Determine manageNetworking param by searching the subscription for any subnet named snet-appintegration
                       MANAGE_NETWORKING_PARAM="-manageNetworking false"
-                      VNET_NAMES=("vnet-aistock-prod-$(instanceNum)" "vnet-aistock-dev-$(instanceNum)")
                       SUBNET_NAME="snet-appintegration"
-                      FOUND_SUBNET=0
-                      for v in "${VNET_NAMES[@]}"; do
-                        if az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$v" --name "$SUBNET_NAME" >/dev/null 2>&1; then
-                          echo "[PROD] Found subnet $SUBNET_NAME in vnet $v; avoid updating networking in ARM"
-                          MANAGE_NETWORKING_PARAM="-manageNetworking false"
-                          FOUND_SUBNET=1
-                          break
-                        fi
-                      done
-                      if [ $FOUND_SUBNET -eq 0 ]; then
-                        echo "[PROD] No existing integration subnet found in checked VNets; ARM may manage networking"
+                      echo "[PROD] Searching subscription for subnets named ${SUBNET_NAME} (this may take a moment)"
+                      echo "[PROD][DEBUG] Running: az network vnet list -o json"
+                      VNETS_RAW=$(az network vnet list -o json 2>&1 || true)
+                      echo "[PROD][DEBUG] az network vnet list output (first 200 lines):";
+                      echo "$VNETS_RAW" | sed -n '1,200p' || true
+                      # Now filter for subnets named snet-appintegration
+                      SUBNET_MATCHES=$(echo "$VNETS_RAW" | jq -r '.[] | {vnet:.name, rg:.resourceGroup, subnets:.subnets[]?} | select(.subnets.name=="'${SUBNET_NAME}'") | "vnet: \(.vnet) rg: \(.rg) subnet: \(.subnets.name)"' 2>/dev/null || true)
+                      if [ -n "$SUBNET_MATCHES" ]; then
+                        echo "[PROD] Found existing integration subnet(s):"
+                        echo "$SUBNET_MATCHES" | head -20 || true
+                        MANAGE_NETWORKING_PARAM="-manageNetworking false"
+                      else
+                        echo "[PROD] No subnet named ${SUBNET_NAME} found in any VNet in this subscription; ARM may manage networking"
                         MANAGE_NETWORKING_PARAM="-manageNetworking true"
                       fi
 
