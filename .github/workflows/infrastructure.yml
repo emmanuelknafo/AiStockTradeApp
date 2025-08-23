@@ -37,16 +37,22 @@ on:
         default: false
         type: boolean
 
+# Environment inputs with safe fallbacks for automatic triggers
 env:
-  AZURE_RESOURCE_GROUP_DEV: "rg-aistock-dev-${{ github.event.inputs.instanceNumber }}"
-  AZURE_RESOURCE_GROUP_PROD: "rg-aistock-prod-${{ github.event.inputs.instanceNumber }}"
+  INSTANCE_NUMBER: ${{ github.event.inputs.instanceNumber || '002' }}
+  INPUT_ENVIRONMENT: ${{ github.event.inputs.environment || 'prod' }}
+  INPUT_LOCATION: ${{ github.event.inputs.location || 'Canada Central' }}
+  INPUT_DESTROY: ${{ github.event.inputs.destroy || 'false' }}
+  AZURE_RESOURCE_GROUP_DEV: "rg-aistock-dev-${{ github.event.inputs.instanceNumber || '002' }}"
+  AZURE_RESOURCE_GROUP_PROD: "rg-aistock-prod-${{ github.event.inputs.instanceNumber || '002' }}"
 
 jobs:
   deploy-dev:
     runs-on: [self-hosted, linux, x64]
     name: Deploy Development Infrastructure
-    if: github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'prod'
-    environment: ${{ format('development-{0}', github.event.inputs.instanceNumber) }}
+    # Run when dispatched for dev/prod, or when triggered automatically by push/PR path filters
+    if: (github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'prod') || (github.event_name == 'push' || github.event_name == 'pull_request')
+    environment: ${{ format('development-{0}', github.event.inputs.instanceNumber || '002') }}
 
     permissions:
       id-token: write
@@ -64,18 +70,18 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Create Dev Resource Group
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
           echo "Creating dev resource group: $RG_NAME"
-          az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
+          az group create --name "$RG_NAME" --location "${{ env.INPUT_LOCATION }}"
 
       - name: "Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy"
         run: |
           set -e
-          if [ "${{ github.event.inputs.destroy }}" = "true" ]; then echo "[DEV] destroy=true; skipping preflight cleanup"; exit 0; fi
+          if [ "${{ env.INPUT_DESTROY }}" = "true" ]; then echo "[DEV] destroy=true; skipping preflight cleanup"; exit 0; fi
           RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
-          SQL_SERVER_NAME="sql-aistock-dev-${{ github.event.inputs.instanceNumber }}"
+          SQL_SERVER_NAME="sql-aistock-dev-${{ env.INSTANCE_NUMBER }}"
           if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
             echo "[DEV] Server exists; checking Azure AD-only auth status..."
             AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
@@ -90,14 +96,14 @@ jobs:
           fi
 
       - name: Validate Dev Bicep Template
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           az deployment group validate \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
             --template-file ./infrastructure/main.bicep \
             --parameters ./infrastructure/parameters.dev.json \
-            --parameters location="${{ github.event.inputs.location }}" \
-            --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+            --parameters location="${{ env.INPUT_LOCATION }}" \
+            --parameters instanceNumber="${{ env.INSTANCE_NUMBER }}" \
             --parameters containerImage="AiStockTradeApp:latest" \
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
@@ -110,15 +116,15 @@ jobs:
             --parameters deployLoadTesting=true
 
       - name: Deploy Dev Infrastructure
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           echo "Deploying dev infrastructure with container registry..."
           az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} \
             --template-file ./infrastructure/main.bicep \
             --parameters ./infrastructure/parameters.dev.json \
-            --parameters location="${{ github.event.inputs.location }}" \
-            --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+            --parameters location="${{ env.INPUT_LOCATION }}" \
+            --parameters instanceNumber="${{ env.INSTANCE_NUMBER }}" \
             --parameters containerImage="AiStockTradeApp:latest" \
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
@@ -131,10 +137,10 @@ jobs:
             --parameters deployLoadTesting=true
 
       - name: Set Web App Managed Identity as SQL Admin (Dev)
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           set -e
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
           WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
           SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
@@ -163,6 +169,7 @@ jobs:
             fi
             az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
           fi
+          echo "[DEV] Waiting for admin propagation..."
           get_admin_sid() {
             local list_sid
             list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPP_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
@@ -192,10 +199,10 @@ jobs:
           echo "[DEV] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
 
       - name: Set API Web App Managed Identity as SQL Admin (Dev)
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           set -e
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
           WEBAPI_NAME="api-aistock-dev-${INSTANCE_NUM}"
           SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
@@ -231,18 +238,18 @@ jobs:
           echo "[DEV] API MI is confirmed as SQL Entra admin (sid=$ADMIN_OID)."
 
       - name: Enable Azure AD-only Authentication (Dev)
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
           SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
           echo "[DEV] Enabling Azure AD-only authentication on $SQL_SERVER_NAME..."
           az sql server ad-only-auth enable --resource-group "$RG_NAME" --name "$SQL_SERVER_NAME"
 
       - name: Verify Dev Infrastructure SQL Setup
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
           DATABASE_NAME="sqldb-aistock-dev-${INSTANCE_NUM}"
 
@@ -254,7 +261,7 @@ jobs:
           echo "Testing SQL Server connectivity..."
           if az sql server show --name "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} >/dev/null 2>&1; then
             echo "✅ SQL Server is accessible"
-            
+
             # Check if database exists
             if az sql db show --name "${DATABASE_NAME}" --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_DEV }} >/dev/null 2>&1; then
               echo "✅ Database is accessible"
@@ -268,11 +275,11 @@ jobs:
           fi
 
       - name: Destroy Dev Infrastructure
-        if: github.event.inputs.destroy == 'true'
+        if: env.INPUT_DESTROY == 'true'
         continue-on-error: true # Don't fail the workflow if dev destruction has issues
         run: |
           RG_NAME="${{ env.AZURE_RESOURCE_GROUP_DEV }}"
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           KV_NAME="kv-aistock-dev-${INSTANCE_NUM}"
 
           echo "=== Destroying dev infrastructure ==="
@@ -312,19 +319,19 @@ jobs:
           if [ "$KV_EXISTS" = true ]; then
             echo "⏳ Waiting 60 seconds for deletion to propagate..."
             sleep 60
-            
+
             echo "🔍 Checking if Key Vault is in soft-delete state..."
-            
+
             # First check if the Key Vault is actually in the deleted/soft-delete state
             DELETED_KV=$(az keyvault list-deleted --query "[?name=='$KV_NAME'].name" --output tsv 2>/dev/null || echo "")
-            
+
             if [ -n "$DELETED_KV" ]; then
               echo "🧹 Key Vault found in soft-delete state. Attempting to purge..."
-              
+
               # Try multiple times with increasing delays
               for attempt in 1 2 3; do
                 echo "Purge attempt $attempt/3..."
-                if az keyvault purge --name "$KV_NAME" --location "${{ github.event.inputs.location }}" >/dev/null 2>&1; then
+                if az keyvault purge --name "$KV_NAME" --location "${{ env.INPUT_LOCATION }}" >/dev/null 2>&1; then
                   echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
                   break
                 else
@@ -335,7 +342,7 @@ jobs:
                     echo "⚠️ Could not purge Key Vault after 3 attempts."
                     echo "This may happen if the Key Vault is still being processed."
                     echo "You can manually purge it later with:"
-                    echo "az keyvault purge --name $KV_NAME --location '${{ github.event.inputs.location }}'"
+                    echo "az keyvault purge --name $KV_NAME --location '${{ env.INPUT_LOCATION }}'"
                   fi
                 fi
               done
@@ -352,7 +359,7 @@ jobs:
     name: Deploy Production Infrastructure
     needs: deploy-dev
     if: github.event.inputs.environment == 'prod' && always() && (needs.deploy-dev.result == 'success' || (github.event.inputs.destroy == 'true' && needs.deploy-dev.result != 'cancelled'))
-    environment: ${{ format('production-{0}', github.event.inputs.instanceNumber) }}
+    environment: ${{ format('production-{0}', github.event.inputs.instanceNumber || '002') }}
 
     permissions:
       id-token: write
@@ -370,19 +377,19 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Create Prod Resource Group
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
           echo "Creating prod resource group: $RG_NAME"
-          az group create --name "$RG_NAME" --location "${{ github.event.inputs.location }}"
+          az group create --name "$RG_NAME" --location "${{ env.INPUT_LOCATION }}"
 
       - name: "Preflight cleanup: remove lingering AAD admin to avoid conflicts on re-deploy (prod)"
         run: |
           set -e
           # Ensure this step only runs for prod and when not destroying
-          if [ "${{ github.event.inputs.destroy }}" = "true" ] || [ "${{ github.event.inputs.environment }}" != "prod" ]; then echo "[PROD] Skipping prod preflight cleanup (destroy or not prod)"; exit 0; fi
+          if [ "${{ env.INPUT_DESTROY }}" = "true" ] || [ "${{ env.INPUT_ENVIRONMENT }}" != "prod" ]; then echo "[PROD] Skipping prod preflight cleanup (destroy or not prod)"; exit 0; fi
           RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
-          SQL_SERVER_NAME="sql-aistock-prod-${{ github.event.inputs.instanceNumber }}"
+          SQL_SERVER_NAME="sql-aistock-prod-${{ env.INSTANCE_NUMBER }}"
           if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
             echo "[PROD] Server exists; checking Azure AD-only auth status..."
             AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
@@ -397,14 +404,14 @@ jobs:
           fi
 
       - name: Validate Prod Bicep Template
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           az deployment group validate \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
             --template-file ./infrastructure/main.bicep \
             --parameters ./infrastructure/parameters.prod.json \
-            --parameters location="${{ github.event.inputs.location }}" \
-            --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+            --parameters location="${{ env.INPUT_LOCATION }}" \
+            --parameters instanceNumber="${{ env.INSTANCE_NUMBER }}" \
             --parameters containerImage="AiStockTradeApp:latest" \
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
@@ -417,15 +424,15 @@ jobs:
             --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
 
       - name: Deploy Prod Infrastructure
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           echo "Deploying prod infrastructure WITHOUT container registry..."
           az deployment group create \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} \
             --template-file ./infrastructure/main.bicep \
             --parameters ./infrastructure/parameters.prod.json \
-            --parameters location="${{ github.event.inputs.location }}" \
-            --parameters instanceNumber="${{ github.event.inputs.instanceNumber }}" \
+            --parameters location="${{ env.INPUT_LOCATION }}" \
+            --parameters instanceNumber="${{ env.INSTANCE_NUMBER }}" \
             --parameters containerImage="AiStockTradeApp:latest" \
             --parameters containerImageApi="aistocktradeapp-api:latest" \
             --parameters alphaVantageApiKey="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
@@ -438,10 +445,10 @@ jobs:
             --parameters privateEndpointSubnetPrefix="10.41.2.0/28"
 
       - name: Set Web App Managed Identity as SQL Admin (Prod)
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           set -e
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
           WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
           SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
@@ -506,10 +513,10 @@ jobs:
           echo "[PROD] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
 
       - name: Set API Web App Managed Identity as SQL Admin (Prod)
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
           set -e
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
           WEBAPI_NAME="api-aistock-prod-${INSTANCE_NUM}"
           SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
@@ -527,20 +534,14 @@ jobs:
           CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
           CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
           if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
-            echo "[PROD] Desired admin already set to API MI ($CURRENT_ADMIN_LOGIN)."
-            if [ "$CURRENT_ADMIN_LOGIN" != "$WEBAPI_NAME" ]; then
-              echo "[PROD] Display name mismatch ($CURRENT_ADMIN_LOGIN != $WEBAPI_NAME); normalizing..."
-              az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
-              sleep 5
-              az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPI_NAME" --object-id "$PRINCIPAL_ID"
-            fi
+            echo "[PROD] Desired admin already set to API MI ($CURRENT_ADMIN_LOGIN) - skipping reconfiguration."
           else
             if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
-              echo "[PROD] Existing admin '$CURRENT_ADMIN_LOGIN' (sid=$CURRENT_ADMIN_OID) differs from API MI (sid=$PRINCIPAL_ID); replacing..."
+              echo "[PROD] Replacing existing admin '$CURRENT_ADMIN_LOGIN' with API web app MI"
               az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
               sleep 5
             else
-              echo "[PROD] No existing Entra admin; creating new API MI admin."
+              echo "[PROD] No existing Entra admin set; creating new admin with API MI"
             fi
             az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPI_NAME" --object-id "$PRINCIPAL_ID"
           fi
@@ -551,18 +552,18 @@ jobs:
           echo "[PROD] API MI is confirmed as SQL Entra admin (sid=$ADMIN_OID)."
 
       - name: Enable Azure AD-only Authentication (Prod)
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
           SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
           echo "[PROD] Enabling Azure AD-only authentication on $SQL_SERVER_NAME..."
           az sql server ad-only-auth enable --resource-group "$RG_NAME" --name "$SQL_SERVER_NAME"
 
       - name: Verify Prod Infrastructure SQL Setup
-        if: github.event.inputs.destroy != 'true'
+        if: env.INPUT_DESTROY != 'true'
         run: |
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
           DATABASE_NAME="sqldb-aistock-prod-${INSTANCE_NUM}"
 
@@ -574,11 +575,11 @@ jobs:
           echo "Testing SQL Server connectivity..."
           if az sql server show --name "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} >/dev/null 2>&1; then
             echo "✅ SQL Server is accessible"
-            
+
             # Check if database exists
             if az sql db show --name "${DATABASE_NAME}" --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} >/dev/null 2>&1; then
               echo "✅ Database is accessible"
-              
+
               # For production, also verify Azure AD configuration
               echo "🔐 Checking Azure AD configuration..."
               AD_ADMIN=$(az sql server ad-admin list --server "${SQL_SERVER_NAME}" --resource-group ${{ env.AZURE_RESOURCE_GROUP_PROD }} --query '[0].login' --output tsv 2>/dev/null || echo "")
@@ -603,10 +604,10 @@ jobs:
           fi
 
       - name: Destroy Prod Infrastructure
-        if: github.event.inputs.destroy == 'true'
+        if: env.INPUT_DESTROY == 'true'
         run: |
           RG_NAME="${{ env.AZURE_RESOURCE_GROUP_PROD }}"
-          INSTANCE_NUM="${{ github.event.inputs.instanceNumber }}"
+          INSTANCE_NUM="${{ env.INSTANCE_NUMBER }}"
           KV_NAME="kv-aistock-prod-${INSTANCE_NUM}"
 
           echo "=== Destroying prod infrastructure ==="
@@ -646,19 +647,19 @@ jobs:
           if [ "$KV_EXISTS" = true ]; then
             echo "⏳ Waiting 60 seconds for deletion to propagate..."
             sleep 60
-            
+
             echo "🔍 Checking if Key Vault is in soft-delete state..."
-            
+
             # First check if the Key Vault is actually in the deleted/soft-delete state
             DELETED_KV=$(az keyvault list-deleted --query "[?name=='$KV_NAME'].name" --output tsv 2>/dev/null || echo "")
-            
+
             if [ -n "$DELETED_KV" ]; then
               echo "🧹 Key Vault found in soft-delete state. Attempting to purge..."
-              
+
               # Try multiple times with increasing delays
               for attempt in 1 2 3; do
                 echo "Purge attempt $attempt/3..."
-                if az keyvault purge --name "$KV_NAME" --location "${{ github.event.inputs.location }}" >/dev/null 2>&1; then
+                if az keyvault purge --name "$KV_NAME" --location "${{ env.INPUT_LOCATION }}" >/dev/null 2>&1; then
                   echo "✅ Key Vault $KV_NAME purged successfully on attempt $attempt"
                   break
                 else
@@ -668,8 +669,7 @@ jobs:
                   else
                     echo "⚠️ Could not purge Key Vault after 3 attempts."
                     echo "This may happen if the Key Vault is still being processed."
-                    echo "You can manually purge it later with:"
-                    echo "az keyvault purge --name $KV_NAME --location '${{ github.event.inputs.location }}'"
+                    echo "az keyvault purge --name $KV_NAME --location '${{ env.INPUT_LOCATION }}'"
                   fi
                 fi
               done
@@ -691,25 +691,25 @@ jobs:
       - name: Generate Summary
         run: |
           echo "## Infrastructure Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment Requested**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Instance Number**: ${{ github.event.inputs.instanceNumber }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Location**: ${{ github.event.inputs.location }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment Requested**: ${{ env.INPUT_ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Instance Number**: ${{ env.INSTANCE_NUMBER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Location**: ${{ env.INPUT_LOCATION }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.deploy-dev.result }}" == "success" ]; then
             echo "✅ **Dev Infrastructure**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
             echo "- **Dev Resource Group**: ${{ env.AZURE_RESOURCE_GROUP_DEV }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Dev Web App**: https://app-aistock-dev-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+            echo "- **Dev Web App**: https://app-aistock-dev-${{ env.INSTANCE_NUMBER }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
             echo "- **Container Registry**: Deployed in dev environment (shared with prod)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Dev Infrastructure**: ${{ needs.deploy-dev.result }}" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [ "${{ github.event.inputs.environment }}" == "prod" ]; then
+          if [ "${{ env.INPUT_ENVIRONMENT }}" == "prod" ]; then
             if [ "${{ needs.deploy-prod.result }}" == "success" ]; then
               echo "✅ **Prod Infrastructure**: Deployed successfully" >> $GITHUB_STEP_SUMMARY
               echo "- **Prod Resource Group**: ${{ env.AZURE_RESOURCE_GROUP_PROD }}" >> $GITHUB_STEP_SUMMARY
-              echo "- **Prod Web App**: https://app-aistock-prod-${{ github.event.inputs.instanceNumber }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+              echo "- **Prod Web App**: https://app-aistock-prod-${{ env.INSTANCE_NUMBER }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
               echo "- **Container Registry**: Uses shared registry from dev environment" >> $GITHUB_STEP_SUMMARY
             else
               echo "❌ **Prod Infrastructure**: ${{ needs.deploy-prod.result }}" >> $GITHUB_STEP_SUMMARY
