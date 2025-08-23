@@ -1541,36 +1541,42 @@ stages:
                       RG_NAME="rg-aistock-prod-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
 
-                      # Default: allow ARM to manage SQL when server does not exist
-                      # Use AzureResourceManagerTemplateDeployment overrideParameters style (e.g. -manageSql true)
-                      MANAGE_SQL_PARAM="-manageSql true"
+                      # Safer defaults for Prod: avoid ARM touching networking or SQL unless necessary
+                      # Default to false to prevent ARM from attempting to update in-use subnets or AD-managed SQL
+                      MANAGE_SQL_PARAM="-manageSql false"
                       if az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
                         echo "[PROD] SQL server exists; checking Azure AD-only auth status..."
                         AADONLY=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "properties.azureADOnlyAuthentication" -o tsv 2>/dev/null || echo "")
                         if [ "$AADONLY" = "false" ] || [ "$AADONLY" = "False" ]; then
-                          echo "[PROD] Azure AD-only authentication disabled; ARM may manage SQL"
-                          MANAGE_SQL_PARAM="-manageSql true"
+                          echo "[PROD] Azure AD-only authentication disabled; ARM could manage SQL when needed, but defaulting to safe=false"
+                          MANAGE_SQL_PARAM="-manageSql false"
                         else
                           echo "[PROD] Azure AD-only authentication enabled or unknown; skipping SQL management"
                           MANAGE_SQL_PARAM="-manageSql false"
                         fi
                       else
-                        echo "[PROD] SQL server not present; ARM will manage SQL resources"
+                        echo "[PROD] SQL server not present; allow ARM to manage SQL resources"
                         MANAGE_SQL_PARAM="-manageSql true"
                       fi
 
                       # Determine manageNetworking param by checking if app-integration subnet exists
-                      # Try both vnet name patterns (prod and dev) as conservative check
-                      MANAGE_NETWORKING_PARAM="-manageNetworking true"
+                      # Default to not managing networking to avoid updating an in-use subnet
+                      MANAGE_NETWORKING_PARAM="-manageNetworking false"
                       VNET_NAMES=("vnet-aistock-prod-$(instanceNum)" "vnet-aistock-dev-$(instanceNum)")
                       SUBNET_NAME="snet-appintegration"
+                      FOUND_SUBNET=0
                       for v in "${VNET_NAMES[@]}"; do
                         if az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$v" --name "$SUBNET_NAME" >/dev/null 2>&1; then
                           echo "[PROD] Found subnet $SUBNET_NAME in vnet $v; avoid updating networking in ARM"
                           MANAGE_NETWORKING_PARAM="-manageNetworking false"
+                          FOUND_SUBNET=1
                           break
                         fi
                       done
+                      if [ $FOUND_SUBNET -eq 0 ]; then
+                        echo "[PROD] No existing integration subnet found in checked VNets; ARM may manage networking"
+                        MANAGE_NETWORKING_PARAM="-manageNetworking true"
+                      fi
 
                       echo "Computed MANAGE_SQL_PARAM=$MANAGE_SQL_PARAM"
                       echo "Computed MANAGE_NETWORKING_PARAM=$MANAGE_NETWORKING_PARAM"
@@ -1594,7 +1600,8 @@ stages:
                       echo "azureAdAdminObjectId=${azureAdAdminObjectId:-}" 
                       echo "azureAdAdminLogin=${azureAdAdminLogin:-}" 
                       # Build the override string we will pass to the ARM task. Intentionally omit azureAdAdminObjectId/login
-                      OVERRIDES="-instanceNumber $(instanceNum) -containerImage $(containerImage) -containerImageApi $(containerImageApi) -enableAzureAdOnlyAuth true -enablePrivateSql true -enablePrivateKeyVault true ${MANAGE_NETWORKING_PARAM:-} ${MANAGE_SQL_PARAM:-} -appVersion $(appVersion) -appServicePlanSku ${{ parameters.appServicePlanSku }}"
+                      # Use the computed enableAdOnlyAuthFlag so ARM won't attempt to change AAD-only settings when not desired
+                      OVERRIDES="-instanceNumber $(instanceNum) -containerImage $(containerImage) -containerImageApi $(containerImageApi) -enableAzureAdOnlyAuth ${enableAdOnlyAuthFlag:-false} -enablePrivateSql true -enablePrivateKeyVault true ${MANAGE_NETWORKING_PARAM:-} ${MANAGE_SQL_PARAM:-} -appVersion $(appVersion) -appServicePlanSku ${{ parameters.appServicePlanSku }}"
                       echo "Computed overrideParameters: $OVERRIDES"
                       # expose to subsequent tasks
                       echo "##vso[task.setvariable variable=PROD_ARM_OVERRIDES]$OVERRIDES"
