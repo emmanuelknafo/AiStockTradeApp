@@ -1,4 +1,3 @@
-/
-/api/health
-/api/stocks
-/api/portfolio
+/Stock/Dashboard
+/ListedStocks
+/health
