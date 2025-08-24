@@ -262,8 +262,6 @@ stages:
                   echo "No workspace TestResults directory present"
                 fi
 
-          # Removed TRX collection step; publish directly from Agent.TempDirectory to retain attachments referenced in TRX
-
           - task: Bash@3
             displayName: "Locate coverage file"
             inputs:
