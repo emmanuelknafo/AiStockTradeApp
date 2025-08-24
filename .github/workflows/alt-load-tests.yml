@@ -5,12 +5,12 @@ on:
     branches: ['*']
     paths:
       - 'load-tests/**'
-      - '.github/workflows/alt-load-tests-dev-002.yml'
+      - '.github/workflows/alt-load-tests.yml'
   pull_request:
     branches: ['*']
     paths:
       - 'load-tests/**'
-      - '.github/workflows/alt-load-tests-dev-002.yml'
+      - '.github/workflows/alt-load-tests.yml'
 
 env:
   LOAD_TEST_RESOURCE: lt-aistock-dev-002
@@ -19,7 +19,7 @@ env:
 jobs:
   load_test:
     name: Run Azure Load Test (dev-002)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
           cp -v load-tests/jmeter/test-plan.generated.jmx .github/workflows/test-plan.generated.jmx || true
 
       - name: Login to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
