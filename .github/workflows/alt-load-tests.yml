@@ -68,6 +68,25 @@ jobs:
           # Build a minimal run-body.json (API expects a specific shape). Use only safe fields.
           python -c 'import yaml,json,re,sys; s=open(".azuredevops/pipelines/alt-config.yml","r",encoding="utf-8").read(); s=re.sub(r"aistock-dev-003","aistock-dev-002",s); s=re.sub(r"dev-003","dev-002",s); cfg=yaml.safe_load(s); props={}; [(props.__setitem__(k,cfg[k])) for k in ("testId","displayName","description","engineInstances") if k in cfg and cfg[k] is not None]; [(props.__setitem__(k,cfg[k])) for k in ("testPlan","testType") if k in cfg and cfg[k] is not None]; import json as _json; _json.dump({"properties":props}, open("run-body.json","w"), indent=2)'
 
+          # If testId is a GUID, try to resolve it to a full test resource id under the load test resource
+          TEST_ID=$(python -c 'import json,sys; print(json.load(open("run-body.json")).get("properties",{}).get("testId",""))') || TEST_ID=""
+          echo "Configured testId: ${TEST_ID}"
+          if [ -n "${TEST_ID}" ] && [[ ! "${TEST_ID}" =~ ^/subscriptions/ ]] ; then
+            echo "Test id appears to be a short id; attempting to resolve to resource id by listing tests under the load test resource"
+            LIST_URI="https://management.azure.com/subscriptions/${AZ_SUBSCRIPTION_ID}/resourceGroups/${LOAD_TEST_RESOURCE_GROUP}/providers/Microsoft.LoadTestService/loadTests/${LOAD_TEST_RESOURCE}/tests?api-version=2022-12-01"
+            az rest --method get --uri "$LIST_URI" -o json > tests_list.json 2>/dev/null || true
+
+            RESOLVED_ID=$(python -c "import json,sys; g=sys.argv[1]; items=json.load(open('tests_list.json')); vals=items.get('value', items if isinstance(items, list) else []); print(next((it.get('id') for it in vals if it.get('properties',{}).get('testId')==g or it.get('name')==g or it.get('id','').endswith('/'+g)), ''))" "${TEST_ID}") || RESOLVED_ID=""
+
+            if [ -n "${RESOLVED_ID}" ]; then
+              echo "Resolved test resource id: ${RESOLVED_ID}"
+              python -c "import json; o=json.load(open('run-body.json')); o['properties']['testId']='${RESOLVED_ID}'; json.dump(o, open('run-body.json','w'), indent=2)"
+              echo 'Updated run-body.json with resolved testId'
+            else
+              echo "Could not resolve testId '${TEST_ID}' to a test resource under ${LOAD_TEST_RESOURCE}. Ensure the testId exists in the load test resource or upload the test asset there." >&2
+            fi
+          fi
+
           # Resolve AZ_SUBSCRIPTION_ID: prefer step secret, then top-level AZURE_SUBSCRIPTION_ID, then query az
           if [ -z "${AZ_SUBSCRIPTION_ID}" ]; then
             if [ -n "${AZURE_SUBSCRIPTION_ID}" ]; then
