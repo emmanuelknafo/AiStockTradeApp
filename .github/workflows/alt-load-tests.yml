@@ -46,6 +46,16 @@ jobs:
           mkdir -p .azuredevops/pipelines
           sed -e 's/aistock-dev-003/aistock-dev-002/g' -e 's/dev-003/dev-002/g' .azuredevops/pipelines/alt-config.yml > .azuredevops/pipelines/alt-config.dev-002.yml
           echo "Wrote .azuredevops/pipelines/alt-config.dev-002.yml"
+
+      - name: Setup Node.js (self-hosted)
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Show node and npm versions (self-hosted) and preview config
+        run: |
+          echo "node:" $(node -v || echo "not installed")
+          echo "npm:" $(npm -v || echo "not installed")
           echo "Preview (first 120 lines):"
           sed -n '1,120p' .azuredevops/pipelines/alt-config.dev-002.yml || true
 
@@ -78,7 +88,7 @@ jobs:
 
   load_test_debug:
     name: Run Azure Load Test (debug on ubuntu-latest)
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: write
@@ -102,12 +112,20 @@ jobs:
           sed -e 's/aistock-dev-003/aistock-dev-002/g' -e 's/dev-003/dev-002/g' .azuredevops/pipelines/alt-config.yml > .azuredevops/pipelines/alt-config.dev-002.yml
           echo "Wrote .azuredevops/pipelines/alt-config.dev-002.yml"
 
+      - name: Setup Node.js (ubuntu-latest)
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Show node and npm versions (ubuntu-latest)
+        run: |
+          echo "node:" $(node -v || echo "not installed")
+          echo "npm:" $(npm -v || echo "not installed")
+
       - name: Login to Azure (sdk-auth)
         uses: azure/login@v2
         with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Azure Load Testing (run) - debug
         uses: azure/load-testing@v1.1.28
