@@ -57,7 +57,7 @@ jobs:
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Azure Load Testing (run)
-        uses: azure/load-testing@v1
+        uses: azure/load-testing@v1.1.28
         with:
           loadTestConfigFile: '.azuredevops/pipelines/alt-config.dev-002.yml'
           loadTestResource: ${{ env.LOAD_TEST_RESOURCE }}
