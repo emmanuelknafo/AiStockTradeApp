@@ -65,8 +65,8 @@ jobs:
             exit 1
           fi
 
-          # Build run-body.json by loading alt-config.yml and replacing dev-003 -> dev-002
-          python -c 'import yaml,json,re,sys; s=open(".azuredevops/pipelines/alt-config.yml","r",encoding="utf-8").read(); s=re.sub(r"aistock-dev-003","aistock-dev-002",s); s=re.sub(r"dev-003","dev-002",s); cfg=yaml.safe_load(s); import json as _json; print(_json.dumps({"properties":cfg}, indent=2))' > run-body.json
+          # Build a minimal run-body.json (API expects a specific shape). Use only safe fields.
+          python -c 'import yaml,json,re,sys; s=open(".azuredevops/pipelines/alt-config.yml","r",encoding="utf-8").read(); s=re.sub(r"aistock-dev-003","aistock-dev-002",s); s=re.sub(r"dev-003","dev-002",s); cfg=yaml.safe_load(s); props={}; [(props.__setitem__(k,cfg[k])) for k in ("testId","displayName","description","engineInstances") if k in cfg and cfg[k] is not None]; [(props.__setitem__(k,cfg[k])) for k in ("testPlan","testType") if k in cfg and cfg[k] is not None]; import json as _json; _json.dump({"properties":props}, open("run-body.json","w"), indent=2)'
 
           # Resolve AZ_SUBSCRIPTION_ID: prefer step secret, then top-level AZURE_SUBSCRIPTION_ID, then query az
           if [ -z "${AZ_SUBSCRIPTION_ID}" ]; then
