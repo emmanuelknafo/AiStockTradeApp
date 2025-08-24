@@ -75,3 +75,52 @@ jobs:
             loadTest/**
 
   # ... no manual run-body artifacts when using azure/load-testing action
+
+  load_test_debug:
+    name: Run Azure Load Test (debug on ubuntu-latest)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare load test files
+        run: |
+          echo "Preparing load test files"
+          mkdir -p .github/workflows/load-tests || true
+          cp -v load-tests/paths.csv .github/workflows/load-tests/paths.csv || true
+          cp -v load-tests/jmeter/test-plan.azure.jmx .github/workflows/test-plan.azure.jmx || true
+          cp -v load-tests/jmeter/test-plan.jmx .github/workflows/test-plan.jmx || true
+          cp -v load-tests/jmeter/test-plan.generated.jmx .github/workflows/test-plan.generated.jmx || true
+
+      - name: Preprocess load test config for dev-002
+        run: |
+          echo "Creating dev-002 copy of alt-config.yml"
+          mkdir -p .azuredevops/pipelines
+          sed -e 's/aistock-dev-003/aistock-dev-002/g' -e 's/dev-003/dev-002/g' .azuredevops/pipelines/alt-config.yml > .azuredevops/pipelines/alt-config.dev-002.yml
+          echo "Wrote .azuredevops/pipelines/alt-config.dev-002.yml"
+
+      - name: Login to Azure (sdk-auth)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Azure Load Testing (run) - debug
+        uses: azure/load-testing@v1.1.28
+        with:
+          loadTestConfigFile: '.azuredevops/pipelines/alt-config.dev-002.yml'
+          loadTestResource: ${{ env.LOAD_TEST_RESOURCE }}
+          resourceGroup: ${{ env.LOAD_TEST_RESOURCE_GROUP }}
+          loadTestRunName: 'GitHub Actions - dev-002 (debug)'
+          loadTestRunDescription: 'Debug run on ubuntu-latest to validate azure/load-testing action'
+
+      - name: Upload debug load test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results-dev-002-debug
+          path: |
+            loadTest/results.zip
+            loadTest/**
