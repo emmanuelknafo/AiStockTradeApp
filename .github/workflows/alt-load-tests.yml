@@ -80,8 +80,25 @@ jobs:
             fi
           fi
 
-          API_VERSION="2022-12-01-preview"
+          # Use a supported API version (2022-12-01 is supported in most regions)
+          API_VERSION="2022-12-01"
           URI="https://management.azure.com/subscriptions/${AZ_SUBSCRIPTION_ID}/resourceGroups/${LOAD_TEST_RESOURCE_GROUP}/providers/Microsoft.LoadTestService/loadTests/${LOAD_TEST_RESOURCE}/run?api-version=${API_VERSION}"
+
+          # Ensure the Microsoft.LoadTestService provider is registered in this subscription
+          echo "Checking Microsoft.LoadTestService provider registration"
+          regState=$(az provider show --namespace Microsoft.LoadTestService --query registrationState -o tsv || echo "NotFound")
+          echo "Provider registration state: ${regState}"
+          if [ "${regState}" != "Registered" ]; then
+            echo "Registering Microsoft.LoadTestService provider..."
+            az provider register --namespace Microsoft.LoadTestService
+            echo "Waiting for provider to register (this may take a few moments)"
+            for i in 1 2 3 4 5; do
+              sleep 6
+              regState=$(az provider show --namespace Microsoft.LoadTestService --query registrationState -o tsv || echo "NotFound")
+              echo "Attempt ${i}: provider state=${regState}"
+              [ "${regState}" = "Registered" ] && break
+            done
+          fi
 
           echo "Calling Azure REST API to start the run (response shown)"
           az rest --method post --uri "$URI" --body @run-body.json --output json
