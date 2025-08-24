@@ -78,7 +78,7 @@ jobs:
 
   load_test_debug:
     name: Run Azure Load Test (debug on ubuntu-latest)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       id-token: write
       contents: write
