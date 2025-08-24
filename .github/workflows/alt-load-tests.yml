@@ -15,6 +15,9 @@ on:
 env:
   LOAD_TEST_RESOURCE: lt-aistock-dev-002
   LOAD_TEST_RESOURCE_GROUP: rg-aistock-dev-002
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
 jobs:
   load_test:
