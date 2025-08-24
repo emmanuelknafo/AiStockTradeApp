@@ -100,8 +100,20 @@ jobs:
             done
           fi
 
-          echo "Calling Azure REST API to start the run (response shown)"
-          az rest --method post --uri "$URI" --body @run-body.json --output json
+          echo "---- REQUEST (run-body.json) ----"
+          cat run-body.json || true
+
+          echo "Calling Azure REST API to start the run and saving response to az_response.json"
+          az rest --method post --uri "$URI" --body @run-body.json --output json > az_response.json 2>&1 || true
+
+          echo "---- RESPONSE (az_response.json) ----"
+          sed -n '1,400p' az_response.json || true
+
+          # If the response contains an error, surface it and fail the step so CI shows details
+          if grep -q 'error' az_response.json; then
+            echo "Azure REST returned an error; see az_response.json above for details"
+            exit 1
+          fi
 
       - name: Upload run artifacts
         if: always()
