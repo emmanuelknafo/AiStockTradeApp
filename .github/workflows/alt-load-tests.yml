@@ -20,6 +20,10 @@ jobs:
   load_test:
     name: Run Azure Load Test (dev-002)
     runs-on: [self-hosted, linux, x64]
+    permissions:
+      id-token: write
+      contents: write # needed to push git tag
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
