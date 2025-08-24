@@ -1496,6 +1496,17 @@ stages:
                       echo "##vso[task.setvariable variable=azureAdAdminObjectId]$SP_OBJECT_ID"
                       echo "##vso[task.setvariable variable=azureAdAdminLogin]$SP_DISPLAY_NAME"
 
+                - task: AzureCLI@2
+                  displayName: "Ensure Azure CLI authenticated for subsequent steps (Prod)"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      echo "Ensuring az CLI is authenticated in this job context via the service connection"
+                      az account show || true
+
                 - task: Bash@3
                   displayName: "Derive Azure AD auth enable flag"
                   inputs:
@@ -1525,23 +1536,44 @@ stages:
                       else
                         echo "Image tag $TAG is not semantic version; leaving appVersion empty"
                       fi
-                - task: Bash@3
+                - task: AzureCLI@2
+                  displayName: "Pre-check: validate az can see SQL server and VNets (Prod)"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
+                      echo "[PROD][PRECHECK] az account show (first 80 chars):"
+                      az account show || true
+                      echo "[PROD][PRECHECK] az sql server show for expected RG/name (first 200 lines):"
+                      az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json 2>&1 | sed -n '1,200p' || true
+                      echo "[PROD][PRECHECK] az sql server list searching for server name (first 200 lines):"
+                      az sql server list --query "[?name=='${SQL_SERVER_NAME}'] | [0]" -o json 2>&1 | sed -n '1,200p' || true
+                      echo "[PROD][PRECHECK] az network vnet list (first 200 lines):"
+                      az network vnet list -o json 2>&1 | sed -n '1,200p' || true
+                      echo "[PROD][PRECHECK] Pre-check completed."
+                - task: AzureCLI@2
                   displayName: "Compute manageSql/manageNetworking runtime params"
                   inputs:
-                    targetType: "inline"
-                    script: |
-                      set -e
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
                       echo "Computing runtime flags for manageSql and manageNetworking (Prod)..."
+                      # ensure jq is installed so we can parse JSON safely
+                      if ! command -v jq >/dev/null 2>&1; then
+                        echo "jq not found; installing jq..."
+                        sudo apt-get update -y && sudo apt-get install -y jq || true
+                      fi
                       RG_NAME="rg-aistock-prod-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
 
-                      # Safer, more accurate detection for Prod: search the subscription for SQL server
-                      # and for any subnet named 'snet-appintegration'. If we find them anywhere, avoid
-                      # letting ARM manage those pieces (safe default). Only let ARM create them if the
-                      # resources are definitely absent across the subscription.
                       MANAGE_SQL_PARAM="-manageSql false"
                       FOUND_SQL=0
-                      # First try the expected RG (fast)
                       echo "[PROD][DEBUG] Running: az sql server show --name '$SQL_SERVER_NAME' --resource-group '$RG_NAME' -o json"
                       SQL_SHOW_RAW=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" -o json 2>&1 || true)
                       echo "[PROD][DEBUG] az sql server show output (first 200 lines):";
@@ -1552,7 +1584,6 @@ stages:
                         echo "[PROD] SQL server found in expected RG: $SQL_RG"
                       else
                         echo "[PROD][DEBUG] az sql server show did not find server in expected RG. Searching subscription..."
-                        echo "[PROD][DEBUG] Running: az sql server list --query \"[?name=='${SQL_SERVER_NAME}'] | [0]\" -o json"
                         SQL_LIST_RAW=$(az sql server list --query "[?name=='${SQL_SERVER_NAME}'] | [0]" -o json 2>&1 || true)
                         echo "[PROD][DEBUG] az sql server list item (first 200 lines):";
                         echo "$SQL_LIST_RAW" | sed -n '1,200p' || true
@@ -1566,7 +1597,6 @@ stages:
                       fi
 
                       if [ $FOUND_SQL -eq 1 ]; then
-                        # If server exists, check AAD-only flag from the actual resource group (if known)
                         echo "[PROD][DEBUG] Checking azureADOnlyAuthentication on server in RG: ${SQL_RG:-$RG_NAME}"
                         AADONLY_RAW=$(az sql server show --name "$SQL_SERVER_NAME" --resource-group "${SQL_RG:-$RG_NAME}" -o json 2>&1 || true)
                         echo "[PROD][DEBUG] az sql server show (for AAD check) output (first 200 lines):";
@@ -1582,19 +1612,15 @@ stages:
                           MANAGE_SQL_PARAM="-manageSql false"
                         fi
                       else
-                        # Definitively not present anywhere in the subscription: allow ARM to create it
                         MANAGE_SQL_PARAM="-manageSql true"
                       fi
 
-                      # Determine manageNetworking param by searching the subscription for any subnet named snet-appintegration
                       MANAGE_NETWORKING_PARAM="-manageNetworking false"
                       SUBNET_NAME="snet-appintegration"
                       echo "[PROD] Searching subscription for subnets named ${SUBNET_NAME} (this may take a moment)"
-                      echo "[PROD][DEBUG] Running: az network vnet list -o json"
                       VNETS_RAW=$(az network vnet list -o json 2>&1 || true)
                       echo "[PROD][DEBUG] az network vnet list output (first 200 lines):";
                       echo "$VNETS_RAW" | sed -n '1,200p' || true
-                      # Now filter for subnets named snet-appintegration
                       SUBNET_MATCHES=$(echo "$VNETS_RAW" | jq -r '.[] | {vnet:.name, rg:.resourceGroup, subnets:.subnets[]?} | select(.subnets.name=="'${SUBNET_NAME}'") | "vnet: \(.vnet) rg: \(.rg) subnet: \(.subnets.name)"' 2>/dev/null || true)
                       if [ -n "$SUBNET_MATCHES" ]; then
                         echo "[PROD] Found existing integration subnet(s):"
