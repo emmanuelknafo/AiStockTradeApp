@@ -1399,7 +1399,7 @@ jobs:
         run: |
           fi
 
-               INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+                        INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
 
           echo "🗄️ Checking database migration options..."
@@ -1615,6 +1615,9 @@ jobs:
     needs: build
     name: Security Scan
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout code
@@ -1662,12 +1665,12 @@ jobs:
 
       - name: Upload Trivy UI SARIF to GitHub Security tab
         if: ${{ steps.check-sarif.outputs.found_ui == 'true' }}
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: build-outputs/trivy-ui.sarif
 
       - name: Upload Trivy API SARIF to GitHub Security tab
         if: ${{ steps.check-sarif.outputs.found_api == 'true' }}
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: build-outputs/trivy-api.sarif
