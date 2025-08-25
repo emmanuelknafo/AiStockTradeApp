@@ -35,10 +35,16 @@ jobs:
           echo "GET_CHANGELOG_SUMMARY=True" >> .env
           echo "PROJECT_URL=https://github.com/${{ github.repository }}" >> .env
           echo "QUERY=is:closed" >> .env
-          echo "ACCESS_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> .env
-          echo "GPT_API_KEY=${{ secrets.GPT_API_KEY }}" >> .env
-          echo "MODEL_BASE_URL=https://api.openai.com/v1" >> .env
-          echo "MODEL=gpt-4o-mini" >> .env
+          echo "ACCESS_TOKEN=${{ secrets.SARIF_UPLOAD_TOKEN }}" >> .env
+
+          # Use Azure OpenAI - set these repository secrets before running the workflow:
+          # - AZURE_OPENAI_KEY (the API key)
+          # - AZURE_OPENAI_ENDPOINT (e.g. https://my-openai-resource.openai.azure.com)
+          # - AZURE_OPENAI_DEPLOYMENT_NAME (the deployment name for the model)
+          echo "GPT_API_KEY=${{ secrets.AZURE_OPENAI_KEY }}" >> .env
+          echo "MODEL_BASE_URL=${{ vars.AZURE_OPENAI_ENDPOINT }}" >> .env
+          echo "MODEL=${{ vars.AZURE_OPENAI_DEPLOYMENT_NAME }}" >> .env
+
           echo "OUTPUT_FOLDER=Releases" >> .env
           echo "LOG_LEVEL=INFO" >> .env
 
@@ -56,4 +62,4 @@ jobs:
         with:
           files: Releases/*.md
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SARIF_UPLOAD_TOKEN }}
