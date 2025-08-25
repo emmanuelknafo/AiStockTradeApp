@@ -1397,9 +1397,7 @@ jobs:
 
       - name: Run database migrations
         run: |
-          fi
-
-                        INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
           RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
 
           echo "🗄️ Checking database migration options..."
