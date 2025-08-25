@@ -690,6 +690,34 @@ jobs:
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.version.prefixed=v${{ steps.gitversion.outputs.fullSemVer }}
 
+      - name: Rebuild UI image locally for Trivy scanning
+        run: |
+          set -euo pipefail
+          mkdir -p build-outputs
+          UI_TAG=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
+          echo "Resolved local UI tag: ${UI_TAG}"
+          # Build a local copy of the UI image (so Trivy can scan without pulling from remote)
+          docker build --pull -f ./AiStockTradeApp/Dockerfile -t "${UI_TAG}" --build-arg APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }} .
+          # Run Trivy via its container image and write SARIF into build-outputs/
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/build-outputs":/outputs aquasec/trivy:latest image --format sarif --output /outputs/trivy-ui.sarif "${UI_TAG}" || true
+
+      - name: Rebuild API image locally for Trivy scanning
+        run: |
+          set -euo pipefail
+          API_TAG=$(echo "${{ steps.meta-api.outputs.tags }}" | cut -d',' -f1)
+          echo "Resolved local API tag: ${API_TAG}"
+          docker build --pull -f ./AiStockTradeApp.Api/Dockerfile -t "${API_TAG}" --build-arg APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }} .
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/build-outputs":/outputs aquasec/trivy:latest image --format sarif --output /outputs/trivy-api.sarif "${API_TAG}" || true
+
+      - name: Upload Trivy SARIF artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sarif
+          path: |
+            build-outputs/*.sarif
+          retention-days: 7
+
       - name: Create and push semantic git tag
         if: ${{ github.ref == 'refs/heads/main' }}
         run: |
