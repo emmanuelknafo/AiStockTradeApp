@@ -694,7 +694,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build-outputs
-          UI_TAG=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
+          # Meta tags may be comma- or newline-separated; pick the first non-empty token and trim whitespace
+          UI_TAG_RAW='${{ steps.meta.outputs.tags }}'
+          UI_TAG=$(printf "%s" "$UI_TAG_RAW" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | head -n1 | xargs)
           echo "Resolved local UI tag: ${UI_TAG}"
           # Build a local copy of the UI image (so Trivy can scan without pulling from remote)
           docker build --pull -f ./AiStockTradeApp/Dockerfile -t "${UI_TAG}" --build-arg APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }} .
@@ -704,7 +706,8 @@ jobs:
       - name: Rebuild API image locally for Trivy scanning
         run: |
           set -euo pipefail
-          API_TAG=$(echo "${{ steps.meta-api.outputs.tags }}" | cut -d',' -f1)
+          API_TAG_RAW='${{ steps.meta-api.outputs.tags }}'
+          API_TAG=$(printf "%s" "$API_TAG_RAW" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | head -n1 | xargs)
           echo "Resolved local API tag: ${API_TAG}"
           docker build --pull -f ./AiStockTradeApp.Api/Dockerfile -t "${API_TAG}" --build-arg APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }} .
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/build-outputs":/outputs aquasec/trivy:latest image --format sarif --output /outputs/trivy-api.sarif "${API_TAG}" || true
