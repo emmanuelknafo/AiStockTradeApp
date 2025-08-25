@@ -690,6 +690,37 @@ jobs:
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.version.prefixed=v${{ steps.gitversion.outputs.fullSemVer }}
 
+      - name: Rebuild UI image locally for Trivy scanning
+        run: |
+          set -euo pipefail
+          mkdir -p build-outputs
+          # Meta tags may be comma- or newline-separated; pick the first non-empty token and trim whitespace
+          UI_TAG_RAW='${{ steps.meta.outputs.tags }}'
+          UI_TAG=$(printf "%s" "$UI_TAG_RAW" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | head -n1 | xargs)
+          echo "Resolved local UI tag: ${UI_TAG}"
+          # Build a local copy of the UI image (so Trivy can scan without pulling from remote)
+          docker build --pull -f ./AiStockTradeApp/Dockerfile -t "${UI_TAG}" --build-arg APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }} .
+          # Run Trivy via its container image and write SARIF into build-outputs/
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/build-outputs":/outputs aquasec/trivy:latest image --format sarif --output /outputs/trivy-ui.sarif "${UI_TAG}" || true
+
+      - name: Rebuild API image locally for Trivy scanning
+        run: |
+          set -euo pipefail
+          API_TAG_RAW='${{ steps.meta-api.outputs.tags }}'
+          API_TAG=$(printf "%s" "$API_TAG_RAW" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | head -n1 | xargs)
+          echo "Resolved local API tag: ${API_TAG}"
+          docker build --pull -f ./AiStockTradeApp.Api/Dockerfile -t "${API_TAG}" --build-arg APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }} .
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/build-outputs":/outputs aquasec/trivy:latest image --format sarif --output /outputs/trivy-api.sarif "${API_TAG}" || true
+
+      - name: Upload Trivy SARIF artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sarif
+          path: |
+            build-outputs/*.sarif
+          retention-days: 7
+
       - name: Create and push semantic git tag
         if: ${{ github.ref == 'refs/heads/main' }}
         run: |
@@ -888,7 +919,6 @@ jobs:
             echo "container_image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
           else
             echo "ERROR: container-image.txt not found in artifacts!"
-            ls -la build-outputs/
             exit 1
           fi
 
@@ -902,7 +932,6 @@ jobs:
             echo "container_image_api=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
           else
             echo "ERROR: container-image-api.txt not found in artifacts!"
-            ls -la build-outputs/
             exit 1
           fi
 
@@ -932,7 +961,7 @@ jobs:
           # vars.* mapped via env at top to reduce linter warnings
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-002' }}
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image_api }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.50.0.0/16 appIntegrationSubnetPrefix=10.50.1.0/27 privateEndpointSubnetPrefix=10.50.2.0/28 appVersion=${{ steps.derive-version-dev.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
+          parameters: ./infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.50.0.0/16 appIntegrationSubnetPrefix=10.50.1.0/27 privateEndpointSubnetPrefix=10.50.2.0/28 appVersion=${{ steps.derive-version-dev.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches API Managed Identity (Dev)
@@ -1131,7 +1160,6 @@ jobs:
             echo "container_image=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
           else
             echo "ERROR: container-image.txt not found in artifacts!"
-            ls -la build-outputs/
             exit 1
           fi
 
@@ -1145,7 +1173,6 @@ jobs:
             echo "container_image_api=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
           else
             echo "ERROR: container-image-api.txt not found in artifacts!"
-            ls -la build-outputs/
             exit 1
           fi
 
@@ -1204,7 +1231,7 @@ jobs:
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
           template: ./infrastructure/main.bicep
           # AAD-only auth is the standard. Bicep sets the SQL AAD admin to the API Web App MI when explicit admin values are not provided.
-          parameters: ./infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image_api }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.51.0.0/16 appIntegrationSubnetPrefix=10.51.1.0/27 privateEndpointSubnetPrefix=10.51.2.0/28 appVersion=${{ steps.derive-version-prod.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
+          parameters: ./infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.51.0.0/16 appIntegrationSubnetPrefix=10.51.1.0/27 privateEndpointSubnetPrefix=10.51.2.0/28 appVersion=${{ steps.derive-version-prod.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches API Managed Identity (Prod)
@@ -1586,6 +1613,10 @@ jobs:
     needs: build
     name: Security Scan
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
 
     steps:
       - name: Checkout code
@@ -1610,13 +1641,41 @@ jobs:
           fi
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ steps.load-image.outputs.container_image }}
-          format: "sarif"
-          output: "trivy-results.sarif"
+        # Skipping remote Trivy scan here — we will consume SARIF artifacts produced during the build job.
+        run: echo "Skipping remote Trivy scan; will use SARIF artifacts from build job"
 
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
+      - name: Download Trivy SARIF artifacts
+        uses: actions/download-artifact@v4
         with:
-          sarif_file: "trivy-results.sarif"
+          name: trivy-sarif
+          path: build-outputs/
+      
+      - name: Detect SARIF files
+        id: check-sarif
+        run: |
+          UI_SARIF="build-outputs/trivy-ui.sarif"
+          API_SARIF="build-outputs/trivy-api.sarif"
+          FOUND_UI=false
+          FOUND_API=false
+          if [ -f "$UI_SARIF" ]; then FOUND_UI=true; fi
+          if [ -f "$API_SARIF" ]; then FOUND_API=true; fi
+          echo "found_ui=$FOUND_UI" >> "$GITHUB_OUTPUT"
+          echo "found_api=$FOUND_API" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Trivy UI SARIF to GitHub Security tab
+        if: ${{ steps.check-sarif.outputs.found_ui == 'true' }}
+        uses: github/codeql-action/upload-sarif@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.SARIF_UPLOAD_TOKEN }}
+        with:
+          sarif_file: build-outputs/trivy-ui.sarif
+          category: trivy-ui
+ 
+      - name: Upload Trivy API SARIF to GitHub Security tab
+        if: ${{ steps.check-sarif.outputs.found_api == 'true' }}
+        uses: github/codeql-action/upload-sarif@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.SARIF_UPLOAD_TOKEN }}
+        with:
+          sarif_file: build-outputs/trivy-api.sarif
+          category: trivy-api

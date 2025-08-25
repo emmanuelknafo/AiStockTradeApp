@@ -1,0 +1,11 @@
+# Simple CODEOWNERS
+# Assign repository owner as default owner for all files. Update with teams or additional users as needed.
+# Format: <pattern> <owner>
+
+# Default: all files
+* @emmanuelknafo
+
+# Examples you can uncomment/edit:
+# /infrastructure/ @emmanuelknafo
+# /.github/workflows/ @emmanuelknafo
+# /AiStockTradeApp/ @emmanuelknafo
