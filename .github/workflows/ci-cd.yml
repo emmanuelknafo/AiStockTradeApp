@@ -1669,7 +1669,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.SARIF_UPLOAD_TOKEN }}
         with:
           sarif_file: build-outputs/trivy-ui.sarif
-
+          category: trivy-ui
+ 
       - name: Upload Trivy API SARIF to GitHub Security tab
         if: ${{ steps.check-sarif.outputs.found_api == 'true' }}
         uses: github/codeql-action/upload-sarif@v3
@@ -1677,3 +1678,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.SARIF_UPLOAD_TOKEN }}
         with:
           sarif_file: build-outputs/trivy-api.sarif
+          category: trivy-api
