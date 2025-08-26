@@ -286,23 +286,15 @@ steps:
 
   - script: |
       set -euo pipefail
-      echo "Preparing Azure DevOps Wiki content..."
-
-      # Locate the generated changelog file (prefer original location)
+      echo "Preparing wiki page content..."
       FILE=$(find changelog-weaver -type f -name '*.md' -path '*/Releases/*' | head -n1 || true)
       if [ -z "$FILE" ]; then
-        echo "No changelog file found; skipping wiki publish"
+        echo "No changelog file found; skipping content build"
         exit 0
       fi
-
-      # Derive release tag/name
       TO_TAG="${BUILD_SOURCEBRANCHNAME:-}"
       if [ -z "$TO_TAG" ]; then TO_TAG="manual"; fi
-
-      # Extract prev tag used earlier if present in .env
       PREV_TAG=$(grep '^FROM_TAG=' changelog-weaver/.env | cut -d'=' -f2 || true)
-
-      # Build combined page content
       DATE_UTC=$(date -u +%Y-%m-%d)
       GH_RELEASE_URL="https://github.com/${BUILD_REPOSITORY_NAME}/releases/tag/${TO_TAG}"
       {
@@ -318,202 +310,23 @@ steps:
         cat "$FILE"
         echo
       } > /tmp/wiki_page.md
+      echo "Wrote /tmp/wiki_page.md"
+    displayName: "Build wiki page content"
+    condition: and(succeeded(), eq(variables['HasChangelog'], 'true'))
 
-      # Setup wiki identifiers
-      ORG_URL="${SYSTEM_COLLECTIONURI}"
-      PROJECT="${SYSTEM_TEAMPROJECT}"
-      # Resolve WIKI_IDENTIFIER robustly by querying the list of wikis and preferring the project's wiki
-      RAW_WIKI="${WIKI_IDENTIFIER:-}"
-      WIKI_ID=""
-      WIKI_NAME=""
-      # If user provided an identifier (GUID or name), trust it and skip discovery
-      if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
-        # Trim quotes, braces and spaces
-        RW_TRIM=$(printf "%s" "$RAW_WIKI" | sed -e 's/^\s*[\"{]\?//' -e 's/[\"}]\?\s*$//')
-        WIKI_ID="$RW_TRIM"
-        echo "Using WIKI_IDENTIFIER directly: $WIKI_ID"
-      else
-        LIST_URL="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis?api-version=7.0"
-        echo "Listing wikis: $LIST_URL"
-        HTTP_LIST=$(curl -s -u ":${SYSTEM_ACCESSTOKEN}" -o /tmp/wiki_list.json -w "%{http_code}" \
-          -H "Content-Type: application/json" \
-          "$LIST_URL" || true)
-        echo "LIST status: $HTTP_LIST"
-        COUNT=$(jq -r '(.count // (.value|length)) // 0' /tmp/wiki_list.json 2>/dev/null || echo 0)
-        if [ "$HTTP_LIST" != "200" ] || [ "$COUNT" = "0" ]; then
-          # Fallback 1: organization-level list
-          LIST_URL_ALT="${ORG_URL%/}/_apis/wiki/wikis?api-version=7.0"
-          echo "Primary list empty; trying org-level: $LIST_URL_ALT"
-          HTTP_LIST=$(curl -s -u ":${SYSTEM_ACCESSTOKEN}" -o /tmp/wiki_list.json -w "%{http_code}" \
-            -H "Content-Type: application/json" \
-            "$LIST_URL_ALT" || true)
-          echo "ORG LIST status: $HTTP_LIST"
-          COUNT=$(jq -r '(.count // (.value|length)) // 0' /tmp/wiki_list.json 2>/dev/null || echo 0)
-        fi
-        if [ "$HTTP_LIST" = "200" ] && [ "$COUNT" = "0" ] && [ -n "${SYSTEM_TEAMPROJECTID:-}" ]; then
-          # Fallback 2: projectId-scoped list
-          LIST_URL_ID="${ORG_URL%/}/${SYSTEM_TEAMPROJECTID}/_apis/wiki/wikis?api-version=7.0"
-          echo "Org list empty; trying projectId-scoped: $LIST_URL_ID"
-          HTTP_LIST=$(curl -s -u ":${SYSTEM_ACCESSTOKEN}" -o /tmp/wiki_list.json -w "%{http_code}" \
-            -H "Content-Type: application/json" \
-            "$LIST_URL_ID" || true)
-          echo "ID LIST status: $HTTP_LIST"
-        fi
-        if [ "$HTTP_LIST" = "200" ]; then
-          # Normalize RAW_WIKI (trim quotes/spaces)
-          if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
-            RW_TRIM=$(printf "%s" "$RAW_WIKI" | sed -e 's/^\s*\"\?//' -e 's/\"\?\s*$//')
-            # Try to match by GUID id, repositoryId, or name (case-insensitive); always take the object's .id (GUID)
-            WIKI_ID=$(jq -r --arg rw "$RW_TRIM" '
-              ([.value[]
-                | select((.id//"")==$rw or (.repositoryId//"")==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase))
-                | .id] | first) // ""' /tmp/wiki_list.json)
-            WIKI_NAME=$(jq -r --arg rw "$RW_TRIM" '
-              ([.value[]
-                | select((.id//"")==$rw or (.repositoryId//"")==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase))
-                | .name] | first) // ""' /tmp/wiki_list.json)
-          fi
-          # If still not resolved, prefer the project wiki entry
-          if [ -z "$WIKI_ID" ] || [ "$WIKI_ID" = "null" ]; then
-            WIKI_ID=$(jq -r '([.value[] | select(.type=="projectWiki") | .id] | first) // (.value[0].id // "")' /tmp/wiki_list.json)
-            WIKI_NAME=$(jq -r '([.value[] | select(.type=="projectWiki") | .name] | first) // (.value[0].name // "")' /tmp/wiki_list.json)
-          fi
-        fi
-      fi
-      # If still not resolved, fail fast with diagnostics rather than using name (which can 404)
-      if [ -z "$WIKI_ID" ] || [ "$WIKI_ID" = "null" ]; then
-        echo "Could not resolve Wiki GUID from list. Contents of /tmp/wiki_list.json:" >&2
-        head -c 2000 /tmp/wiki_list.json || true
-        echo >&2
-        echo "Set a valid WIKI_IDENTIFIER (GUID) or ensure the Project Wiki exists." >&2
-        exit 1
-      fi
-      # Resolve ROOT_PATH similarly, default to /Releases
-      RAW_ROOT="${WIKI_PATH_ROOT:-}"
-      if [ -z "$RAW_ROOT" ] || [[ "$RAW_ROOT" == *'$('* ]]; then
-        ROOT_PATH="/Releases"
-      else
-        ROOT_PATH="$RAW_ROOT"
-      fi
-      if [ -n "$WIKI_NAME" ]; then
-        echo "Resolved WIKI_ID=$WIKI_ID (name=$WIKI_NAME)"
-      else
-        echo "Resolved WIKI_ID=$WIKI_ID"
-      fi
-      echo "Resolved ROOT_PATH=$ROOT_PATH"
-      # Resolve WIKI_BRANCH similarly, default to wikiMaster
-      RAW_WBR="${WIKI_BRANCH:-}"
-      if [ -z "$RAW_WBR" ] || [[ "$RAW_WBR" == *'$('* ]]; then
-        WIKI_BRANCH="wikiMaster"
-      else
-        WIKI_BRANCH="$RAW_WBR"
-      fi
-      echo "Resolved WIKI_BRANCH=$WIKI_BRANCH"
-      # Publish to a stable path for the wiki branch label
-      PAGE_PATH="${ROOT_PATH}/${WIKI_BRANCH}"
-
-      # URL-encode the page path safely
-      PAGE_PATH_ESC=$(python -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1], safe='/'))" "$PAGE_PATH")
-
-      BASE_API="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis/${WIKI_ID}"
-      # Always pass versionDescriptor to target the wiki branch label (e.g., wikiMaster)
-      VER_QS="versionDescriptor.version=${WIKI_BRANCH}&versionDescriptor.versionType=branch"
-      GET_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&includeContent=true&${VER_QS}&api-version=7.0"
-      PUT_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&${VER_QS}&api-version=7.0"
-
-      echo "Fetching existing wiki page (if any): $GET_URL"
-
-      if [ -z "${SYSTEM_ACCESSTOKEN:-}" ]; then
-        echo "System.AccessToken is not available. Enable 'Allow scripts to access OAuth token' and ensure Wiki write permission." >&2
-        exit 1
-      fi
-      # Capture headers to extract ETag if it exists
-      HTTP_GET=$(curl -s -D /tmp/wiki_headers.txt -o /tmp/wiki_get.json -w "%{http_code}" \
-        -u ":${SYSTEM_ACCESSTOKEN}" \
-        -H "Content-Type: application/json" \
-        "$GET_URL" || true)
-      echo "GET status: $HTTP_GET"
-
-      ETAG=$(grep -i '^etag:' /tmp/wiki_headers.txt | awk '{print $2}' | tr -d '\r\n' || true)
-      if [ -z "$ETAG" ]; then
-        ETAG=$(python -c "import json,io; d=json.load(io.open('/tmp/wiki_get.json','r',encoding='utf-8')); print(str(d.get('eTag') or d.get('etag') or '')) if isinstance(d,dict) else print('')" 2>/dev/null || echo "")
-      fi
-
-      CONTENT_JSON=$(python -c "import json,io; print(json.dumps({'content': io.open('/tmp/wiki_page.md','r',encoding='utf-8').read()}))")
-
-      echo "Publishing wiki page to: $PUT_URL"
-      if [ "$HTTP_GET" = "200" ] && [ -n "$ETAG" ]; then
-        # Update existing page with concurrency control
-        HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
-          -u ":${SYSTEM_ACCESSTOKEN}" \
-          -H "Content-Type: application/json" \
-          -H "If-Match: $ETAG" \
-          --data "$CONTENT_JSON" \
-          "$PUT_URL")
-      else
-        # Create new page
-        HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
-          -u ":${SYSTEM_ACCESSTOKEN}" \
-          -H "Content-Type: application/json" \
-          --data "$CONTENT_JSON" \
-          "$PUT_URL")
-      fi
-
-      echo "PUT status: $HTTP_PUT"
-      head -c 500 /tmp/wiki_put.json || true
-
-      # If PUT failed with 404 using a GUID, retry using the project wiki name (common for project wikis)
-      USED_GUID=0
-      if echo "$WIKI_ID" | grep -Eiq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
-        USED_GUID=1
-      fi
-      if [ "$HTTP_PUT" = "404" ] && [ "$USED_GUID" = "1" ]; then
-        ALT_WIKI_NAME="${PROJECT}.wiki"
-        ALT_BASE_API="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis/${ALT_WIKI_NAME}"
-        ALT_PUT_URL="${ALT_BASE_API}/pages?path=${PAGE_PATH_ESC}&${VER_QS}&api-version=7.0"
-        echo "PUT failed with 404 using GUID. Retrying with wiki name: ${ALT_WIKI_NAME}"
-        echo "Publishing wiki page to (fallback): $ALT_PUT_URL"
-        HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
-          -u ":${SYSTEM_ACCESSTOKEN}" \
-          -H "Content-Type: application/json" \
-          --data "$CONTENT_JSON" \
-          "$ALT_PUT_URL")
-        echo "Fallback PUT status: $HTTP_PUT"
-        head -c 500 /tmp/wiki_put.json || true
-      fi
-
-      # If still failing, try using projectId in the path instead of project name
-      if [ "$HTTP_PUT" != "200" ] && [ "$HTTP_PUT" != "201" ] && [ -n "${SYSTEM_TEAMPROJECTID:-}" ]; then
-        # Prefer the last wiki identifier we attempted (name fallback if we used it, else original WIKI_ID)
-        FINAL_WIKI_IDENTIFIER="$WIKI_ID"
-        if [ "$USED_GUID" = "1" ] && [ -n "$ALT_WIKI_NAME" ]; then
-          FINAL_WIKI_IDENTIFIER="$ALT_WIKI_NAME"
-        fi
-        ALT2_BASE_API="${ORG_URL%/}/${SYSTEM_TEAMPROJECTID}/_apis/wiki/wikis/${FINAL_WIKI_IDENTIFIER}"
-        ALT2_PUT_URL="${ALT2_BASE_API}/pages?path=${PAGE_PATH_ESC}&${VER_QS}&api-version=7.0"
-        echo "Previous PUT failed. Retrying with projectId in URL: $ALT2_PUT_URL"
-        HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
-          -u ":${SYSTEM_ACCESSTOKEN}" \
-          -H "Content-Type: application/json" \
-          --data "$CONTENT_JSON" \
-          "$ALT2_PUT_URL")
-        echo "ProjectId-path PUT status: $HTTP_PUT"
-        head -c 500 /tmp/wiki_put.json || true
-      fi
-
-      if [ "$HTTP_PUT" != "200" ] && [ "$HTTP_PUT" != "201" ]; then
-        echo "Wiki publish failed" >&2
-        echo "If this is a permission issue, grant 'Contribute' to the wiki for the build identity: '${SYSTEM_TEAMPROJECT} Build Service (\<org\>)' in Project Settings > Repos > Wiki > Select '${PROJECT}.wiki' > Security, and ensure 'Allow scripts to access OAuth token' is enabled for the pipeline." >&2
-        exit 1
-      fi
-      echo "Wiki publish succeeded"
+  - task: PowerShell@2
     displayName: "Publish release to Azure DevOps Wiki"
     condition: and(succeeded(), eq(variables['HasChangelog'], 'true'))
-    env:
-      SYSTEM_COLLECTIONURI: $(System.CollectionUri)
-      SYSTEM_TEAMPROJECT: $(System.TeamProject)
-      SYSTEM_TEAMPROJECTID: $(System.TeamProjectId)
-      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-      WIKI_IDENTIFIER: $(WIKI_IDENTIFIER)
-      WIKI_PATH_ROOT: $(WIKI_PATH_ROOT)
-      WIKI_BRANCH: $(WIKI_BRANCH)
+    inputs:
+      pwsh: true
+      filePath: scripts/publish-wiki.ps1
+      arguments: >-
+        -Pat '$(System.AccessToken)'
+        -OrgUrl '$(System.CollectionUri)'
+        -Project '$(System.TeamProject)'
+        -ProjectId '$(System.TeamProjectId)'
+        -WikiIdentifier '$(WIKI_IDENTIFIER)'
+        -WikiBranch '$(WIKI_BRANCH)'
+        -PageRoot '$(WIKI_PATH_ROOT)'
+        -ReleaseVersion '$(Build.SourceBranchName)'
+        -FilePath '/tmp/wiki_page.md'
