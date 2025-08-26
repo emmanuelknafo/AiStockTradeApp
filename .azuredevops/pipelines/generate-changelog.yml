@@ -322,13 +322,38 @@ steps:
       # Setup wiki identifiers
       ORG_URL="${SYSTEM_COLLECTIONURI}"
       PROJECT="${SYSTEM_TEAMPROJECT}"
-      # Resolve WIKI_IDENTIFIER; Azure DevOps may pass literal '$(WIKI_IDENTIFIER)' when unset
+      # Resolve WIKI_IDENTIFIER robustly by querying the list of wikis and preferring the project's wiki
       RAW_WIKI="${WIKI_IDENTIFIER:-}"
-      if [ -z "$RAW_WIKI" ] || [[ "$RAW_WIKI" == *'$('* ]]; then
-        # Default to the project wiki derived from the ADO project name
-        WIKI_ID="${PROJECT}.wiki"
-      else
-        WIKI_ID="$RAW_WIKI"
+      WIKI_ID=""
+      WIKI_NAME=""
+      LIST_URL="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis?api-version=7.0"
+      echo "Listing wikis: $LIST_URL"
+      HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
+        -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+        -H "Content-Type: application/json" \
+        "$LIST_URL" || true)
+      echo "LIST status: $HTTP_LIST"
+      if [ "$HTTP_LIST" = "200" ]; then
+        RES=""
+        if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
+          RES=$(jq -r --arg rw "$RAW_WIKI" '.value[] | select(.id==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase)) | [.id, .name] | @tsv' /tmp/wiki_list.json | head -n1)
+        fi
+        if [ -z "$RES" ]; then
+          RES=$(jq -r --arg p "$PROJECT" '.value[] | select(((.project.name//"")|ascii_downcase)==($p|ascii_downcase) and (.isProjectWiki==true)) | [.id,.name] | @tsv' /tmp/wiki_list.json | head -n1)
+        fi
+        if [ -z "$RES" ]; then
+          RES=$(jq -r '.value[0] | [.id,.name] | @tsv' /tmp/wiki_list.json 2>/dev/null || true)
+        fi
+        WIKI_ID="${RES%%$'\t'*}"
+        WIKI_NAME="${RES#*$'\t'}"
+      fi
+      if [ -z "$WIKI_ID" ]; then
+        # Fallback: use provided name/id or default to project wiki name
+        if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
+          WIKI_ID="$RAW_WIKI"
+        else
+          WIKI_ID="${PROJECT}.wiki"
+        fi
       fi
       # Resolve ROOT_PATH similarly, default to /Releases
       RAW_ROOT="${WIKI_PATH_ROOT:-}"
@@ -337,7 +362,11 @@ steps:
       else
         ROOT_PATH="$RAW_ROOT"
       fi
-      echo "Resolved WIKI_ID=$WIKI_ID"
+      if [ -n "$WIKI_NAME" ]; then
+        echo "Resolved WIKI_ID=$WIKI_ID (name=$WIKI_NAME)"
+      else
+        echo "Resolved WIKI_ID=$WIKI_ID"
+      fi
       echo "Resolved ROOT_PATH=$ROOT_PATH"
       # Resolve WIKI_BRANCH similarly, default to wikiMaster
       RAW_WBR="${WIKI_BRANCH:-}"
