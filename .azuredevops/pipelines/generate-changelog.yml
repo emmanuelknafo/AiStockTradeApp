@@ -71,7 +71,11 @@ steps:
       dotnet tool install --global GitVersion.Tool >/dev/null 2>&1 || true
       export PATH="$PATH:$HOME/.dotnet/tools"
       # Run GitVersion and capture FullSemVer according to repo config
-      FULL_SEMVER=$(dotnet-gitversion /output json | jq -r .FullSemVer)
+      FULL_SEMVER=$(dotnet-gitversion /showvariable FullSemVer 2>/dev/null || true)
+      # If your repo uses v-prefixed tags (v1.2.3), normalize by adding 'v' if missing
+      if git tag --list 'v*' | grep . >/dev/null 2>&1; then
+        case "$FULL_SEMVER" in v*) :;; *) FULL_SEMVER="v$FULL_SEMVER";; esac
+      fi
       if [ -z "$FULL_SEMVER" ] || [ "$FULL_SEMVER" = "null" ]; then
         echo "Failed to compute version with GitVersion"
         exit 1
