@@ -326,53 +326,61 @@ steps:
       RAW_WIKI="${WIKI_IDENTIFIER:-}"
       WIKI_ID=""
       WIKI_NAME=""
-      LIST_URL="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis?api-version=7.0"
-      echo "Listing wikis: $LIST_URL"
-      HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
-        -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
-        -H "Content-Type: application/json" \
-        "$LIST_URL" || true)
-      echo "LIST status: $HTTP_LIST"
-      COUNT=$(jq -r '(.count // (.value|length)) // 0' /tmp/wiki_list.json 2>/dev/null || echo 0)
-      if [ "$HTTP_LIST" != "200" ] || [ "$COUNT" = "0" ]; then
-        # Fallback 1: organization-level list
-        LIST_URL_ALT="${ORG_URL%/}/_apis/wiki/wikis?api-version=7.0"
-        echo "Primary list empty; trying org-level: $LIST_URL_ALT"
+      # If user provided an identifier (GUID or name), trust it and skip discovery
+      if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
+        # Trim quotes, braces and spaces
+        RW_TRIM=$(printf "%s" "$RAW_WIKI" | sed -e 's/^\s*[\"{]\?//' -e 's/[\"}]\?\s*$//')
+        WIKI_ID="$RW_TRIM"
+        echo "Using WIKI_IDENTIFIER directly: $WIKI_ID"
+      else
+        LIST_URL="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis?api-version=7.0"
+        echo "Listing wikis: $LIST_URL"
         HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
           -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
           -H "Content-Type: application/json" \
-          "$LIST_URL_ALT" || true)
-        echo "ORG LIST status: $HTTP_LIST"
+          "$LIST_URL" || true)
+        echo "LIST status: $HTTP_LIST"
         COUNT=$(jq -r '(.count // (.value|length)) // 0' /tmp/wiki_list.json 2>/dev/null || echo 0)
-      fi
-      if [ "$HTTP_LIST" = "200" ] && [ "$COUNT" = "0" ] && [ -n "${SYSTEM_TEAMPROJECTID:-}" ]; then
-        # Fallback 2: projectId-scoped list
-        LIST_URL_ID="${ORG_URL%/}/${SYSTEM_TEAMPROJECTID}/_apis/wiki/wikis?api-version=7.0"
-        echo "Org list empty; trying projectId-scoped: $LIST_URL_ID"
-        HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
-          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
-          -H "Content-Type: application/json" \
-          "$LIST_URL_ID" || true)
-        echo "ID LIST status: $HTTP_LIST"
-      fi
-      if [ "$HTTP_LIST" = "200" ]; then
-        # Normalize RAW_WIKI (trim quotes/spaces)
-        if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
-          RW_TRIM=$(printf "%s" "$RAW_WIKI" | sed -e 's/^\s*\"\?//' -e 's/\"\?\s*$//')
-          # Try to match by GUID id, repositoryId, or name (case-insensitive); always take the object's .id (GUID)
-          WIKI_ID=$(jq -r --arg rw "$RW_TRIM" '
-            ([.value[]
-              | select((.id//"")==$rw or (.repositoryId//"")==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase))
-              | .id] | first) // ""' /tmp/wiki_list.json)
-          WIKI_NAME=$(jq -r --arg rw "$RW_TRIM" '
-            ([.value[]
-              | select((.id//"")==$rw or (.repositoryId//"")==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase))
-              | .name] | first) // ""' /tmp/wiki_list.json)
+        if [ "$HTTP_LIST" != "200" ] || [ "$COUNT" = "0" ]; then
+          # Fallback 1: organization-level list
+          LIST_URL_ALT="${ORG_URL%/}/_apis/wiki/wikis?api-version=7.0"
+          echo "Primary list empty; trying org-level: $LIST_URL_ALT"
+          HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+            -H "Content-Type: application/json" \
+            "$LIST_URL_ALT" || true)
+          echo "ORG LIST status: $HTTP_LIST"
+          COUNT=$(jq -r '(.count // (.value|length)) // 0' /tmp/wiki_list.json 2>/dev/null || echo 0)
         fi
-        # If still not resolved, prefer the project wiki entry
-        if [ -z "$WIKI_ID" ] || [ "$WIKI_ID" = "null" ]; then
-          WIKI_ID=$(jq -r '([.value[] | select(.type=="projectWiki") | .id] | first) // (.value[0].id // "")' /tmp/wiki_list.json)
-          WIKI_NAME=$(jq -r '([.value[] | select(.type=="projectWiki") | .name] | first) // (.value[0].name // "")' /tmp/wiki_list.json)
+        if [ "$HTTP_LIST" = "200" ] && [ "$COUNT" = "0" ] && [ -n "${SYSTEM_TEAMPROJECTID:-}" ]; then
+          # Fallback 2: projectId-scoped list
+          LIST_URL_ID="${ORG_URL%/}/${SYSTEM_TEAMPROJECTID}/_apis/wiki/wikis?api-version=7.0"
+          echo "Org list empty; trying projectId-scoped: $LIST_URL_ID"
+          HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+            -H "Content-Type: application/json" \
+            "$LIST_URL_ID" || true)
+          echo "ID LIST status: $HTTP_LIST"
+        fi
+        if [ "$HTTP_LIST" = "200" ]; then
+          # Normalize RAW_WIKI (trim quotes/spaces)
+          if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
+            RW_TRIM=$(printf "%s" "$RAW_WIKI" | sed -e 's/^\s*\"\?//' -e 's/\"\?\s*$//')
+            # Try to match by GUID id, repositoryId, or name (case-insensitive); always take the object's .id (GUID)
+            WIKI_ID=$(jq -r --arg rw "$RW_TRIM" '
+              ([.value[]
+                | select((.id//"")==$rw or (.repositoryId//"")==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase))
+                | .id] | first) // ""' /tmp/wiki_list.json)
+            WIKI_NAME=$(jq -r --arg rw "$RW_TRIM" '
+              ([.value[]
+                | select((.id//"")==$rw or (.repositoryId//"")==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase))
+                | .name] | first) // ""' /tmp/wiki_list.json)
+          fi
+          # If still not resolved, prefer the project wiki entry
+          if [ -z "$WIKI_ID" ] || [ "$WIKI_ID" = "null" ]; then
+            WIKI_ID=$(jq -r '([.value[] | select(.type=="projectWiki") | .id] | first) // (.value[0].id // "")' /tmp/wiki_list.json)
+            WIKI_NAME=$(jq -r '([.value[] | select(.type=="projectWiki") | .name] | first) // (.value[0].name // "")' /tmp/wiki_list.json)
+          fi
         fi
       fi
       # If still not resolved, fail fast with diagnostics rather than using name (which can 404)
