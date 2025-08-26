@@ -70,10 +70,25 @@ jobs:
           echo "OPENAI_API_TYPE=azure" >> changelog-weaver/.env
           echo "OPENAI_API_VERSION=2023-10-01-preview" >> changelog-weaver/.env
 
+      - name: "Debug: show generated .env and directory"
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing changelog-weaver directory:"; ls -la changelog-weaver || true
+          echo "--- .env (masked) ---"
+          if [ -f changelog-weaver/.env ]; then
+            sed -n '1,200p' changelog-weaver/.env | sed -E "s/(OPENAI_API_KEY|GPT_API_KEY|ACCESS_TOKEN|AZURE_OPENAI_KEY|AZURE_OPENAI_ENDPOINT|AZURE_OPENAI_DEPLOYMENT_NAME)=.*/\1=***MASKED***/g"
+          else
+            echo "changelog-weaver/.env not found"
+          fi
+
       - name: Prepare Azure OpenAI wrapper
         run: |
           cat > changelog-weaver/run_changelog.py <<'PY'
           import os
+          from dotenv import load_dotenv
+          # Load the .env that was written by the workflow (changelog-weaver/.env)
+          load_dotenv('.env')
+
           import openai
           import sys
 
@@ -87,12 +102,13 @@ jobs:
           print("OPENAI_API_KEY set:", bool(key))
           if key:
               print("OPENAI_API_KEY preview:", key[:8] + '...')
+          sys.stdout.flush()
 
-          # Configure openai module-level variables for Azure
+          # Configure openai module-level variables for Azure (after loading .env)
           openai.api_type = os.getenv('OPENAI_API_TYPE', '')
           openai.api_base = os.getenv('OPENAI_API_BASE', os.getenv('MODEL_BASE_URL', ''))
           openai.api_version = os.getenv('OPENAI_API_VERSION', '')
-          openai.api_key = os.getenv('OPENAI_API_KEY', os.getenv('GPT_API_KEY', ''))
+          openai.api_key = key
 
           print("Resolved openai.api_base:", getattr(openai, 'api_base', None))
           print("Resolved openai.api_key set:", bool(getattr(openai, 'api_key', None)))
