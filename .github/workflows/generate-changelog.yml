@@ -15,6 +15,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -32,25 +35,40 @@ jobs:
 
       - name: Create .env file for Changelog Weaver
         run: |
-          echo "SOLUTION_NAME=${{ github.repository }}" >> changelog-weaver/.env
-          echo "RELEASE_VERSION=${{ github.ref_name }}" >> changelog-weaver/.env
-          echo "SOFTWARE_SUMMARY=Release ${{ github.ref_name }}" >> changelog-weaver/.env
+          set -e
+          TO_TAG="${{ github.ref_name }}"
+          # Ensure tags are available for prev-tag detection
+          git fetch --tags --quiet
+          PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${TO_TAG}$" | head -n1 || echo "v0.0.0")
+
+          # Write a complete .env into the cloned script repo
+          echo "SOLUTION_NAME=${{ github.repository }}" > changelog-weaver/.env
+          echo "RELEASE_VERSION=${TO_TAG}" >> changelog-weaver/.env
+          echo "SOFTWARE_SUMMARY=Release ${TO_TAG}" >> changelog-weaver/.env
           echo "GET_ITEM_SUMMARY=True" >> changelog-weaver/.env
           echo "GET_CHANGELOG_SUMMARY=True" >> changelog-weaver/.env
+          echo "INCLUDE_COMMITS=False" >> changelog-weaver/.env
           echo "PROJECT_URL=https://github.com/${{ github.repository }}" >> changelog-weaver/.env
           echo "QUERY=is:closed" >> changelog-weaver/.env
           echo "ACCESS_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> changelog-weaver/.env
+          echo "REPO_NAME=${{ github.repository }}" >> changelog-weaver/.env
+          echo "BRANCH=main" >> changelog-weaver/.env
+          echo "FROM_TAG=${PREV_TAG}" >> changelog-weaver/.env
+          echo "TO_TAG=${TO_TAG}" >> changelog-weaver/.env
 
-          # Use Azure OpenAI - set these repository secrets before running the workflow:
-          # - AZURE_OPENAI_KEY (the API key)
-          # - AZURE_OPENAI_ENDPOINT (e.g. https://my-openai-resource.openai.azure.com)
-          # - AZURE_OPENAI_DEPLOYMENT_NAME (the deployment name for the model)
+          # Azure OpenAI configuration (must be added as repository secrets)
           echo "GPT_API_KEY=${{ secrets.AZURE_OPENAI_KEY }}" >> changelog-weaver/.env
           echo "MODEL_BASE_URL=${{ secrets.AZURE_OPENAI_ENDPOINT }}" >> changelog-weaver/.env
           echo "MODEL=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}" >> changelog-weaver/.env
 
           echo "OUTPUT_FOLDER=Releases" >> changelog-weaver/.env
           echo "LOG_LEVEL=INFO" >> changelog-weaver/.env
+
+          # Also set OpenAI client environment so the underlying library uses Azure
+          echo "OPENAI_API_BASE=${{ secrets.AZURE_OPENAI_ENDPOINT }}" >> changelog-weaver/.env
+          echo "OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_KEY }}" >> changelog-weaver/.env
+          echo "OPENAI_API_TYPE=azure" >> changelog-weaver/.env
+          echo "OPENAI_API_VERSION=2023-10-01-preview" >> changelog-weaver/.env
 
       - name: Generate Changelog
         run: |
