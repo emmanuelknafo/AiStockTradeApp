@@ -322,8 +322,23 @@ steps:
       # Setup wiki identifiers
       ORG_URL="${SYSTEM_COLLECTIONURI}"
       PROJECT="${SYSTEM_TEAMPROJECT}"
-      WIKI_ID="${WIKI_IDENTIFIER:-${SYSTEM_TEAMPROJECT}.wiki}"
-      ROOT_PATH="${WIKI_PATH_ROOT:-/Releases}"
+      # Resolve WIKI_IDENTIFIER; Azure DevOps may pass literal '$(WIKI_IDENTIFIER)' when unset
+      RAW_WIKI="${WIKI_IDENTIFIER:-}"
+      if [ -z "$RAW_WIKI" ] || [[ "$RAW_WIKI" == *'$('* ]]; then
+        # Default to the desired project wiki name
+        WIKI_ID="AiStockTradeApp.wiki"
+      else
+        WIKI_ID="$RAW_WIKI"
+      fi
+      # Resolve ROOT_PATH similarly, default to /Releases
+      RAW_ROOT="${WIKI_PATH_ROOT:-}"
+      if [ -z "$RAW_ROOT" ] || [[ "$RAW_ROOT" == *'$('* ]]; then
+        ROOT_PATH="/Releases"
+      else
+        ROOT_PATH="$RAW_ROOT"
+      fi
+      echo "Resolved WIKI_ID=$WIKI_ID"
+      echo "Resolved ROOT_PATH=$ROOT_PATH"
       PAGE_PATH="${ROOT_PATH}/${TO_TAG}"
 
       # URL-encode the page path safely
