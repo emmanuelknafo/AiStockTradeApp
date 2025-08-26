@@ -28,6 +28,7 @@ trigger:
       - ".azuredevops/pipelines/alt-load-tests.yml"
       - ".azuredevops/pipelines/alt-config.yml"
       - ".azuredevops/pipelines/infrastructure.yml"
+      - ".azuredevops/pipelines/generate-changelog.yml"
       - "load-tests/**"
       - "infrastructure/**"
 
@@ -57,6 +58,7 @@ pr:
       - ".azuredevops/pipelines/alt-load-tests.yml"
       - ".azuredevops/pipelines/alt-config.yml"
       - ".azuredevops/pipelines/infrastructure.yml"
+      - ".azuredevops/pipelines/generate-changelog.yml"
       - "load-tests/**"
       - "infrastructure/**"
 resources:
