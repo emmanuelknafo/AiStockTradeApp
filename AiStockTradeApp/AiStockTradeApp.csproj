@@ -4,7 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>ai_stock_trade_app</RootNamespace>
+  <RootNamespace>AiStockTradeApp</RootNamespace>
     <UserSecretsId>59a58696-52aa-43cf-830a-b71ca079da84</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
   <!-- GitVersion will supply Version / AssemblyVersion / FileVersion / InformationalVersion at build time -->

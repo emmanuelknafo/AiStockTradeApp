@@ -19,7 +19,13 @@ namespace AiStockTradeApp.Services.Implementations
             {
                 var changeVal = stockData.Change;
                 var priceVal = stockData.Price;
-                var percentVal = decimal.Parse(stockData.PercentChange.Replace("%", ""));
+                // Parse percent using invariant to handle both 1.23 and -0.96 across cultures
+                var percentText = stockData.PercentChange.Replace("%", "").Trim();
+                if (!decimal.TryParse(percentText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var percentVal))
+                {
+                    // Try current culture as a backup
+                    decimal.TryParse(percentText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out percentVal);
+                }
 
                 string recommendation = "Hold";
                 string reasoning = "Stable price movement; monitor for trends.";
@@ -62,7 +68,14 @@ namespace AiStockTradeApp.Services.Implementations
                     priceAnalysis = " High-priced stock - consider fractional shares.";
                 }
 
-                var analysis = $"{symbol} closed at ${priceVal:F2}, {(changeVal >= 0 ? "up" : "down")} ${Math.Abs(changeVal):F2} ({stockData.PercentChange}).{priceAnalysis}";
+                var analysis = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "{0} closed at ${1:F2}, {2} ${3:F2} ({4}).{5}",
+                    symbol,
+                    priceVal,
+                    changeVal >= 0 ? "up" : "down",
+                    Math.Abs(changeVal),
+                    stockData.PercentChange,
+                    priceAnalysis);
 
                 return Task.FromResult((analysis, recommendation, reasoning));
             }

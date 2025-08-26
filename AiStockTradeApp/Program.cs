@@ -1,6 +1,8 @@
 using AiStockTradeApp.Services.Interfaces;
 using AiStockTradeApp.Services.Implementations;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
+using Microsoft.AspNetCore.Localization;
 
 public class Program
 {
@@ -9,7 +11,11 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
 
         // Add services to the container.
-        builder.Services.AddControllersWithViews();
+        builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+        builder.Services
+            .AddControllersWithViews()
+            .AddViewLocalization()
+            .AddDataAnnotationsLocalization();
 
         // Basic health checks (no DB dependency)
         builder.Services.AddHealthChecks();
@@ -41,6 +47,16 @@ public class Program
         });
 
         var app = builder.Build();
+
+        // Localization: supported cultures
+        var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("fr") };
+        var localizationOptions = new RequestLocalizationOptions
+        {
+            DefaultRequestCulture = new RequestCulture("en"),
+            SupportedCultures = supportedCultures,
+            SupportedUICultures = supportedCultures
+        };
+        app.UseRequestLocalization(localizationOptions);
 
         if (!app.Environment.IsDevelopment())
         {

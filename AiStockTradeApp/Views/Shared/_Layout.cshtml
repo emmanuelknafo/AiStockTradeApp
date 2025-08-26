@@ -1,16 +1,31 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+﻿@using Microsoft.AspNetCore.Localization
+@using Microsoft.AspNetCore.Http
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<SharedResource> Localizer
+<!DOCTYPE html>
+<html lang="@System.Threading.Thread.CurrentThread.CurrentUICulture.TwoLetterISOLanguageName">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - AI Stock Tracker</title>
+    <title>@ViewData["Title"] - @Localizer["App_Title"]</title>
     <link rel="stylesheet" href="~/css/stock-tracker.css" asp-append-version="true" />
 </head>
 <body>
     <main role="main">
-        <div style="padding:8px 16px; border-bottom:1px solid #eee; margin-bottom:12px;">
-            <a href="@Url.Action("Dashboard","Stock")" style="margin-right:12px;">Dashboard</a>
-            <a href="@Url.Action("Index","ListedStocks")">Listed Stocks</a>
+        <div style="padding:8px 16px; border-bottom:1px solid #eee; margin-bottom:12px; display:flex; gap:12px; align-items:center;">
+            <a href="@Url.Action("Dashboard","Stock")" style="margin-right:12px;">@Localizer["Nav_Dashboard"]</a>
+            <a href="@Url.Action("Index","ListedStocks")">@Localizer["Nav_ListedStocks"]</a>
+            <div style="margin-left:auto;">
+                <form id="culture-form" method="post" action="@Url.Action("SetLanguage","Home")" class="form-inline">
+                    @Html.AntiForgeryToken()
+                    <select name="culture" onchange="document.getElementById('culture-form').submit();">
+                        @{ var currentLang = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName; }
+                        <option value="en" selected="@(currentLang == "en" ? "selected" : null)">@Localizer["Lang_English"]</option>
+                        <option value="fr" selected="@(currentLang == "fr" ? "selected" : null)">@Localizer["Lang_French"]</option>
+                    </select>
+                    <input type="hidden" name="returnUrl" value="@(Context.Request.Path + Context.Request.QueryString)" />
+                </form>
+            </div>
         </div>
         @RenderBody()
     </main>
