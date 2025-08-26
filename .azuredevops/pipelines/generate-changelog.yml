@@ -38,11 +38,59 @@ variables:
 steps:
   - checkout: self
     persistCredentials: true
+    fetchDepth: 0
 
   - task: UsePythonVersion@0
     inputs:
       versionSpec: "3.x"
     displayName: "Use Python 3.x"
+
+  - script: |
+      set -euo pipefail
+      echo "Ensuring full history and tags..."
+      git fetch --prune --tags --quiet || true
+
+      # If the build is for a tag ref, just use that tag as the release tag
+      SRC_REF="${BUILD_SOURCEBRANCH:-}"
+      if [[ "$SRC_REF" == refs/tags/* ]]; then
+        REL_TAG="${SRC_REF#refs/tags/}"
+        echo "Detected tag build: $REL_TAG"
+        echo "##vso[task.setvariable variable=ReleaseTag]$REL_TAG"
+        exit 0
+      fi
+
+      # If HEAD already has a tag, use it
+      EXISTING_TAG=$(git tag --points-at HEAD | head -n1 || true)
+      if [ -n "$EXISTING_TAG" ]; then
+        echo "HEAD already tagged with: $EXISTING_TAG"
+        echo "##vso[task.setvariable variable=ReleaseTag]$EXISTING_TAG"
+        exit 0
+      fi
+
+      echo "Installing GitVersion to compute release version..."
+      dotnet tool install --global GitVersion.Tool >/dev/null 2>&1 || true
+      export PATH="$PATH:$HOME/.dotnet/tools"
+      # Run GitVersion and capture FullSemVer according to repo config
+      FULL_SEMVER=$(dotnet-gitversion /output json | jq -r .FullSemVer)
+      if [ -z "$FULL_SEMVER" ] || [ "$FULL_SEMVER" = "null" ]; then
+        echo "Failed to compute version with GitVersion"
+        exit 1
+      fi
+      REL_TAG="$FULL_SEMVER"
+
+      echo "Creating annotated tag: $REL_TAG"
+      git tag -a "$REL_TAG" -m "Release $REL_TAG"
+
+      # Configure push URL using GitHub token if provided
+      if [ -n "${GITHUB_TOKEN:-}" ]; then
+        git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${BUILD_REPOSITORY_NAME}.git"
+      fi
+      git push origin "$REL_TAG"
+
+      echo "##vso[task.setvariable variable=ReleaseTag]$REL_TAG"
+    displayName: "Compute or create release tag"
+    env:
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
 
   - script: |
       git clone --depth 1 https://github.com/Hankanman/Changelog-Weaver.git changelog-weaver
@@ -55,11 +103,9 @@ steps:
 
   - script: |
       set -euo pipefail
-      TO_TAG="${BUILD_SOURCEBRANCHNAME:-}"
-      # When pipeline is manually run there may be no branch name; allow overriding with a variable if needed
-      if [ -z "$TO_TAG" ]; then
-        TO_TAG="manual"
-      fi
+      TO_TAG="${RELEASE_TAG:-${BUILD_SOURCEBRANCHNAME:-}}"
+      # When pipeline is manually run there may be no branch name; fall back to computed release tag or 'manual'
+      if [ -z "$TO_TAG" ]; then TO_TAG="manual"; fi
 
       cd changelog-weaver
       # Ensure tags are available for prev-tag detection
@@ -104,6 +150,7 @@ steps:
       AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
       AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
       GITHUB_TOKEN: $(GITHUB_TOKEN)
+      RELEASE_TAG: $(ReleaseTag)
 
   - script: |
       cat > changelog-weaver/run_changelog.py <<'PY'
@@ -298,7 +345,7 @@ steps:
         echo "No changelog file found; skipping content build"
         exit 0
       fi
-      TO_TAG="${BUILD_SOURCEBRANCHNAME:-}"
+      TO_TAG="${RELEASE_TAG:-${BUILD_SOURCEBRANCHNAME:-}}"
       if [ -z "$TO_TAG" ]; then TO_TAG="manual"; fi
       PREV_TAG=$(grep '^FROM_TAG=' changelog-weaver/.env | cut -d'=' -f2 || true)
       DATE_UTC=$(date -u +%Y-%m-%d)
@@ -319,6 +366,8 @@ steps:
       echo "Wrote /tmp/wiki_page.md"
     displayName: "Build wiki page content"
     condition: and(succeeded(), eq(variables['HasChangelog'], 'true'))
+    env:
+      RELEASE_TAG: $(ReleaseTag)
 
   - task: PowerShell@2
     displayName: "Publish release to Azure DevOps Wiki"
@@ -334,5 +383,5 @@ steps:
         -WikiIdentifier '$(WIKI_IDENTIFIER)'
         -WikiBranch '$(WIKI_BRANCH)'
         -PageRoot '$(WIKI_PATH_ROOT)'
-        -ReleaseVersion '$(Build.SourceBranchName)'
+        -ReleaseVersion '$(ReleaseTag)'
         -FilePath '/tmp/wiki_page.md'

@@ -14,8 +14,54 @@ name: "CodeQL Advanced"
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - "**.md"
+      - "**/README.md"
+      - "docs/**"
+      - "scripts/**"
+      - "AiStockTradeApp/scripts/**"
+      - "*.txt"
+      - ".gitignore"
+      - ".vscode/**"
+      - ".vs/**"
+      - ".azuredevops/**"
+      #- '.github/**'
+      - "AGENTS.md"
+      - "LICENSE"
+      - "data/**"
+      - "AiStockTradeApp.Cli/**"
+      - ".github/workflows/cli-ci.yml"
+      - ".github/workflows/load-tests.yml"
+      - ".github/workflows/alt-load-tests.yml"
+      - ".github/workflows/infrastructure.yml"
+      - ".github/workflows/generate-changelog.yml"
+      - "load-tests/**"
+      - "infrastructure/**"
   pull_request:
     branches: [ "main" ]
+    paths-ignore:
+      - "**.md"
+      - "**/README.md"
+      - "docs/**"
+      - "scripts/**"
+      - "AiStockTradeApp/scripts/**"
+      - "*.txt"
+      - ".gitignore"
+      - ".vscode/**"
+      - ".vs/**"
+      - ".azuredevops/**"
+      #- '.github/**'
+      - "AGENTS.md"
+      - "LICENSE"
+      - "data/**"
+      - "AiStockTradeApp.Cli/**"
+      - ".github/workflows/cli-ci.yml"
+      - ".github/workflows/load-tests.yml"
+      - ".github/workflows/alt-load-tests.yml"
+      - ".github/workflows/infrastructure.yml"
+      - ".github/workflows/generate-changelog.yml"
+      - "load-tests/**"
+      - "infrastructure/**"
   #schedule:
   #  - cron: '45 2 * * 0'
 
