@@ -129,6 +129,32 @@ steps:
 
   - script: |
       set -euo pipefail
+      echo "Running Azure OpenAI pre-flight test..."
+      AZ_BASE="${AZURE_OPENAI_ENDPOINT:-}"
+      AZ_DEPLOY="${AZURE_OPENAI_DEPLOYMENT_NAME:-}"
+      AZ_KEY="${AZURE_OPENAI_KEY:-}"
+
+      if [ -z "$AZ_BASE" ] || [ -z "$AZ_DEPLOY" ] || [ -z "$AZ_KEY" ]; then
+        echo "Missing AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT_NAME or AZURE_OPENAI_KEY; failing pre-flight."
+        exit 1
+      fi
+
+      HTTP_CODE=$(curl -s -o /tmp/aztest.json -w "%{http_code}" -X POST "$AZ_BASE/openai/deployments/$AZ_DEPLOY/chat/completions?api-version=2023-10-01-preview" \
+        -H "Content-Type: application/json" \
+        -H "api-key: $AZ_KEY" \
+        -d '{"messages":[{"role":"user","content":"ping"}],"max_tokens":1}')
+
+      if [ "$HTTP_CODE" != "200" ]; then
+        echo "Azure OpenAI pre-flight failed (HTTP $HTTP_CODE):"
+        head -c 1000 /tmp/aztest.json || true
+        exit 1
+      fi
+      echo "Azure OpenAI pre-flight succeeded (HTTP $HTTP_CODE)."
+      head -c 200 /tmp/aztest.json || true
+    displayName: "Azure OpenAI pre-flight test"
+
+  - script: |
+      set -euo pipefail
       cd changelog-weaver
       # Ensure Releases/<owner> exists so the generator can write output
       OWNER=${BUILD_REPOSITORY_NAME%%/*}
