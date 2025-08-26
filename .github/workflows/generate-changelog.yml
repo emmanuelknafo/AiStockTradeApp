@@ -176,9 +176,17 @@ jobs:
           python run_changelog.py
 
       - name: Locate generated changelog files
+        id: find_changelog
         run: |
           echo "Searching for generated changelog markdown files under changelog-weaver"
-          find changelog-weaver -type f -name '*.md' -maxdepth 4 -print || true
+          FILE=$(find changelog-weaver -type f -name '*.md' -path '*/Releases/*' | head -n1 || true)
+          if [ -n "$FILE" ]; then
+            echo "Found: $FILE"
+            echo "changelog_file=$FILE" >> $GITHUB_OUTPUT
+          else
+            echo "No changelog file found"
+            echo "changelog_file=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload Changelog artifact
         uses: actions/upload-artifact@v4
@@ -186,10 +194,31 @@ jobs:
           name: changelog
           path: changelog-weaver/**/Releases/**/*.md
 
-      - name: Attach Changelog to Release
-        if: ${{ github.event_name == 'release' }}
-        uses: softprops/action-gh-release@v1
-        with:
-          files: changelog-weaver/**/Releases/**/*.md
+      - name: Update Release notes from changelog
+        if: ${{ github.event_name == 'release' && steps.find_changelog.outputs.changelog_file != '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILE="${{ steps.find_changelog.outputs.changelog_file }}"
+          echo "Updating GitHub release body from $FILE"
+
+          BODY=$(python -c 'import sys,json; print(json.dumps(open(sys.argv[1],"r",encoding="utf-8").read()))' "$FILE")
+
+          if [ -z "$BODY" ] || [ "$BODY" = '""' ]; then
+            echo "Empty body, aborting update"
+            exit 0
+          fi
+
+          PAYLOAD=$(printf '{"body": %s}' "$BODY")
+          RELEASE_ID=${{ github.event.release.id }}
+          echo "Patching release id $RELEASE_ID"
+
+          HTTP_CODE=$(curl -s -X PATCH \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID" \
+            -o /tmp/resp.json -w "%{http_code}")
+
+          echo "HTTP $HTTP_CODE"
+          cat /tmp/resp.json || true
