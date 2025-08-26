@@ -335,8 +335,7 @@ steps:
       else
         LIST_URL="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis?api-version=7.0"
         echo "Listing wikis: $LIST_URL"
-        HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
-          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+        HTTP_LIST=$(curl -s -u ":${SYSTEM_ACCESSTOKEN}" -o /tmp/wiki_list.json -w "%{http_code}" \
           -H "Content-Type: application/json" \
           "$LIST_URL" || true)
         echo "LIST status: $HTTP_LIST"
@@ -345,8 +344,7 @@ steps:
           # Fallback 1: organization-level list
           LIST_URL_ALT="${ORG_URL%/}/_apis/wiki/wikis?api-version=7.0"
           echo "Primary list empty; trying org-level: $LIST_URL_ALT"
-          HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
-            -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          HTTP_LIST=$(curl -s -u ":${SYSTEM_ACCESSTOKEN}" -o /tmp/wiki_list.json -w "%{http_code}" \
             -H "Content-Type: application/json" \
             "$LIST_URL_ALT" || true)
           echo "ORG LIST status: $HTTP_LIST"
@@ -356,8 +354,7 @@ steps:
           # Fallback 2: projectId-scoped list
           LIST_URL_ID="${ORG_URL%/}/${SYSTEM_TEAMPROJECTID}/_apis/wiki/wikis?api-version=7.0"
           echo "Org list empty; trying projectId-scoped: $LIST_URL_ID"
-          HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
-            -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          HTTP_LIST=$(curl -s -u ":${SYSTEM_ACCESSTOKEN}" -o /tmp/wiki_list.json -w "%{http_code}" \
             -H "Content-Type: application/json" \
             "$LIST_URL_ID" || true)
           echo "ID LIST status: $HTTP_LIST"
@@ -432,7 +429,7 @@ steps:
       fi
       # Capture headers to extract ETag if it exists
       HTTP_GET=$(curl -s -D /tmp/wiki_headers.txt -o /tmp/wiki_get.json -w "%{http_code}" \
-        -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+        -u ":${SYSTEM_ACCESSTOKEN}" \
         -H "Content-Type: application/json" \
         "$GET_URL" || true)
       echo "GET status: $HTTP_GET"
@@ -448,7 +445,7 @@ steps:
       if [ "$HTTP_GET" = "200" ] && [ -n "$ETAG" ]; then
         # Update existing page with concurrency control
         HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
-          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -u ":${SYSTEM_ACCESSTOKEN}" \
           -H "Content-Type: application/json" \
           -H "If-Match: $ETAG" \
           --data "$CONTENT_JSON" \
@@ -456,7 +453,7 @@ steps:
       else
         # Create new page
         HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
-          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -u ":${SYSTEM_ACCESSTOKEN}" \
           -H "Content-Type: application/json" \
           --data "$CONTENT_JSON" \
           "$PUT_URL")
@@ -477,7 +474,7 @@ steps:
         echo "PUT failed with 404 using GUID. Retrying with wiki name: ${ALT_WIKI_NAME}"
         echo "Publishing wiki page to (fallback): $ALT_PUT_URL"
         HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
-          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -u ":${SYSTEM_ACCESSTOKEN}" \
           -H "Content-Type: application/json" \
           --data "$CONTENT_JSON" \
           "$ALT_PUT_URL")
@@ -496,7 +493,7 @@ steps:
         ALT2_PUT_URL="${ALT2_BASE_API}/pages?path=${PAGE_PATH_ESC}&${VER_QS}&api-version=7.0"
         echo "Previous PUT failed. Retrying with projectId in URL: $ALT2_PUT_URL"
         HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
-          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -u ":${SYSTEM_ACCESSTOKEN}" \
           -H "Content-Type: application/json" \
           --data "$CONTENT_JSON" \
           "$ALT2_PUT_URL")
