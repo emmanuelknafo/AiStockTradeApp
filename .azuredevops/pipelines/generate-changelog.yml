@@ -130,6 +130,12 @@ steps:
   - script: |
       set -euo pipefail
       cd changelog-weaver
+      # Ensure Releases/<owner> exists so the generator can write output
+      OWNER=${BUILD_REPOSITORY_NAME%%/*}
+      if [ -z "$OWNER" ]; then
+        OWNER="${BUILD_REPOSITORY_NAME:-}"
+      fi
+      mkdir -p "Releases/$OWNER"
       python run_changelog.py
     displayName: "Run Changelog-Weaver"
     env:
