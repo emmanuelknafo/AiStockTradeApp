@@ -68,7 +68,7 @@ steps:
       echo "INCLUDE_COMMITS=False" >> .env
       echo "PROJECT_URL=https://github.com/${BUILD_REPOSITORY_NAME:-}" >> .env
       echo "QUERY=is:closed" >> .env
-      echo "ACCESS_TOKEN=${SYSTEM_ACCESSTOKEN:-}" >> .env
+      echo "ACCESS_TOKEN=${GITHUB_TOKEN:-}" >> .env
       echo "REPO_NAME=${BUILD_REPOSITORY_NAME:-}" >> .env
       echo "BRANCH=main" >> .env
       echo "FROM_TAG=${PREV_TAG}" >> .env
