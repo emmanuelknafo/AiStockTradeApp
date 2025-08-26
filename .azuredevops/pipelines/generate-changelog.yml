@@ -321,7 +321,7 @@ steps:
       pwsh: true
       filePath: scripts/publish-wiki.ps1
       arguments: >-
-        -Pat '$(System.AccessToken)'
+        -Pat '$(AZURE_DEVOPS_PAT)'
         -OrgUrl '$(System.CollectionUri)'
         -Project '$(System.TeamProject)'
         -ProjectId '$(System.TeamProjectId)'
