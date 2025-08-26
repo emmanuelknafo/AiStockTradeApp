@@ -17,181 +17,159 @@ trigger: none
 pr: none
 
 pool:
-  vmImage: "ubuntu-latest"
-
-variables:
-  - group: "AiStockTradeApp"
-    # # Variables below are expected to be set in the pipeline configuration or variable group
-    # AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
-    # AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
-    # AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
-    # GITHUB_TOKEN: $(GITHUB_TOKEN)
-    # # You can optionally set GITHUB_RELEASE_ID to patch an existing GitHub release
-    # GITHUB_RELEASE_ID: $(GITHUB_RELEASE_ID)
-
-steps:
-  - checkout: self
-    persistCredentials: true
-
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: "3.x"
-    displayName: "Use Python 3.x"
-
-  - script: |
-      git clone --depth 1 https://github.com/Hankanman/Changelog-Weaver.git changelog-weaver
-    displayName: "Clone Changelog-Weaver"
-
-  - script: |
-      python -m pip install --upgrade pip
-      python -m pip install -r changelog-weaver/requirements.txt
-    displayName: "Install Changelog-Weaver dependencies"
-
   - script: |
       set -euo pipefail
+      echo "Preparing Azure DevOps Wiki content..."
+
+      # Locate the generated changelog file
+      FILE=$(find changelog-weaver -type f -name '*.md' -path '*/Releases/*' | head -n1 || true)
+      if [ -z "$FILE" ]; then
+        echo "No changelog file found; skipping wiki publish"
+        exit 0
+      fi
+
+      # Derive release tag/name
       TO_TAG="${BUILD_SOURCEBRANCHNAME:-}"
-      # When pipeline is manually run there may be no branch name; allow overriding with a variable if needed
-      if [ -z "$TO_TAG" ]; then
-        TO_TAG="manual"
-      fi
+      if [ -z "$TO_TAG" ]; then TO_TAG="manual"; fi
 
-      cd changelog-weaver
-      # Ensure tags are available for prev-tag detection
-      git fetch --tags --quiet || true
-      PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${TO_TAG}$" | head -n1 || echo "v0.0.0")
+      # Extract prev tag used earlier if present in .env
+      PREV_TAG=$(grep '^FROM_TAG=' changelog-weaver/.env | cut -d'=' -f2 || true)
 
-      echo "SOLUTION_NAME=${BUILD_REPOSITORY_NAME:-}" > .env
-      echo "RELEASE_VERSION=${TO_TAG}" >> .env
-      echo "SOFTWARE_SUMMARY=Release ${TO_TAG}" >> .env
-      echo "GET_ITEM_SUMMARY=True" >> .env
-      echo "GET_CHANGELOG_SUMMARY=True" >> .env
-      echo "INCLUDE_COMMITS=False" >> .env
-      echo "PROJECT_URL=https://github.com/${BUILD_REPOSITORY_NAME:-}" >> .env
-      echo "QUERY=is:closed" >> .env
-      echo "ACCESS_TOKEN=${GITHUB_TOKEN:-}" >> .env
-      echo "REPO_NAME=${BUILD_REPOSITORY_NAME:-}" >> .env
-      echo "BRANCH=main" >> .env
-      echo "FROM_TAG=${PREV_TAG}" >> .env
-      echo "TO_TAG=${TO_TAG}" >> .env
+      # Build combined page content
+      DATE_UTC=$(date -u +%Y-%m-%d)
+      GH_RELEASE_URL="https://github.com/${BUILD_REPOSITORY_NAME}/releases/tag/${TO_TAG}"
+      {
+        echo "# Release ${TO_TAG}"
+        echo
+        echo "- Repository: ${BUILD_REPOSITORY_NAME}"
+        echo "- Date: ${DATE_UTC}"
+        if [ -n "$PREV_TAG" ]; then echo "- Previous tag: ${PREV_TAG}"; fi
+        echo "- GitHub Release: ${GH_RELEASE_URL}"
+        echo
+        echo "## Changelog"
+        echo
+        cat "$FILE"
+        echo
+      } > /tmp/wiki_page.md
 
-      # Azure OpenAI configuration (set as pipeline variables/secrets)
-      echo "GPT_API_KEY=${AZURE_OPENAI_KEY:-}" >> .env
-      echo "MODEL_BASE_URL=${AZURE_OPENAI_ENDPOINT:-}" >> .env
-      echo "MODEL=${AZURE_OPENAI_DEPLOYMENT_NAME:-}" >> .env
+      # Setup wiki identifiers
+      ORG_URL="${SYSTEM_COLLECTIONURI}"
+      PROJECT="${SYSTEM_TEAMPROJECT}"
+      WIKI_ID="${WIKI_IDENTIFIER:-${SYSTEM_TEAMPROJECT}.wiki}"
+      ROOT_PATH="${WIKI_PATH_ROOT:-/Releases}"
+      PAGE_PATH="${ROOT_PATH}/${TO_TAG}"
 
-      echo "OUTPUT_FOLDER=Releases" >> .env
-      echo "LOG_LEVEL=INFO" >> .env
+      # URL-encode the page path safely
+      PAGE_PATH_ESC=$(python -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1], safe='/'))" "$PAGE_PATH")
 
-      # Also add OPENAI_* and AZURE_* variants expected by various client versions
-      echo "OPENAI_API_BASE=${AZURE_OPENAI_ENDPOINT:-}" >> .env
-      echo "OPENAI_API_KEY=${AZURE_OPENAI_KEY:-}" >> .env
-      echo "OPENAI_API_TYPE=azure" >> .env
-      echo "OPENAI_API_VERSION=2023-10-01-preview" >> .env
+      BASE_API="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis/${WIKI_ID}"
+      GET_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&includeContent=true&api-version=7.0"
+      PUT_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&api-version=7.0"
 
-      echo "AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}" >> .env
-      echo "AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY:-}" >> .env
+      echo "Fetching existing wiki page (if any): $GET_URL"
 
-      echo ".env generated at $(pwd)/.env"
-    displayName: "Create .env for Changelog-Weaver"
-    env:
-      AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
-      AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
-      AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
-      GITHUB_TOKEN: $(GITHUB_TOKEN)
-
-  - script: |
-      cat > changelog-weaver/run_changelog.py <<'PY'
-      import os
-      from dotenv import load_dotenv
-      load_dotenv('.env')
-      import openai
-      import sys
-      print('=== Azure/OpenAI env diagnostics ===')
-      print('MODEL_BASE_URL:', os.getenv('MODEL_BASE_URL'))
-      print('OPENAI_API_BASE:', os.getenv('OPENAI_API_BASE'))
-      print('OPENAI_API_TYPE:', os.getenv('OPENAI_API_TYPE'))
-      print('OPENAI_API_VERSION:', os.getenv('OPENAI_API_VERSION'))
-      key = os.getenv('OPENAI_API_KEY', os.getenv('GPT_API_KEY', ''))
-      print('OPENAI_API_KEY set:', bool(key))
-      if key:
-          print('OPENAI_API_KEY preview:', key[:8] + '...')
-      sys.stdout.flush()
-
-      openai.api_type = os.getenv('OPENAI_API_TYPE', '')
-      openai.api_base = os.getenv('OPENAI_API_BASE', os.getenv('MODEL_BASE_URL', ''))
-      openai.api_version = os.getenv('OPENAI_API_VERSION', '')
-      openai.api_key = key
-
-      print('Resolved openai.api_base:', getattr(openai, 'api_base', None))
-      print('Resolved openai.api_key set:', bool(getattr(openai, 'api_key', None)))
-      sys.stdout.flush()
-
-      from changelog_weaver.changelog import main as main_function
-      import asyncio
-      asyncio.run(main_function())
-      PY
-    displayName: "Prepare run_changelog.py wrapper"
-
-  - script: |
-      set -euo pipefail
-      echo "Masked env diagnostics (presence + masked preview):"
-      dump() {
-        name="$1"
-        value="$(printenv "$name" || true)"
-        if [ -z "$value" ]; then
-          echo "$name: <missing>"
-        else
-          echo "$name: ${value:0:6}***"
-        fi
-      }
-      echo "BUILD_REPOSITORY_NAME: ${BUILD_REPOSITORY_NAME:-<missing>}"
-      dump AZURE_OPENAI_ENDPOINT
-      dump AZURE_OPENAI_DEPLOYMENT_NAME
-      dump AZURE_OPENAI_KEY
-      dump GITHUB_TOKEN
-      echo "---- end diagnostics ----"
-    displayName: "Masked env diagnostics"
-    env:
-      AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
-      AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
-      AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
-      GITHUB_TOKEN: $(GITHUB_TOKEN)
-
-  - script: |
-      set -euo pipefail
-      echo "Running Azure OpenAI pre-flight test..."
-      AZ_BASE="${AZURE_OPENAI_ENDPOINT:-}"
-      AZ_DEPLOY="${AZURE_OPENAI_DEPLOYMENT_NAME:-}"
-      AZ_KEY="${AZURE_OPENAI_KEY:-}"
-
-      if [ -z "$AZ_BASE" ] || [ -z "$AZ_DEPLOY" ] || [ -z "$AZ_KEY" ]; then
-        echo "Missing AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT_NAME or AZURE_OPENAI_KEY; failing pre-flight."
+      if [ -z "${SYSTEM_ACCESSTOKEN:-}" ]; then
+        echo "System.AccessToken is not available. Enable 'Allow scripts to access OAuth token' and ensure Wiki write permission." >&2
         exit 1
       fi
+      # Capture headers to extract ETag if it exists
+      HTTP_GET=$(curl -s -D /tmp/wiki_headers.txt -o /tmp/wiki_get.json -w "%{http_code}" \
+        -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+        - script: |
+            set -euo pipefail
+            echo "Preparing Azure DevOps Wiki content..."
 
-      HTTP_CODE=$(curl -s -o /tmp/aztest.json -w "%{http_code}" -X POST "$AZ_BASE/openai/deployments/$AZ_DEPLOY/chat/completions?api-version=2023-10-01-preview" \
-        -H "Content-Type: application/json" \
-        -H "api-key: $AZ_KEY" \
-        -d '{"messages":[{"role":"user","content":"ping"}],"max_tokens":1}')
+            # Locate the generated changelog file
+            FILE=$(find changelog-weaver -type f -name '*.md' -path '*/Releases/*' | head -n1 || true)
+            if [ -z "$FILE" ]; then
+              echo "No changelog file found; skipping wiki publish"
+              exit 0
+            fi
 
-      if [ "$HTTP_CODE" != "200" ]; then
-        echo "Azure OpenAI pre-flight failed (HTTP $HTTP_CODE):"
-        head -c 1000 /tmp/aztest.json || true
-        exit 1
-      fi
-      echo "Azure OpenAI pre-flight succeeded (HTTP $HTTP_CODE)."
-      head -c 200 /tmp/aztest.json || true
-    displayName: "Azure OpenAI pre-flight test"
-    env:
-      AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
-      AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
-      AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
-      GITHUB_TOKEN: $(GITHUB_TOKEN)
+            # Derive release tag/name
+            TO_TAG="${BUILD_SOURCEBRANCHNAME:-}"
+            if [ -z "$TO_TAG" ]; then TO_TAG="manual"; fi
 
-  - script: |
-      python - <<'PY'
-      from pathlib import Path
-      p = Path('changelog-weaver/changelog_weaver/configuration/model.py')
+            # Extract prev tag used earlier if present in .env
+            PREV_TAG=$(grep '^FROM_TAG=' changelog-weaver/.env | cut -d'=' -f2 || true)
+
+            # Build combined page content
+            DATE_UTC=$(date -u +%Y-%m-%d)
+            GH_RELEASE_URL="https://github.com/${BUILD_REPOSITORY_NAME}/releases/tag/${TO_TAG}"
+            {
+              echo "# Release ${TO_TAG}"
+              echo
+              echo "- Repository: ${BUILD_REPOSITORY_NAME}"
+              echo "- Date: ${DATE_UTC}"
+              if [ -n "$PREV_TAG" ]; then echo "- Previous tag: ${PREV_TAG}"; fi
+              echo "- GitHub Release: ${GH_RELEASE_URL}"
+              echo
+              echo "## Changelog"
+              echo
+              cat "$FILE"
+              echo
+            } > /tmp/wiki_page.md
+
+            # Setup wiki identifiers
+            ORG_URL="${SYSTEM_COLLECTIONURI}"
+            PROJECT="${SYSTEM_TEAMPROJECT}"
+            WIKI_ID="${WIKI_IDENTIFIER:-${SYSTEM_TEAMPROJECT}.wiki}"
+            ROOT_PATH="${WIKI_PATH_ROOT:-/Releases}"
+            PAGE_PATH="${ROOT_PATH}/${TO_TAG}"
+
+            # URL-encode the page path safely
+            PAGE_PATH_ESC=$(python -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1], safe='/'))" "$PAGE_PATH")
+
+            BASE_API="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis/${WIKI_ID}"
+            GET_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&includeContent=true&api-version=7.0"
+            PUT_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&api-version=7.0"
+
+            echo "Fetching existing wiki page (if any): $GET_URL"
+
+            if [ -z "${SYSTEM_ACCESSTOKEN:-}" ]; then
+              echo "System.AccessToken is not available. Enable 'Allow scripts to access OAuth token' and ensure Wiki write permission." >&2
+              exit 1
+            fi
+            # Capture headers to extract ETag if it exists
+            HTTP_GET=$(curl -s -D /tmp/wiki_headers.txt -o /tmp/wiki_get.json -w "%{http_code}" \
+              -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+              -H "Content-Type: application/json" \
+              "$GET_URL" || true)
+            echo "GET status: $HTTP_GET"
+
+            ETAG=$(grep -i '^etag:' /tmp/wiki_headers.txt | awk '{print $2}' | tr -d '\r\n' || true)
+            if [ -z "$ETAG" ]; then
+              ETAG=$(python -c "import json,io,sys; d=json.load(io.open('/tmp/wiki_get.json','r',encoding='utf-8')); print(str(d.get('eTag') or d.get('etag') or '')) if isinstance(d,dict) else print('')" 2>/dev/null || echo "")
+            fi
+
+            CONTENT_JSON=$(python -c "import json,io; print(json.dumps({'content': io.open('/tmp/wiki_page.md','r',encoding='utf-8').read()}))")
+
+            echo "Publishing wiki page to: $PUT_URL"
+            if [ "$HTTP_GET" = "200" ] && [ -n "$ETAG" ]; then
+              # Update existing page with concurrency control
+              HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
+                -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+                -H "Content-Type: application/json" \
+                -H "If-Match: $ETAG" \
+                --data "$CONTENT_JSON" \
+                "$PUT_URL")
+            else
+              # Create new page
+              HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
+                -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+                -H "Content-Type: application/json" \
+                --data "$CONTENT_JSON" \
+                "$PUT_URL")
+            fi
+
+            echo "PUT status: $HTTP_PUT"
+            head -c 500 /tmp/wiki_put.json || true
+
+            if [ "$HTTP_PUT" != "200" ] && [ "$HTTP_PUT" != "201" ]; then
+              echo "Wiki publish failed" >&2
+              exit 1
+            fi
+            echo "Wiki publish succeeded"
       if p.exists():
           s = p.read_text()
           old = 'self.client = openai.OpenAI(api_key=api_details.key)'
@@ -243,6 +221,110 @@ steps:
       targetPath: "$(Build.ArtifactStagingDirectory)/changelog"
       artifact: "changelog"
     displayName: "Publish changelog artifact"
+
+  - script: |
+      set -euo pipefail
+      echo "Preparing Azure DevOps Wiki content..."
+
+      # Locate the generated changelog file
+      FILE=$(find changelog-weaver -type f -name '*.md' -path '*/Releases/*' | head -n1 || true)
+      if [ -z "$FILE" ]; then
+        echo "No changelog file found; skipping wiki publish"
+        exit 0
+      fi
+
+      # Derive release tag/name
+      TO_TAG="${BUILD_SOURCEBRANCHNAME:-}"
+      if [ -z "$TO_TAG" ]; then TO_TAG="manual"; fi
+
+      # Extract prev tag used earlier if present in .env
+      PREV_TAG=$(grep '^FROM_TAG=' changelog-weaver/.env | cut -d'=' -f2 || true)
+
+      # Build combined page content
+      DATE_UTC=$(date -u +%Y-%m-%d)
+      GH_RELEASE_URL="https://github.com/${BUILD_REPOSITORY_NAME}/releases/tag/${TO_TAG}"
+      {
+        echo "# Release ${TO_TAG}"
+        echo
+        echo "- Repository: ${BUILD_REPOSITORY_NAME}"
+        echo "- Date: ${DATE_UTC}"
+        if [ -n "$PREV_TAG" ]; then echo "- Previous tag: ${PREV_TAG}"; fi
+        echo "- GitHub Release: ${GH_RELEASE_URL}"
+        echo
+        echo "## Changelog"
+        echo
+        cat "$FILE"
+        echo
+      } > /tmp/wiki_page.md
+
+      # Setup wiki identifiers
+      ORG_URL="${SYSTEM_COLLECTIONURI}"
+      PROJECT="${SYSTEM_TEAMPROJECT}"
+      WIKI_ID="${WIKI_IDENTIFIER:-${SYSTEM_TEAMPROJECT}.wiki}"
+      ROOT_PATH="${WIKI_PATH_ROOT:-/Releases}"
+      PAGE_PATH="${ROOT_PATH}/${TO_TAG}"
+
+      # URL-encode the page path safely
+      PAGE_PATH_ESC=$(python -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1], safe="/"))' "$PAGE_PATH")
+
+      BASE_API="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis/${WIKI_ID}"
+      GET_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&includeContent=true&api-version=7.0"
+      PUT_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&api-version=7.0"
+
+      echo "Fetching existing wiki page (if any): $GET_URL"
+
+      if [ -z "${SYSTEM_ACCESSTOKEN:-}" ]; then
+        echo "System.AccessToken is not available. Ensure 'Allow scripts to access OAuth token' is enabled and the pipeline has permission to write to Wiki." >&2
+        exit 1
+      fi
+      # Capture headers to extract ETag if it exists
+      HTTP_GET=$(curl -s -D /tmp/wiki_headers.txt -o /tmp/wiki_get.json -w "%{http_code}" \
+        -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+        -H "Content-Type: application/json" \
+        "$GET_URL") || true
+      echo "GET status: $HTTP_GET"
+
+      ETAG=$(grep -i '^etag:' /tmp/wiki_headers.txt | awk '{print $2}' | tr -d '\r\n' || true)
+      if [ -z "$ETAG" ]; then
+        # Some Wiki APIs return eTag in the JSON body instead of header; try that as a fallback
+        ETAG=$(python -c "import json,io; d=json.load(io.open('/tmp/wiki_get.json','r',encoding='utf-8')); print(str(d.get('eTag') or d.get('etag') or '')) if isinstance(d,dict) else print('')" 2>/dev/null || echo "")
+      fi
+
+      CONTENT_JSON=$(python -c "import json,io; print(json.dumps({'content': io.open('/tmp/wiki_page.md','r',encoding='utf-8').read()}))")
+
+      echo "Publishing wiki page to: $PUT_URL"
+      if [ "$HTTP_GET" = "200" ] && [ -n "$ETAG" ]; then
+        # Update existing page with concurrency control
+        HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
+          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -H "Content-Type: application/json" \
+          -H "If-Match: $ETAG" \
+          --data "$CONTENT_JSON" \
+          "$PUT_URL")
+      else
+        # Create new page
+        HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
+          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -H "Content-Type: application/json" \
+          --data "$CONTENT_JSON" \
+          "$PUT_URL")
+      fi
+
+      echo "PUT status: $HTTP_PUT"
+      head -c 500 /tmp/wiki_put.json || true
+
+      if [ "$HTTP_PUT" != "200" ] && [ "$HTTP_PUT" != "201" ]; then
+        echo "Wiki publish failed" >&2
+        exit 1
+      fi
+      echo "Wiki publish succeeded"
+    displayName: "Publish release to Azure DevOps Wiki"
+    env:
+      SYSTEM_COLLECTIONURI: $(System.CollectionUri)
+      SYSTEM_TEAMPROJECT: $(System.TeamProject)
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      WIKI_IDENTIFIER: $(WIKI_IDENTIFIER)
+      WIKI_PATH_ROOT: $(WIKI_PATH_ROOT)
 
   - script: |
       if [ -n "${GITHUB_RELEASE_ID:-}" ]; then
