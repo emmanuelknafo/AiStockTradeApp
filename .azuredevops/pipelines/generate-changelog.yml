@@ -334,18 +334,14 @@ steps:
         "$LIST_URL" || true)
       echo "LIST status: $HTTP_LIST"
       if [ "$HTTP_LIST" = "200" ]; then
-        RES=""
         if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
-          RES=$(jq -r --arg rw "$RAW_WIKI" '.value[] | select(.id==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase)) | [.id, .name] | @tsv' /tmp/wiki_list.json | head -n1)
+          WIKI_ID=$(jq -r --arg rw "$RAW_WIKI" '([.value[] | select(.id==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase)) | .id] | first) // ""' /tmp/wiki_list.json)
+          WIKI_NAME=$(jq -r --arg rw "$RAW_WIKI" '([.value[] | select(.id==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase)) | .name] | first) // ""' /tmp/wiki_list.json)
         fi
-        if [ -z "$RES" ]; then
-          RES=$(jq -r --arg p "$PROJECT" '.value[] | select(((.project.name//"")|ascii_downcase)==($p|ascii_downcase) and (.isProjectWiki==true)) | [.id,.name] | @tsv' /tmp/wiki_list.json | head -n1)
+        if [ -z "$WIKI_ID" ]; then
+          WIKI_ID=$(jq -r '([.value[] | select(.type=="projectWiki") | .id] | first) // (.value[0].id // "")' /tmp/wiki_list.json)
+          WIKI_NAME=$(jq -r '([.value[] | select(.type=="projectWiki") | .name] | first) // (.value[0].name // "")' /tmp/wiki_list.json)
         fi
-        if [ -z "$RES" ]; then
-          RES=$(jq -r '.value[0] | [.id,.name] | @tsv' /tmp/wiki_list.json 2>/dev/null || true)
-        fi
-        WIKI_ID="${RES%%$'\t'*}"
-        WIKI_NAME="${RES#*$'\t'}"
       fi
       if [ -z "$WIKI_ID" ]; then
         # Fallback: use provided name/id or default to project wiki name
