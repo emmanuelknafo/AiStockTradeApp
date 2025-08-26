@@ -49,7 +49,7 @@ steps:
 
   - script: |
       set -euo pipefail
-      TO_TAG="$(Build.SourceBranchName)"
+      TO_TAG="${BUILD_SOURCEBRANCHNAME:-}"
       # When pipeline is manually run there may be no branch name; allow overriding with a variable if needed
       if [ -z "$TO_TAG" ]; then
         TO_TAG="manual"
@@ -60,36 +60,36 @@ steps:
       git fetch --tags --quiet || true
       PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${TO_TAG}$" | head -n1 || echo "v0.0.0")
 
-      echo "SOLUTION_NAME=$(Build.Repository.Name)" > .env
+      echo "SOLUTION_NAME=${BUILD_REPOSITORY_NAME:-}" > .env
       echo "RELEASE_VERSION=${TO_TAG}" >> .env
       echo "SOFTWARE_SUMMARY=Release ${TO_TAG}" >> .env
       echo "GET_ITEM_SUMMARY=True" >> .env
       echo "GET_CHANGELOG_SUMMARY=True" >> .env
       echo "INCLUDE_COMMITS=False" >> .env
-      echo "PROJECT_URL=https://github.com/$(Build.Repository.Name)" >> .env
+      echo "PROJECT_URL=https://github.com/${BUILD_REPOSITORY_NAME:-}" >> .env
       echo "QUERY=is:closed" >> .env
-      echo "ACCESS_TOKEN=$(System.AccessToken)" >> .env
-      echo "REPO_NAME=$(Build.Repository.Name)" >> .env
+      echo "ACCESS_TOKEN=${SYSTEM_ACCESSTOKEN:-}" >> .env
+      echo "REPO_NAME=${BUILD_REPOSITORY_NAME:-}" >> .env
       echo "BRANCH=main" >> .env
       echo "FROM_TAG=${PREV_TAG}" >> .env
       echo "TO_TAG=${TO_TAG}" >> .env
 
       # Azure OpenAI configuration (set as pipeline variables/secrets)
-      echo "GPT_API_KEY=$(AZURE_OPENAI_KEY)" >> .env
-      echo "MODEL_BASE_URL=$(AZURE_OPENAI_ENDPOINT)" >> .env
-      echo "MODEL=$(AZURE_OPENAI_DEPLOYMENT_NAME)" >> .env
+      echo "GPT_API_KEY=${AZURE_OPENAI_KEY:-}" >> .env
+      echo "MODEL_BASE_URL=${AZURE_OPENAI_ENDPOINT:-}" >> .env
+      echo "MODEL=${AZURE_OPENAI_DEPLOYMENT_NAME:-}" >> .env
 
       echo "OUTPUT_FOLDER=Releases" >> .env
       echo "LOG_LEVEL=INFO" >> .env
 
       # Also add OPENAI_* and AZURE_* variants expected by various client versions
-      echo "OPENAI_API_BASE=$(AZURE_OPENAI_ENDPOINT)" >> .env
-      echo "OPENAI_API_KEY=$(AZURE_OPENAI_KEY)" >> .env
+      echo "OPENAI_API_BASE=${AZURE_OPENAI_ENDPOINT:-}" >> .env
+      echo "OPENAI_API_KEY=${AZURE_OPENAI_KEY:-}" >> .env
       echo "OPENAI_API_TYPE=azure" >> .env
       echo "OPENAI_API_VERSION=2023-10-01-preview" >> .env
 
-      echo "AZURE_OPENAI_ENDPOINT=$(AZURE_OPENAI_ENDPOINT)" >> .env
-      echo "AZURE_OPENAI_KEY=$(AZURE_OPENAI_KEY)" >> .env
+      echo "AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}" >> .env
+      echo "AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY:-}" >> .env
 
       echo ".env generated at $(pwd)/.env"
     displayName: 'Create .env for Changelog-Weaver'
