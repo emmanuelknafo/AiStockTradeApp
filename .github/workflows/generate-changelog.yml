@@ -70,10 +70,32 @@ jobs:
           echo "OPENAI_API_TYPE=azure" >> changelog-weaver/.env
           echo "OPENAI_API_VERSION=2023-10-01-preview" >> changelog-weaver/.env
 
-      - name: Generate Changelog
+      - name: Prepare Azure OpenAI wrapper
+        run: |
+          cat > changelog-weaver/run_changelog.py <<'PY'
+          import os
+          import openai
+
+          # Prefer explicit OPENAI_* env vars; fall back to the tool's MODEL_* vars
+          openai.api_type = os.getenv('OPENAI_API_TYPE', '')
+          openai.api_base = os.getenv('OPENAI_API_BASE', os.getenv('MODEL_BASE_URL', ''))
+          openai.api_version = os.getenv('OPENAI_API_VERSION', '')
+          openai.api_key = os.getenv('OPENAI_API_KEY', os.getenv('GPT_API_KEY', ''))
+
+          # Run the changelog main
+          from changelog_weaver.changelog import main as main_function
+          import asyncio
+          asyncio.run(main_function())
+          PY
+
+      - name: Ensure Releases owner folder exists
+        run: |
+          mkdir -p changelog-weaver/Releases/${{ github.repository_owner }}
+
+      - name: Generate Changelog (Azure-ready)
         run: |
           cd changelog-weaver
-          python -m changelog_weaver
+          python run_changelog.py
 
       - name: Upload Changelog artifact
         uses: actions/upload-artifact@v4
