@@ -136,6 +136,7 @@ jobs:
           path: changelog-weaver/Releases/*.md
 
       - name: Attach Changelog to Release
+        if: ${{ github.event_name == 'release' }}
         uses: softprops/action-gh-release@v1
         with:
           files: changelog-weaver/Releases/*.md
