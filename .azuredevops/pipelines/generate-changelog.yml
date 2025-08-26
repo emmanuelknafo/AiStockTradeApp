@@ -333,6 +333,28 @@ steps:
         -H "Content-Type: application/json" \
         "$LIST_URL" || true)
       echo "LIST status: $HTTP_LIST"
+      COUNT=$(jq -r '(.count // (.value|length)) // 0' /tmp/wiki_list.json 2>/dev/null || echo 0)
+      if [ "$HTTP_LIST" != "200" ] || [ "$COUNT" = "0" ]; then
+        # Fallback 1: organization-level list
+        LIST_URL_ALT="${ORG_URL%/}/_apis/wiki/wikis?api-version=7.0"
+        echo "Primary list empty; trying org-level: $LIST_URL_ALT"
+        HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
+          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -H "Content-Type: application/json" \
+          "$LIST_URL_ALT" || true)
+        echo "ORG LIST status: $HTTP_LIST"
+        COUNT=$(jq -r '(.count // (.value|length)) // 0' /tmp/wiki_list.json 2>/dev/null || echo 0)
+      fi
+      if [ "$HTTP_LIST" = "200" ] && [ "$COUNT" = "0" ] && [ -n "${SYSTEM_TEAMPROJECTID:-}" ]; then
+        # Fallback 2: projectId-scoped list
+        LIST_URL_ID="${ORG_URL%/}/${SYSTEM_TEAMPROJECTID}/_apis/wiki/wikis?api-version=7.0"
+        echo "Org list empty; trying projectId-scoped: $LIST_URL_ID"
+        HTTP_LIST=$(curl -s -o /tmp/wiki_list.json -w "%{http_code}" \
+          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -H "Content-Type: application/json" \
+          "$LIST_URL_ID" || true)
+        echo "ID LIST status: $HTTP_LIST"
+      fi
       if [ "$HTTP_LIST" = "200" ]; then
         # Normalize RAW_WIKI (trim quotes/spaces)
         if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
@@ -445,6 +467,7 @@ steps:
     env:
       SYSTEM_COLLECTIONURI: $(System.CollectionUri)
       SYSTEM_TEAMPROJECT: $(System.TeamProject)
+      SYSTEM_TEAMPROJECTID: $(System.TeamProjectId)
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       WIKI_IDENTIFIER: $(WIKI_IDENTIFIER)
       WIKI_PATH_ROOT: $(WIKI_PATH_ROOT)
