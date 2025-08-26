@@ -93,6 +93,11 @@ steps:
 
       echo ".env generated at $(pwd)/.env"
     displayName: "Create .env for Changelog-Weaver"
+    env:
+      AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+      AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+      AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
 
   - script: |
       cat > changelog-weaver/run_changelog.py <<'PY'
@@ -146,6 +151,11 @@ steps:
       dump GITHUB_TOKEN
       echo "---- end diagnostics ----"
     displayName: "Masked env diagnostics"
+    env:
+      AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+      AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+      AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
 
   - script: |
       set -euo pipefail
@@ -172,6 +182,11 @@ steps:
       echo "Azure OpenAI pre-flight succeeded (HTTP $HTTP_CODE)."
       head -c 200 /tmp/aztest.json || true
     displayName: "Azure OpenAI pre-flight test"
+    env:
+      AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+      AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+      AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
 
   - script: |
       set -euo pipefail
