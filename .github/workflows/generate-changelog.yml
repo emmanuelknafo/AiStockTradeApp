@@ -141,3 +141,19 @@ jobs:
           files: changelog-weaver/Releases/*.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Test Azure OpenAI auth
+        run: |
+          set -e
+          echo "Testing Azure OpenAI authentication (response body truncated)..."
+          AZ_BASE=${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZ_DEPLOY=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
+          AZ_KEY=${{ secrets.AZURE_OPENAI_KEY }}
+          # Curl the Azure Chat Completions endpoint for this deployment (api-version set to the workflow default)
+          curl -s -X POST "${AZ_BASE}/openai/deployments/${AZ_DEPLOY}/chat/completions?api-version=2023-10-01-preview" \
+            -H "Content-Type: application/json" \
+            -H "api-key: ${AZ_KEY}" \
+            -d '{"messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}' \
+            -o /tmp/aztest.json || true
+          echo "HTTP response (first 1000 chars):"
+          head -c 1000 /tmp/aztest.json || true
