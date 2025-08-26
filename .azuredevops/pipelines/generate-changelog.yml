@@ -72,16 +72,7 @@ steps:
       export PATH="$PATH:$HOME/.dotnet/tools"
       # Run GitVersion and capture FullSemVer from JSON to avoid log noise
       GITVERSION_JSON=$(dotnet-gitversion /output json /verbosity error /nocache 2>/dev/null || true)
-      FULL_SEMVER=$(printf '%s' "$GITVERSION_JSON" | python - "$GITVERSION_JSON" <<'PY'
-      import sys, json
-      data = sys.stdin.read()
-      try:
-          j = json.loads(data)
-          print(j.get('FullSemVer',''))
-      except Exception:
-          print('')
-      PY
-      )
+      FULL_SEMVER=$(printf '%s' "$GITVERSION_JSON" | python -c 'import sys,json; print(json.loads(sys.stdin.read()).get("FullSemVer",""))' 2>/dev/null || true)
       # Basic sanity: ensure the value resembles semver
       if ! echo "$FULL_SEMVER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+'; then
         echo "GitVersion did not return a valid semver. Raw follows:"
