@@ -3,6 +3,10 @@ name: Load tests
 on:
   workflow_dispatch:
   push:
+    branches:
+      - '**'            # run only for branch refs, not tags
+    tags-ignore:
+      - '**'            # ignore all tag pushes (e.g., when creating a release tag)
     paths:
       - 'load-tests/**'
       - '.github/workflows/load-tests.yml'
