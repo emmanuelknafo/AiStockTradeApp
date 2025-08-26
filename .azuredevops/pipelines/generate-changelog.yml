@@ -465,8 +465,48 @@ steps:
       echo "PUT status: $HTTP_PUT"
       head -c 500 /tmp/wiki_put.json || true
 
+      # If PUT failed with 404 using a GUID, retry using the project wiki name (common for project wikis)
+      USED_GUID=0
+      if echo "$WIKI_ID" | grep -Eiq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+        USED_GUID=1
+      fi
+      if [ "$HTTP_PUT" = "404" ] && [ "$USED_GUID" = "1" ]; then
+        ALT_WIKI_NAME="${PROJECT}.wiki"
+        ALT_BASE_API="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis/${ALT_WIKI_NAME}"
+        ALT_PUT_URL="${ALT_BASE_API}/pages?path=${PAGE_PATH_ESC}&${VER_QS}&api-version=7.0"
+        echo "PUT failed with 404 using GUID. Retrying with wiki name: ${ALT_WIKI_NAME}"
+        echo "Publishing wiki page to (fallback): $ALT_PUT_URL"
+        HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
+          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -H "Content-Type: application/json" \
+          --data "$CONTENT_JSON" \
+          "$ALT_PUT_URL")
+        echo "Fallback PUT status: $HTTP_PUT"
+        head -c 500 /tmp/wiki_put.json || true
+      fi
+
+      # If still failing, try using projectId in the path instead of project name
+      if [ "$HTTP_PUT" != "200" ] && [ "$HTTP_PUT" != "201" ] && [ -n "${SYSTEM_TEAMPROJECTID:-}" ]; then
+        # Prefer the last wiki identifier we attempted (name fallback if we used it, else original WIKI_ID)
+        FINAL_WIKI_IDENTIFIER="$WIKI_ID"
+        if [ "$USED_GUID" = "1" ] && [ -n "$ALT_WIKI_NAME" ]; then
+          FINAL_WIKI_IDENTIFIER="$ALT_WIKI_NAME"
+        fi
+        ALT2_BASE_API="${ORG_URL%/}/${SYSTEM_TEAMPROJECTID}/_apis/wiki/wikis/${FINAL_WIKI_IDENTIFIER}"
+        ALT2_PUT_URL="${ALT2_BASE_API}/pages?path=${PAGE_PATH_ESC}&${VER_QS}&api-version=7.0"
+        echo "Previous PUT failed. Retrying with projectId in URL: $ALT2_PUT_URL"
+        HTTP_PUT=$(curl -s -o /tmp/wiki_put.json -w "%{http_code}" -X PUT \
+          -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+          -H "Content-Type: application/json" \
+          --data "$CONTENT_JSON" \
+          "$ALT2_PUT_URL")
+        echo "ProjectId-path PUT status: $HTTP_PUT"
+        head -c 500 /tmp/wiki_put.json || true
+      fi
+
       if [ "$HTTP_PUT" != "200" ] && [ "$HTTP_PUT" != "201" ]; then
         echo "Wiki publish failed" >&2
+        echo "If this is a permission issue, grant 'Contribute' to the wiki for the build identity: '${SYSTEM_TEAMPROJECT} Build Service (\<org\>)' in Project Settings > Repos > Wiki > Select '${PROJECT}.wiki' > Security, and ensure 'Allow scripts to access OAuth token' is enabled for the pipeline." >&2
         exit 1
       fi
       echo "Wiki publish succeeded"
