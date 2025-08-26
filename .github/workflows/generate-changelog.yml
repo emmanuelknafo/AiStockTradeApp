@@ -70,6 +70,10 @@ jobs:
           echo "OPENAI_API_TYPE=azure" >> changelog-weaver/.env
           echo "OPENAI_API_VERSION=2023-10-01-preview" >> changelog-weaver/.env
 
+          # Also set AZURE_* env variables expected by the OpenAI Azure module
+          echo "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}" >> changelog-weaver/.env
+          echo "AZURE_OPENAI_KEY=${{ secrets.AZURE_OPENAI_KEY }}" >> changelog-weaver/.env
+
       - name: "Debug: show generated .env and directory"
         run: |
           echo "PWD: $(pwd)"
@@ -160,6 +164,13 @@ jobs:
           PY
 
       - name: Generate Changelog (Azure-ready)
+        env:
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          OPENAI_API_BASE: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          OPENAI_API_TYPE: azure
+          OPENAI_API_VERSION: 2023-10-01-preview
         run: |
           cd changelog-weaver
           python run_changelog.py
