@@ -23,6 +23,7 @@ on:
       - ".github/workflows/load-tests.yml"
       - ".github/workflows/alt-load-tests.yml"
       - ".github/workflows/infrastructure.yml"
+      - ".github/workflows/generate-changelog.yml"
       - "load-tests/**"
       - "infrastructure/**"
   pull_request:
@@ -47,6 +48,7 @@ on:
       - ".github/workflows/load-tests.yml"
       - ".github/workflows/alt-load-tests.yml"
       - ".github/workflows/infrastructure.yml"
+      - ".github/workflows/generate-changelog.yml"
       - "load-tests/**"
       - "infrastructure/**"
   # CI triggers temporarily disabled; manual runs only
