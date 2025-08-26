@@ -129,6 +129,26 @@ steps:
 
   - script: |
       set -euo pipefail
+      echo "Masked env diagnostics (presence + masked preview):"
+      dump() {
+        name="$1"
+        value="$(printenv "$name" || true)"
+        if [ -z "$value" ]; then
+          echo "$name: <missing>"
+        else
+          echo "$name: ${value:0:6}***"
+        fi
+      }
+      echo "BUILD_REPOSITORY_NAME: ${BUILD_REPOSITORY_NAME:-<missing>}"
+      dump AZURE_OPENAI_ENDPOINT
+      dump AZURE_OPENAI_DEPLOYMENT_NAME
+      dump AZURE_OPENAI_KEY
+      dump GITHUB_TOKEN
+      echo "---- end diagnostics ----"
+    displayName: "Masked env diagnostics"
+
+  - script: |
+      set -euo pipefail
       echo "Running Azure OpenAI pre-flight test..."
       AZ_BASE="${AZURE_OPENAI_ENDPOINT:-}"
       AZ_DEPLOY="${AZURE_OPENAI_DEPLOYMENT_NAME:-}"
