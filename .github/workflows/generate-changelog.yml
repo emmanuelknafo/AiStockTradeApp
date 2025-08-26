@@ -37,7 +37,7 @@ jobs:
         run: |
           set -e
           TO_TAG="${{ github.ref_name }}"
-          # Ensure tags are available for prev-tag detection
+          # Ensure tags areavailable for prev-tag detection
           git fetch --tags --quiet
           PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${TO_TAG}$" | head -n1 || echo "v0.0.0")
 
@@ -175,16 +175,21 @@ jobs:
           cd changelog-weaver
           python run_changelog.py
 
+      - name: Locate generated changelog files
+        run: |
+          echo "Searching for generated changelog markdown files under changelog-weaver"
+          find changelog-weaver -type f -name '*.md' -maxdepth 4 -print || true
+
       - name: Upload Changelog artifact
         uses: actions/upload-artifact@v4
         with:
           name: changelog
-          path: changelog-weaver/Releases/*.md
+          path: changelog-weaver/**/Releases/*.md
 
       - name: Attach Changelog to Release
         if: ${{ github.event_name == 'release' }}
         uses: softprops/action-gh-release@v1
         with:
-          files: changelog-weaver/Releases/*.md
+          files: changelog-weaver/**/Releases/*.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
