@@ -1,0 +1,173 @@
+# Azure DevOps pipeline: Run Changelog-Weaver with Azure OpenAI
+# - Clone Hankanman/Changelog-Weaver
+# - Install requirements
+# - Create .env (using secure pipeline variables)
+# - Run a small wrapper to configure the OpenAI Azure client and execute changelog generation
+# - Publish generated markdown as a pipeline artifact
+# - Optionally update a GitHub release body when GITHUB_RELEASE_ID is provided
+
+# NOTE: Set the following pipeline variables (in pipeline UI or a variable group) and mark the secrets as secret:
+# - AZURE_OPENAI_ENDPOINT
+# - AZURE_OPENAI_KEY
+# - AZURE_OPENAI_DEPLOYMENT_NAME
+# - GITHUB_TOKEN (personal access token or repo token with repo scope to update releases)
+# - Optionally: GITHUB_RELEASE_ID (release id to patch)
+
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  group: AiStockTradeApp
+  # # Variables below are expected to be set in the pipeline configuration or variable group
+  # AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+  # AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
+  # AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+  # GITHUB_TOKEN: $(GITHUB_TOKEN)
+  # # You can optionally set GITHUB_RELEASE_ID to patch an existing GitHub release
+  # GITHUB_RELEASE_ID: $(GITHUB_RELEASE_ID)
+
+steps:
+  - checkout: self
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'
+    displayName: 'Use Python 3.x'
+
+  - script: |
+      git clone --depth 1 https://github.com/Hankanman/Changelog-Weaver.git changelog-weaver
+    displayName: 'Clone Changelog-Weaver'
+
+  - script: |
+      python -m pip install --upgrade pip
+      python -m pip install -r changelog-weaver/requirements.txt
+    displayName: 'Install Changelog-Weaver dependencies'
+
+  - script: |
+      set -euo pipefail
+      TO_TAG="$(Build.SourceBranchName)"
+      # When pipeline is manually run there may be no branch name; allow overriding with a variable if needed
+      if [ -z "$TO_TAG" ]; then
+        TO_TAG="manual"
+      fi
+
+      cd changelog-weaver
+      # Ensure tags are available for prev-tag detection
+      git fetch --tags --quiet || true
+      PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${TO_TAG}$" | head -n1 || echo "v0.0.0")
+
+      echo "SOLUTION_NAME=$(Build.Repository.Name)" > .env
+      echo "RELEASE_VERSION=${TO_TAG}" >> .env
+      echo "SOFTWARE_SUMMARY=Release ${TO_TAG}" >> .env
+      echo "GET_ITEM_SUMMARY=True" >> .env
+      echo "GET_CHANGELOG_SUMMARY=True" >> .env
+      echo "INCLUDE_COMMITS=False" >> .env
+      echo "PROJECT_URL=https://github.com/$(Build.Repository.Name)" >> .env
+      echo "QUERY=is:closed" >> .env
+      echo "ACCESS_TOKEN=$(System.AccessToken || echo)" >> .env
+      echo "REPO_NAME=$(Build.Repository.Name)" >> .env
+      echo "BRANCH=main" >> .env
+      echo "FROM_TAG=${PREV_TAG}" >> .env
+      echo "TO_TAG=${TO_TAG}" >> .env
+
+      # Azure OpenAI configuration (set as pipeline variables/secrets)
+      echo "GPT_API_KEY=${AZURE_OPENAI_KEY}" >> .env
+      echo "MODEL_BASE_URL=${AZURE_OPENAI_ENDPOINT}" >> .env
+      echo "MODEL=${AZURE_OPENAI_DEPLOYMENT_NAME}" >> .env
+
+      echo "OUTPUT_FOLDER=Releases" >> .env
+      echo "LOG_LEVEL=INFO" >> .env
+
+      # Also add OPENAI_* and AZURE_* variants expected by various client versions
+      echo "OPENAI_API_BASE=${AZURE_OPENAI_ENDPOINT}" >> .env
+      echo "OPENAI_API_KEY=${AZURE_OPENAI_KEY}" >> .env
+      echo "OPENAI_API_TYPE=azure" >> .env
+      echo "OPENAI_API_VERSION=2023-10-01-preview" >> .env
+
+      echo "AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}" >> .env
+      echo "AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}" >> .env
+
+      echo ".env generated at $(pwd)/.env"
+    displayName: 'Create .env for Changelog-Weaver'
+
+  - script: |
+      cat > changelog-weaver/run_changelog.py <<'PY'
+      import os
+      from dotenv import load_dotenv
+      load_dotenv('.env')
+      import openai
+      import sys
+      print('=== Azure/OpenAI env diagnostics ===')
+      print('MODEL_BASE_URL:', os.getenv('MODEL_BASE_URL'))
+      print('OPENAI_API_BASE:', os.getenv('OPENAI_API_BASE'))
+      print('OPENAI_API_TYPE:', os.getenv('OPENAI_API_TYPE'))
+      print('OPENAI_API_VERSION:', os.getenv('OPENAI_API_VERSION'))
+      key = os.getenv('OPENAI_API_KEY', os.getenv('GPT_API_KEY', ''))
+      print('OPENAI_API_KEY set:', bool(key))
+      if key:
+          print('OPENAI_API_KEY preview:', key[:8] + '...')
+      sys.stdout.flush()
+
+      openai.api_type = os.getenv('OPENAI_API_TYPE', '')
+      openai.api_base = os.getenv('OPENAI_API_BASE', os.getenv('MODEL_BASE_URL', ''))
+      openai.api_version = os.getenv('OPENAI_API_VERSION', '')
+      openai.api_key = key
+
+      print('Resolved openai.api_base:', getattr(openai, 'api_base', None))
+      print('Resolved openai.api_key set:', bool(getattr(openai, 'api_key', None)))
+      sys.stdout.flush()
+
+      from changelog_weaver.changelog import main as main_function
+      import asyncio
+      asyncio.run(main_function())
+      PY
+    displayName: 'Prepare run_changelog.py wrapper'
+
+  - script: |
+      set -euo pipefail
+      cd changelog-weaver
+      python run_changelog.py
+    displayName: 'Run Changelog-Weaver'
+
+  - script: |
+      mkdir -p "$(Build.ArtifactStagingDirectory)/changelog"
+      find changelog-weaver -type f -name '*.md' -path '*/Releases/*' -exec cp {} "$(Build.ArtifactStagingDirectory)/changelog/" \;
+      ls -la "$(Build.ArtifactStagingDirectory)/changelog" || true
+    displayName: 'Gather generated changelog files'
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/changelog'
+      artifact: 'changelog'
+    displayName: 'Publish changelog artifact'
+
+  - script: |
+      if [ -n "${GITHUB_RELEASE_ID:-}" ]; then
+        FILE=$(find changelog-weaver -type f -name '*.md' -path '*/Releases/*' | head -n1 || true)
+        if [ -z "$FILE" ]; then
+          echo "No changelog file found to attach to release"
+          exit 0
+        fi
+
+        BODY=$(python -c 'import sys,json; print(json.dumps(open(sys.argv[1],"r",encoding="utf-8").read()))' "$FILE")
+        if [ -z "$BODY" ] || [ "$BODY" = '""' ]; then
+          echo "Empty changelog; skipping release patch"
+          exit 0
+        fi
+
+        PAYLOAD=$(printf '{"body": %s}' "$BODY")
+        echo "Patching GitHub release id: ${GITHUB_RELEASE_ID}"
+        curl -s -X PATCH \
+          -H "Authorization: token ${GITHUB_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" \
+          "https://api.github.com/repos/$(Build.Repository.Name)/releases/${GITHUB_RELEASE_ID}" -o /tmp/resp.json -w "%{http_code}"
+        cat /tmp/resp.json || true
+      else
+        echo "GITHUB_RELEASE_ID not set; skipping release patch"
+      fi
+    displayName: 'Optionally update GitHub release body'
+    condition: and(succeeded(), ne(variables['GITHUB_RELEASE_ID'], ''))
