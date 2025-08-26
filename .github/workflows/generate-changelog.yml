@@ -75,12 +75,28 @@ jobs:
           cat > changelog-weaver/run_changelog.py <<'PY'
           import os
           import openai
+          import sys
 
-          # Prefer explicit OPENAI_* env vars; fall back to the tool's MODEL_* vars
+          # Diagnostic output (masked key preview)
+          print("=== Azure/OpenAI env diagnostics ===")
+          print("MODEL_BASE_URL:", os.getenv('MODEL_BASE_URL'))
+          print("OPENAI_API_BASE:", os.getenv('OPENAI_API_BASE'))
+          print("OPENAI_API_TYPE:", os.getenv('OPENAI_API_TYPE'))
+          print("OPENAI_API_VERSION:", os.getenv('OPENAI_API_VERSION'))
+          key = os.getenv('OPENAI_API_KEY', os.getenv('GPT_API_KEY', ''))
+          print("OPENAI_API_KEY set:", bool(key))
+          if key:
+              print("OPENAI_API_KEY preview:", key[:8] + '...')
+
+          # Configure openai module-level variables for Azure
           openai.api_type = os.getenv('OPENAI_API_TYPE', '')
           openai.api_base = os.getenv('OPENAI_API_BASE', os.getenv('MODEL_BASE_URL', ''))
           openai.api_version = os.getenv('OPENAI_API_VERSION', '')
           openai.api_key = os.getenv('OPENAI_API_KEY', os.getenv('GPT_API_KEY', ''))
+
+          print("Resolved openai.api_base:", getattr(openai, 'api_base', None))
+          print("Resolved openai.api_key set:", bool(getattr(openai, 'api_key', None)))
+          sys.stdout.flush()
 
           # Run the changelog main
           from changelog_weaver.changelog import main as main_function
