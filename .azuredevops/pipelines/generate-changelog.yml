@@ -28,6 +28,12 @@ variables:
     # GITHUB_TOKEN: $(GITHUB_TOKEN)
     # # You can optionally set GITHUB_RELEASE_ID to patch an existing GitHub release
     # GITHUB_RELEASE_ID: $(GITHUB_RELEASE_ID)
+  - name: WIKI_PATH_ROOT
+    value: "/Releases"
+  - name: WIKI_IDENTIFIER
+    value: "59aa6550-3563-42ed-a4e7-8088fb517b93"
+  - name: WIKI_BRANCH
+    value: "wikiMaster"
 
 steps:
   - checkout: self
