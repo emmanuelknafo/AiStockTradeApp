@@ -189,6 +189,24 @@ steps:
       GITHUB_TOKEN: $(GITHUB_TOKEN)
 
   - script: |
+      python - <<'PY'
+      from pathlib import Path
+      p = Path('changelog-weaver/changelog_weaver/configuration/model.py')
+      if p.exists():
+          s = p.read_text()
+          old = 'self.client = openai.OpenAI(api_key=api_details.key)'
+          if old in s:
+              s = s.replace(old, 'openai.api_key = api_details.key\n        self.client = openai')
+              p.write_text(s)
+              print('Patched model.py to use module-level openai')
+          else:
+              print('Patch not required or already applied')
+      else:
+          print('model.py not found; skipping patch')
+      PY
+    displayName: "Patch Changelog-Weaver model for Azure"
+
+  - script: |
       set -euo pipefail
       cd changelog-weaver
       # Ensure Releases/<owner> exists so the generator can write output
@@ -207,6 +225,7 @@ steps:
       MODEL_BASE_URL: $(AZURE_OPENAI_ENDPOINT)
       MODEL: $(AZURE_OPENAI_DEPLOYMENT_NAME)
       OPENAI_API_BASE: $(AZURE_OPENAI_ENDPOINT)
+      OPENAI_BASE_URL: $(AZURE_OPENAI_ENDPOINT)
       OPENAI_API_KEY: $(AZURE_OPENAI_KEY)
       OPENAI_API_TYPE: azure
       OPENAI_API_VERSION: 2023-10-01-preview
