@@ -132,6 +132,19 @@ steps:
       cd changelog-weaver
       python run_changelog.py
     displayName: 'Run Changelog-Weaver'
+    env:
+      ACCESS_TOKEN: $(GITHUB_TOKEN)
+      REPO_NAME: $(Build.Repository.Name)
+      BRANCH: main
+      GPT_API_KEY: $(AZURE_OPENAI_KEY)
+      MODEL_BASE_URL: $(AZURE_OPENAI_ENDPOINT)
+      MODEL: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+      OPENAI_API_BASE: $(AZURE_OPENAI_ENDPOINT)
+      OPENAI_API_KEY: $(AZURE_OPENAI_KEY)
+      OPENAI_API_TYPE: azure
+      OPENAI_API_VERSION: 2023-10-01-preview
+      AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+      AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
 
   - script: |
       mkdir -p "$(Build.ArtifactStagingDirectory)/changelog"
