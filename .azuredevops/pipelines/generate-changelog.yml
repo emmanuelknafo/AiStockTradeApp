@@ -70,7 +70,7 @@ steps:
       echo "QUERY=is:closed" >> .env
       echo "ACCESS_TOKEN=${GITHUB_TOKEN:-}" >> .env
       echo "REPO_NAME=${BUILD_REPOSITORY_NAME:-}" >> .env
-      echo "BRANCH=main" >> .env
+      echo "BRANCH=wikiMaster" >> .env
       echo "FROM_TAG=${PREV_TAG}" >> .env
       echo "TO_TAG=${TO_TAG}" >> .env
 
@@ -220,7 +220,7 @@ steps:
     env:
       ACCESS_TOKEN: $(GITHUB_TOKEN)
       REPO_NAME: $(Build.Repository.Name)
-      BRANCH: main
+      BRANCH: wikiMaster
       GPT_API_KEY: $(AZURE_OPENAI_KEY)
       MODEL_BASE_URL: $(AZURE_OPENAI_ENDPOINT)
       MODEL: $(AZURE_OPENAI_DEPLOYMENT_NAME)
@@ -325,8 +325,8 @@ steps:
       # Resolve WIKI_IDENTIFIER; Azure DevOps may pass literal '$(WIKI_IDENTIFIER)' when unset
       RAW_WIKI="${WIKI_IDENTIFIER:-}"
       if [ -z "$RAW_WIKI" ] || [[ "$RAW_WIKI" == *'$('* ]]; then
-        # Default to the desired project wiki name
-        WIKI_ID="AiStockTradeApp.wiki"
+        # Default to the project wiki derived from the ADO project name
+        WIKI_ID="${PROJECT}.wiki"
       else
         WIKI_ID="$RAW_WIKI"
       fi
@@ -339,7 +339,16 @@ steps:
       fi
       echo "Resolved WIKI_ID=$WIKI_ID"
       echo "Resolved ROOT_PATH=$ROOT_PATH"
-      PAGE_PATH="${ROOT_PATH}/${TO_TAG}"
+      # Resolve WIKI_BRANCH similarly, default to wikiMaster
+      RAW_WBR="${WIKI_BRANCH:-}"
+      if [ -z "$RAW_WBR" ] || [[ "$RAW_WBR" == *'$('* ]]; then
+        WIKI_BRANCH="wikiMaster"
+      else
+        WIKI_BRANCH="$RAW_WBR"
+      fi
+      echo "Resolved WIKI_BRANCH=$WIKI_BRANCH"
+      # Publish to a stable path for the wiki branch label
+      PAGE_PATH="${ROOT_PATH}/${WIKI_BRANCH}"
 
       # URL-encode the page path safely
       PAGE_PATH_ESC=$(python -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1], safe='/'))" "$PAGE_PATH")
@@ -402,3 +411,4 @@ steps:
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       WIKI_IDENTIFIER: $(WIKI_IDENTIFIER)
       WIKI_PATH_ROOT: $(WIKI_PATH_ROOT)
+      WIKI_BRANCH: $(WIKI_BRANCH)
