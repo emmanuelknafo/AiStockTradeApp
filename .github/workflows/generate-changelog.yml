@@ -184,12 +184,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: changelog
-          path: changelog-weaver/**/Releases/*.md
+          path: changelog-weaver/**/Releases/**/*.md
 
       - name: Attach Changelog to Release
         if: ${{ github.event_name == 'release' }}
         uses: softprops/action-gh-release@v1
         with:
-          files: changelog-weaver/**/Releases/*.md
+          files: changelog-weaver/**/Releases/**/*.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

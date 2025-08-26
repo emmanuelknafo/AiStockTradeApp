@@ -6,10 +6,12 @@ on:
     paths:
       - 'load-tests/**'
       - '.github/workflows/load-tests.yml'
+      - '!.github/workflows/generate-changelog.yml'
   pull_request:
     paths:
       - 'load-tests/**'
       - '.github/workflows/load-tests.yml'
+      - '!.github/workflows/generate-changelog.yml'
 
 jobs:
   run-jmeter:
