@@ -334,22 +334,32 @@ steps:
         "$LIST_URL" || true)
       echo "LIST status: $HTTP_LIST"
       if [ "$HTTP_LIST" = "200" ]; then
+        # Normalize RAW_WIKI (trim quotes/spaces)
         if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
-          WIKI_ID=$(jq -r --arg rw "$RAW_WIKI" '([.value[] | select(.id==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase)) | .id] | first) // ""' /tmp/wiki_list.json)
-          WIKI_NAME=$(jq -r --arg rw "$RAW_WIKI" '([.value[] | select(.id==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase)) | .name] | first) // ""' /tmp/wiki_list.json)
+          RW_TRIM=$(printf "%s" "$RAW_WIKI" | sed -e 's/^\s*\"\?//' -e 's/\"\?\s*$//')
+          # Try to match by GUID id, repositoryId, or name (case-insensitive); always take the object's .id (GUID)
+          WIKI_ID=$(jq -r --arg rw "$RW_TRIM" '
+            ([.value[]
+              | select((.id//"")==$rw or (.repositoryId//"")==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase))
+              | .id] | first) // ""' /tmp/wiki_list.json)
+          WIKI_NAME=$(jq -r --arg rw "$RW_TRIM" '
+            ([.value[]
+              | select((.id//"")==$rw or (.repositoryId//"")==$rw or ((.name//"")|ascii_downcase)==($rw|ascii_downcase))
+              | .name] | first) // ""' /tmp/wiki_list.json)
         fi
-        if [ -z "$WIKI_ID" ]; then
+        # If still not resolved, prefer the project wiki entry
+        if [ -z "$WIKI_ID" ] || [ "$WIKI_ID" = "null" ]; then
           WIKI_ID=$(jq -r '([.value[] | select(.type=="projectWiki") | .id] | first) // (.value[0].id // "")' /tmp/wiki_list.json)
           WIKI_NAME=$(jq -r '([.value[] | select(.type=="projectWiki") | .name] | first) // (.value[0].name // "")' /tmp/wiki_list.json)
         fi
       fi
-      if [ -z "$WIKI_ID" ]; then
-        # Fallback: use provided name/id or default to project wiki name
-        if [ -n "$RAW_WIKI" ] && [[ ! "$RAW_WIKI" == *'$('* ]]; then
-          WIKI_ID="$RAW_WIKI"
-        else
-          WIKI_ID="${PROJECT}.wiki"
-        fi
+      # If still not resolved, fail fast with diagnostics rather than using name (which can 404)
+      if [ -z "$WIKI_ID" ] || [ "$WIKI_ID" = "null" ]; then
+        echo "Could not resolve Wiki GUID from list. Contents of /tmp/wiki_list.json:" >&2
+        head -c 2000 /tmp/wiki_list.json || true
+        echo >&2
+        echo "Set a valid WIKI_IDENTIFIER (GUID) or ensure the Project Wiki exists." >&2
+        exit 1
       fi
       # Resolve ROOT_PATH similarly, default to /Releases
       RAW_ROOT="${WIKI_PATH_ROOT:-}"
@@ -379,8 +389,10 @@ steps:
       PAGE_PATH_ESC=$(python -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1], safe='/'))" "$PAGE_PATH")
 
       BASE_API="${ORG_URL%/}/${PROJECT}/_apis/wiki/wikis/${WIKI_ID}"
-      GET_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&includeContent=true&api-version=7.0"
-      PUT_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&api-version=7.0"
+      # Always pass versionDescriptor to target the wiki branch label (e.g., wikiMaster)
+      VER_QS="versionDescriptor.version=${WIKI_BRANCH}&versionDescriptor.versionType=branch"
+      GET_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&includeContent=true&${VER_QS}&api-version=7.0"
+      PUT_URL="${BASE_API}/pages?path=${PAGE_PATH_ESC}&${VER_QS}&api-version=7.0"
 
       echo "Fetching existing wiki page (if any): $GET_URL"
 
