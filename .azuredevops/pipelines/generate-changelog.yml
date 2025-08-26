@@ -17,6 +17,35 @@ trigger: none
 pr: none
 
 pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  - group: "AiStockTradeApp"
+    # # Variables below are expected to be set in the pipeline configuration or variable group
+    # AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+    # AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
+    # AZURE_OPENAI_DEPLOYMENT_NAME: $(AZURE_OPENAI_DEPLOYMENT_NAME)
+    # GITHUB_TOKEN: $(GITHUB_TOKEN)
+    # # You can optionally set GITHUB_RELEASE_ID to patch an existing GitHub release
+    # GITHUB_RELEASE_ID: $(GITHUB_RELEASE_ID)
+
+steps:
+  - checkout: self
+    persistCredentials: true
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.x"
+    displayName: "Use Python 3.x"
+
+  - script: |
+      git clone --depth 1 https://github.com/Hankanman/Changelog-Weaver.git changelog-weaver
+    displayName: "Clone Changelog-Weaver"
+
+  - script: |
+      python -m pip install --upgrade pip
+      python -m pip install -r changelog-weaver/requirements.txt
+    displayName: "Install Changelog-Weaver dependencies"
   - script: |
       set -euo pipefail
       echo "Preparing Azure DevOps Wiki content..."
