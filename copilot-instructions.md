@@ -32,11 +32,11 @@ AiStockTradeApp/                    # Root solution folder
 
 | Project | Purpose | Key Components | Dependencies |
 |---------|---------|----------------|--------------|
-| **AiStockTradeApp** | Web UI, MVC controllers, Razor views | Controllers, Views, wwwroot | Services, Entities |
-| **AiStockTradeApp.Api** | REST API, background services | API controllers, SignalR hubs | Services, DataAccess |
+| **AiStockTradeApp** | Web UI, MVC controllers, Razor views, API client | Controllers, Views, wwwroot, ApiStockDataServiceClient | Services (API client only) |
+| **AiStockTradeApp.Api** | REST API, background services, data access | API controllers, SignalR hubs, business services | Services, DataAccess |
 | **AiStockTradeApp.Entities** | Domain models, view models | Stock data, portfolio models | None (pure models) |
 | **AiStockTradeApp.DataAccess** | Database access, EF Core | DbContext, repositories, migrations | Entities |
-| **AiStockTradeApp.Services** | Business logic, external APIs | Stock services, AI analysis | DataAccess, Entities |
+| **AiStockTradeApp.Services** | Business logic, external APIs, API client | Stock services, AI analysis, API client | DataAccess, Entities |
 | **AiStockTradeApp.Tests** | Unit testing | Service tests, controller tests | All projects |
 | **AiStockTradeApp.UITests** | End-to-end testing | Playwright page objects | Web UI |
 | **AiStockTradeApp.Cli** | Command line tools | Data migration, utilities | Services |
@@ -95,50 +95,143 @@ The application supports **English (en)** and **French (fr)** localization:
 
 ### Resource Management
 - **SharedResource.cs** - Marker class in `AiStockTradeApp` namespace
-- **SharedResource.resx** - Neutral language resources
-- **SharedResource.en.resx** - English translations
-- **SharedResource.fr.resx** - French translations
+- **SimpleStringLocalizer.cs** - Custom localizer implementation with embedded translations
+- **In-memory translation dictionary** - Hardcoded translations in the localizer service
 
 ### Localization Pattern
 ```csharp
-// In views - use factory pattern for explicit resource targeting
-@inject IStringLocalizerFactory LocFactory
+// In views - use standard IStringLocalizer<T> pattern with marker class
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<SharedResource> Localizer
+
 @{
-    var localizer = LocFactory.Create("Resources.SharedResource", "AiStockTradeApp");
+    ViewData["Title"] = Localizer["Header_Title"];
 }
-<h1>@localizer["Dashboard_Title"]</h1>
+
+<h1>@Localizer["Dashboard_Title"]</h1>
+<button>@Localizer["Btn_AddStock"]</button>
+```
+
+### Service Configuration
+```csharp
+// Program.cs - Custom localization service registration
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+
+// Register custom string localizer that works without resource manifests
+builder.Services.AddSingleton<IStringLocalizer<SharedResource>, SimpleStringLocalizer>();
+
+// Configure localization using the options pattern
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    var supportedCultures = new[] { "en", "fr" };
+    options.SetDefaultCulture(supportedCultures[0])
+        .AddSupportedCultures(supportedCultures)
+        .AddSupportedUICultures(supportedCultures);
+});
+
+builder.Services
+    .AddControllersWithViews()
+    .AddViewLocalization(LanguageViewLocationExpanderFormat.Suffix)
+    .AddDataAnnotationsLocalization(options => {
+        options.DataAnnotationLocalizerProvider = (type, factory) =>
+            factory.Create(typeof(SharedResource));
+    });
+
+// Middleware configuration with explicit culture providers
+var app = builder.Build();
+
+var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("fr") };
+var localizationOptions = new RequestLocalizationOptions
+{
+    DefaultRequestCulture = new RequestCulture("en"),
+    SupportedCultures = supportedCultures,
+    SupportedUICultures = supportedCultures
+};
+
+// Add providers in order of preference
+localizationOptions.RequestCultureProviders.Clear();
+localizationOptions.RequestCultureProviders.Add(new CookieRequestCultureProvider());
+localizationOptions.RequestCultureProviders.Add(new AcceptLanguageHeaderRequestCultureProvider());
+
+app.UseRequestLocalization(localizationOptions);
+```
+
+### Custom Localizer Implementation
+```csharp
+// SimpleStringLocalizer.cs - Custom implementation
+public class SimpleStringLocalizer : IStringLocalizer<SharedResource>
+{
+    private readonly ConcurrentDictionary<string, Dictionary<string, string>> _translations;
+
+    private void LoadTranslations()
+    {
+        // English translations
+        _translations["en"] = new Dictionary<string, string>
+        {
+            ["Header_Title"] = "AI-Powered Stock Tracker",
+            ["Btn_AddStock"] = "Add Stock",
+            // ... more translations
+        };
+
+        // French translations
+        _translations["fr"] = new Dictionary<string, string>
+        {
+            ["Header_Title"] = "Traqueur d'Actions IA",
+            ["Btn_AddStock"] = "Ajouter Action",
+            // ... more translations
+        };
+    }
+}
 ```
 
 ### Culture Switching
 - **Cookie-based persistence** - Year-long culture storage
 - **POST action** - `HomeController.SetLanguage` for culture changes
-- **Middleware configuration** - `UseRequestLocalization` with en/fr support
+- **Request localization middleware** - Automatic culture detection from cookies
 
 ### Localization Guidelines
 1. **All user-facing text** must be localized using resource keys
-2. **Factory pattern required** - Use `IStringLocalizerFactory.Create()` explicitly
-3. **Consistent naming** - Use `ComponentName_ElementName` format for keys
-4. **Culture-invariant parsing** - Use `CultureInfo.InvariantCulture` for numeric operations
-5. **Resource file alignment** - Ensure .resx files match marker class namespace
+2. **Standard pattern required** - Use `@inject IStringLocalizer<SharedResource>` in views
+3. **Consistent naming** - Use `ComponentName_ElementName` format for keys (e.g., `Header_Title`, `Btn_AddStock`)
+4. **Add translations to SimpleStringLocalizer** - Update both "en" and "fr" dictionaries for new keys
+5. **Culture-invariant parsing** - Use `CultureInfo.InvariantCulture` for numeric operations
+6. **Marker class usage** - All views should inject `IStringLocalizer<SharedResource>` and use `Localizer["Key"]` syntax
+7. **Custom localizer maintenance** - New translation keys must be added to the LoadTranslations() method in SimpleStringLocalizer.cs
 
 ## 🔧 Development Patterns
 
 ### Dependency Injection Patterns
 ```csharp
-// Service registration in Program.cs
-builder.Services.AddScoped<IStockDataService, StockDataService>();
+// Service registration in Program.cs (UI Project)
+// Custom localization
+builder.Services.AddSingleton<IStringLocalizer<SharedResource>, SimpleStringLocalizer>();
+
+// HTTP client for API communication
+builder.Services.AddHttpClient<ApiStockDataServiceClient>((sp, http) =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var baseUrl = config["StockApi:BaseUrl"] ?? "https://localhost:5001";
+    http.BaseAddress = new Uri(baseUrl);
+});
+
+// Service abstractions pointing to API client
+builder.Services.AddScoped<IStockDataService, ApiStockDataServiceClient>();
+builder.Services.AddScoped<IAIAnalysisService, AIAnalysisService>();
 builder.Services.AddSingleton<IWatchlistService, WatchlistService>();
-builder.Services.AddHttpClient<ApiStockDataServiceClient>();
+
+// API Project service registration would include:
+// builder.Services.AddScoped<IStockDataService, StockDataService>();
+// builder.Services.AddScoped<IStockDataRepository, StockDataRepository>();
 
 // Constructor injection
 public class StockController : Controller
 {
-    private readonly IStockDataService _stockDataService;
+    private readonly IStockDataService _stockDataService; // This is ApiStockDataServiceClient in UI
     private readonly ILogger<StockController> _logger;
     
     public StockController(IStockDataService stockDataService, ILogger<StockController> logger)
     {
-        _stockDataService = stockDataService;
+        _stockDataService = stockDataService; // HTTP client that calls API
         _logger = logger;
     }
 }
@@ -554,21 +647,25 @@ _logger.LogInformation("Processing stock request for {Symbol} with correlation {
 When working with this codebase:
 
 1. **Always preserve the established patterns** - Follow dependency injection, repository patterns, and error handling strategies
-2. **Maintain localization compliance** - Ensure all new user-facing text uses the resource file pattern
-3. **Test coverage required** - Add appropriate unit tests for new services and UI tests for new features
-4. **Database changes** - Create migrations for any schema modifications
-5. **Security first** - Consider security implications of all changes, especially input validation and data access
-6. **Performance awareness** - Consider caching and query optimization for data-heavy operations
-7. **Logging and monitoring** - Add appropriate logging for new functionality to aid troubleshooting
-8. **Documentation updates** - Update this file and relevant README files when architectural changes are made
+2. **Maintain localization compliance** - Ensure all new user-facing text uses the SimpleStringLocalizer pattern by adding keys to both "en" and "fr" translation dictionaries
+3. **Understand the architecture** - UI project uses HTTP client to communicate with API project; UI has minimal business logic
+4. **Test coverage required** - Add appropriate unit tests for new services and UI tests for new features
+5. **Database changes** - Create migrations for any schema modifications in the API project
+6. **Security first** - Consider security implications of all changes, especially input validation and data access
+7. **Performance awareness** - Consider caching and query optimization for data-heavy operations
+8. **Logging and monitoring** - Add appropriate logging for new functionality to aid troubleshooting
+9. **Documentation updates** - Update this file and relevant README files when architectural changes are made
 
 ### Code Generation Guidelines
 - Use the established namespaces and folder structure
 - Follow the dependency injection patterns for service registration
+- For UI project: Use ApiStockDataServiceClient for data access (HTTP calls to API)
+- For API project: Use direct service implementations with database access
 - Implement proper error handling with logging
 - Add appropriate validation attributes to models
 - Include XML documentation comments for public APIs
 - Follow async/await patterns consistently
+- Add new localization keys to SimpleStringLocalizer.LoadTranslations() method
 
 ### Debugging Assistance
 - Check Application Insights for production issues
