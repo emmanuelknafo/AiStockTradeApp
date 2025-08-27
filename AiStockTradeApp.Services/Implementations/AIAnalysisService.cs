@@ -17,14 +17,43 @@ namespace AiStockTradeApp.Services.Implementations
         {
             try
             {
+                // Check for null stock data
+                if (stockData == null)
+                {
+                    return Task.FromResult((
+                        "Unable to generate analysis at this time.",
+                        "Hold",
+                        "Analysis service unavailable."
+                    ));
+                }
+
                 var changeVal = stockData.Change;
                 var priceVal = stockData.Price;
+                
                 // Parse percent using invariant to handle both 1.23 and -0.96 across cultures
-                var percentText = stockData.PercentChange.Replace("%", "").Trim();
-                if (!decimal.TryParse(percentText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var percentVal))
+                var percentText = stockData.PercentChange?.Replace("%", "").Trim() ?? "";
+                decimal percentVal = 0;
+                bool percentParseSuccess = false;
+                
+                if (!string.IsNullOrEmpty(percentText))
                 {
-                    // Try current culture as a backup
-                    decimal.TryParse(percentText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out percentVal);
+                    percentParseSuccess = decimal.TryParse(percentText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out percentVal);
+                    
+                    if (!percentParseSuccess)
+                    {
+                        // Try current culture as a backup
+                        percentParseSuccess = decimal.TryParse(percentText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out percentVal);
+                    }
+                }
+
+                // If we couldn't parse the percent change, return fallback response
+                if (!percentParseSuccess && !string.IsNullOrEmpty(percentText))
+                {
+                    return Task.FromResult((
+                        "Unable to generate analysis at this time.",
+                        "Hold",
+                        "Analysis service unavailable."
+                    ));
                 }
 
                 string recommendation = "Hold";
