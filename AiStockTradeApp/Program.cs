@@ -1,84 +1,113 @@
 using AiStockTradeApp.Services.Interfaces;
 using AiStockTradeApp.Services.Implementations;
+using AiStockTradeApp.Services;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.Extensions.Localization;
+using Microsoft.AspNetCore.Mvc.Razor;
+using System.Reflection;
 
-public class Program
+namespace AiStockTradeApp
 {
-    private static async Task Main(string[] args)
+    public class Program
     {
-        var builder = WebApplication.CreateBuilder(args);
-
-        // Add services to the container.
-        builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
-        builder.Services
-            .AddControllersWithViews()
-            .AddViewLocalization()
-            .AddDataAnnotationsLocalization();
-
-        // Basic health checks (no DB dependency)
-        builder.Services.AddHealthChecks();
-
-        // Register HttpClient for UI -> API client
-        builder.Services.AddHttpClient<ApiStockDataServiceClient>((sp, http) =>
+        private static async Task Main(string[] args)
         {
-            var config = sp.GetRequiredService<IConfiguration>();
-            var baseUrl = config["StockApi:BaseUrl"] ?? "https://localhost:5001";
-            http.BaseAddress = new Uri(baseUrl);
-        });
+            var builder = WebApplication.CreateBuilder(args);
 
-        // Redirect IStockDataService to API client implementation
-        builder.Services.AddScoped<IStockDataService, ApiStockDataServiceClient>();
+            // Add services to the container.
+            builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+            
+            // Register custom string localizer that works without resource manifests
+            builder.Services.AddSingleton<IStringLocalizer<SharedResource>, SimpleStringLocalizer>();
+            
+            // Configure localization to use the embedded resources
+            builder.Services.Configure<RequestLocalizationOptions>(options =>
+            {
+                var supportedCultures = new[] { "en", "fr" };
+                options.SetDefaultCulture(supportedCultures[0])
+                    .AddSupportedCultures(supportedCultures)
+                    .AddSupportedUICultures(supportedCultures);
+            });
+            
+            builder.Services
+                .AddControllersWithViews()
+                .AddViewLocalization(LanguageViewLocationExpanderFormat.Suffix)
+                .AddDataAnnotationsLocalization(options => {
+                    options.DataAnnotationLocalizerProvider = (type, factory) =>
+                        factory.Create(typeof(SharedResource));
+                });
 
-        // Register other services used by UI
-        builder.Services.AddScoped<IAIAnalysisService, AIAnalysisService>();
-        builder.Services.AddSingleton<IWatchlistService, WatchlistService>();
+            // Basic health checks (no DB dependency)
+            builder.Services.AddHealthChecks();
 
-        // Note: Removed DbContext/Repository/CacheCleanupService from UI. API owns data/caching.
+            // Register HttpClient for UI -> API client
+            builder.Services.AddHttpClient<ApiStockDataServiceClient>((sp, http) =>
+            {
+                var config = sp.GetRequiredService<IConfiguration>();
+                var baseUrl = config["StockApi:BaseUrl"] ?? "https://localhost:5001";
+                http.BaseAddress = new Uri(baseUrl);
+            });
 
-        // Add session services for user state
-        builder.Services.AddDistributedMemoryCache();
-        builder.Services.AddSession(options =>
-        {
-            options.IdleTimeout = TimeSpan.FromMinutes(30);
-            options.Cookie.HttpOnly = true;
-            options.Cookie.IsEssential = true;
-        });
+            // Redirect IStockDataService to API client implementation
+            builder.Services.AddScoped<IStockDataService, ApiStockDataServiceClient>();
 
-        var app = builder.Build();
+            // Register other services used by UI
+            builder.Services.AddScoped<IAIAnalysisService, AIAnalysisService>();
+            builder.Services.AddSingleton<IWatchlistService, WatchlistService>();
 
-        // Localization: supported cultures
-        var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("fr") };
-        var localizationOptions = new RequestLocalizationOptions
-        {
-            DefaultRequestCulture = new RequestCulture("en"),
-            SupportedCultures = supportedCultures,
-            SupportedUICultures = supportedCultures
-        };
-        app.UseRequestLocalization(localizationOptions);
+            // Note: Removed DbContext/Repository/CacheCleanupService from UI. API owns data/caching.
 
-        if (!app.Environment.IsDevelopment())
-        {
-            app.UseExceptionHandler("/Home/Error");
-            app.UseHsts();
+            // Add session services for user state
+            builder.Services.AddDistributedMemoryCache();
+            builder.Services.AddSession(options =>
+            {
+                options.IdleTimeout = TimeSpan.FromMinutes(30);
+                options.Cookie.HttpOnly = true;
+                options.Cookie.IsEssential = true;
+            });
+
+            var app = builder.Build();
+
+            // Localization: supported cultures
+            var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("fr") };
+            var localizationOptions = new RequestLocalizationOptions
+            {
+                DefaultRequestCulture = new RequestCulture("en"),
+                SupportedCultures = supportedCultures,
+                SupportedUICultures = supportedCultures
+            };
+            
+            // Add providers in order of preference
+            localizationOptions.RequestCultureProviders.Clear();
+            localizationOptions.RequestCultureProviders.Add(new CookieRequestCultureProvider());
+            localizationOptions.RequestCultureProviders.Add(new AcceptLanguageHeaderRequestCultureProvider());
+            
+            app.UseRequestLocalization(localizationOptions);
+
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseExceptionHandler("/Home/Error");
+                app.UseHsts();
+            }
+
+            app.MapHealthChecks("/health");
+
+            app.UseHttpsRedirection();
+            app.UseRouting();
+
+            app.UseSession();
+            app.UseAuthorization();
+
+            app.MapStaticAssets();
+
+            app.MapControllerRoute(
+                name: "default",
+                pattern: "{controller=Home}/{action=Index}/{id?}")
+                .WithStaticAssets();
+
+            await app.RunAsync();
         }
-
-        app.MapHealthChecks("/health");
-
-        app.UseHttpsRedirection();
-        app.UseRouting();
-
-        app.UseSession();
-        app.UseAuthorization();
-
-        app.MapStaticAssets();
-
-        app.MapControllerRoute(
-            name: "default",
-            pattern: "{controller=Home}/{action=Index}/{id?}")
-            .WithStaticAssets();
-
-        await app.RunAsync();
     }
 }
