@@ -17,9 +17,44 @@ namespace AiStockTradeApp.Services.Implementations
         {
             try
             {
+                // Check for null stock data
+                if (stockData == null)
+                {
+                    return Task.FromResult((
+                        "Unable to generate analysis at this time.",
+                        "Hold",
+                        "Analysis service unavailable."
+                    ));
+                }
+
                 var changeVal = stockData.Change;
                 var priceVal = stockData.Price;
-                var percentVal = decimal.Parse(stockData.PercentChange.Replace("%", ""));
+                
+                // Parse percent using invariant to handle both 1.23 and -0.96 across cultures
+                var percentText = stockData.PercentChange?.Replace("%", "").Trim() ?? "";
+                decimal percentVal = 0;
+                bool percentParseSuccess = false;
+                
+                if (!string.IsNullOrEmpty(percentText))
+                {
+                    percentParseSuccess = decimal.TryParse(percentText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out percentVal);
+                    
+                    if (!percentParseSuccess)
+                    {
+                        // Try current culture as a backup
+                        percentParseSuccess = decimal.TryParse(percentText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out percentVal);
+                    }
+                }
+
+                // If we couldn't parse the percent change, return fallback response
+                if (!percentParseSuccess && !string.IsNullOrEmpty(percentText))
+                {
+                    return Task.FromResult((
+                        "Unable to generate analysis at this time.",
+                        "Hold",
+                        "Analysis service unavailable."
+                    ));
+                }
 
                 string recommendation = "Hold";
                 string reasoning = "Stable price movement; monitor for trends.";
@@ -62,7 +97,14 @@ namespace AiStockTradeApp.Services.Implementations
                     priceAnalysis = " High-priced stock - consider fractional shares.";
                 }
 
-                var analysis = $"{symbol} closed at ${priceVal:F2}, {(changeVal >= 0 ? "up" : "down")} ${Math.Abs(changeVal):F2} ({stockData.PercentChange}).{priceAnalysis}";
+                var analysis = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "{0} closed at ${1:F2}, {2} ${3:F2} ({4}).{5}",
+                    symbol,
+                    priceVal,
+                    changeVal >= 0 ? "up" : "down",
+                    Math.Abs(changeVal),
+                    stockData.PercentChange,
+                    priceAnalysis);
 
                 return Task.FromResult((analysis, recommendation, reasoning));
             }

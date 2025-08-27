@@ -1,24 +1,26 @@
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<SharedResource> Localizer
 @{
-    ViewData["Title"] = "Listed Stocks";
+    ViewData["Title"] = Localizer["Listed_Title"];
 }
 
 <div class="container">
   <header class="app-header">
-    <h1>Listed Stocks</h1>
+  <h1>@Localizer["Listed_Title"]</h1>
     <div class="header-controls">
-      <a class="control-btn" href="@Url.Action("Dashboard","Stock")">← Back to Dashboard</a>
+  <a class="control-btn" href="@Url.Action("Dashboard","Stock")">← @Localizer["Back_To_Dashboard"]</a>
     </div>
   </header>
   <div class="summary-bar" style="margin:8px 0 0 0;color:#444;display:flex;gap:16px;align-items:center;">
-    <span><strong>Total historical prices:</strong> <span id="hist-total">…</span></span>
+  <span><strong>@Localizer["Listed_TotalHistPrices"]</strong> <span id="hist-total">…</span></span>
   </div>
 
   <div class="search-bar">
     <div class="search-container" style="gap:8px;display:flex;flex-wrap:wrap;align-items:center;">
-      <input id="q" type="text" placeholder="Search symbol or company name" style="min-width:240px" />
-      <select id="sector" style="min-width:200px"><option value="">All Sectors</option></select>
-      <select id="industry" style="min-width:240px"><option value="">All Industries</option></select>
-      <button id="apply-filters">Apply</button>
+  <input id="q" type="text" placeholder="@Localizer["Listed_SearchPlaceholder"]" style="min-width:240px" />
+  <select id="sector" style="min-width:200px"><option value="">@Localizer["Listed_AllSectors"]</option></select>
+  <select id="industry" style="min-width:240px"><option value="">@Localizer["Listed_AllIndustries"]</option></select>
+  <button id="apply-filters">@Localizer["Apply"]</button>
       <span id="result-count" style="margin-left:8px;color:#666"></span>
     </div>
   </div>
@@ -26,13 +28,13 @@
   <!-- Move history panel above the list/table -->
   <div id="history-panel" style="display:none;margin-top:16px;border:1px solid #ddd;border-radius:8px;padding:12px;">
     <div style="display:flex;align-items:center;gap:8px;">
-      <h3 id="hist-title" style="margin:0;">Historical Prices</h3>
+  <h3 id="hist-title" style="margin:0;">@Localizer["Historical_Prices"]</h3>
       <span id="hist-range" style="color:#666"></span>
     </div>
     <canvas id="hist-chart" height="80" style="width:100%;max-height:120px;margin-top:8px;background:#fafafa;border:1px solid #eee;"></canvas>
     <div id="hist-table-wrap" style="overflow:auto;max-height:260px;margin-top:8px;">
       <table class="data-table" style="width:100%;border-collapse:collapse;">
-        <thead><tr><th style="text-align:left;">Date</th><th style="text-align:right;">Open</th><th style="text-align:right;">High</th><th style="text-align:right;">Low</th><th style="text-align:right;">Close</th><th style="text-align:right;">Volume</th></tr></thead>
+  <thead><tr><th style="text-align:left;">@Localizer["Date"]</th><th style="text-align:right;">@Localizer["Open"]</th><th style="text-align:right;">@Localizer["High"]</th><th style="text-align:right;">@Localizer["Low"]</th><th style="text-align:right;">@Localizer["Close"]</th><th style="text-align:right;">@Localizer["Volume"]</th></tr></thead>
         <tbody id="hist-body"></tbody>
       </table>
     </div>
@@ -42,13 +44,13 @@
     <table id="stocks-table" class="data-table" style="width:100%;border-collapse:collapse;">
       <thead>
         <tr>
-          <th style="text-align:left;">Symbol</th>
-          <th style="text-align:left;">Name</th>
-          <th style="text-align:left;">Sector</th>
-          <th style="text-align:left;">Industry</th>
-          <th style="text-align:right;">Last</th>
-          <th style="text-align:right;">% Change</th>
-          <th style="text-align:right;">Market Cap</th>
+          <th style="text-align:left;">@Localizer["Symbol"]</th>
+          <th style="text-align:left;">@Localizer["Name"]</th>
+          <th style="text-align:left;">@Localizer["Sector"]</th>
+          <th style="text-align:left;">@Localizer["Industry"]</th>
+          <th style="text-align:right;">@Localizer["Last"]</th>
+          <th style="text-align:right;">@Localizer["Percent_Change"]</th>
+          <th style="text-align:right;">@Localizer["Market_Cap"]</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -56,9 +58,9 @@
   </div>
 
   <div class="pagination" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
-    <button id="prev-page">Prev</button>
+  <button id="prev-page">@Localizer["Prev"]</button>
     <span id="page-info"></span>
-    <button id="next-page">Next</button>
+  <button id="next-page">@Localizer["Next"]</button>
     <select id="page-size" style="margin-left:auto">
       <option value="25">25</option>
       <option value="50" selected>50</option>

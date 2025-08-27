@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:simpleContent>
+                <xsd:extension base="xsd:string">
+                  <xsd:attribute name="name" use="required" type="xsd:string" />
+                  <xsd:attribute name="xml:space" use="required" fixed="preserve" />
+                </xsd:extension>
+              </xsd:simpleContent>
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <!-- Optional neutral defaults (English) -->
+  <data name="App_Title" xml:space="preserve"><value>AI Stock Tracker</value></data>
+  <data name="Nav_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Nav_ListedStocks" xml:space="preserve"><value>Listed Stocks</value></data>
+  <data name="Header_Title" xml:space="preserve"><value>AI-Powered Stock Tracker</value></data>
+  <data name="Api_Status" xml:space="preserve"><value>Status: Using multiple APIs for real-time data</value></data>
+  <data name="Search_Placeholder" xml:space="preserve"><value>Enter ticker symbol (e.g., AAPL)</value></data>
+  <data name="Btn_AddStock" xml:space="preserve"><value>Add Stock</value></data>
+  <data name="Btn_ClearAll" xml:space="preserve"><value>Clear All</value></data>
+  <data name="Settings_Title" xml:space="preserve"><value>Settings</value></data>
+  <data name="Settings_AutoRefresh" xml:space="preserve"><value>Auto-refresh every</value></data>
+  <data name="Settings_Sound" xml:space="preserve"><value>Sound notifications</value></data>
+  <data name="Settings_ShowCharts" xml:space="preserve"><value>Show mini charts</value></data>
+  <data name="Stock_Price" xml:space="preserve"><value>Price</value></data>
+  <data name="Stock_Change" xml:space="preserve"><value>Change</value></data>
+  <data name="Stock_Percent" xml:space="preserve"><value>Percent</value></data>
+  <data name="Stock_Analysis" xml:space="preserve"><value>Analysis</value></data>
+  <data name="Stock_Recommendation" xml:space="preserve"><value>Recommendation</value></data>
+  <data name="Loading" xml:space="preserve"><value>Loading...</value></data>
+  <data name="Alerts_Title" xml:space="preserve"><value>Price Alerts</value></data>
+  <data name="Portfolio_Summary" xml:space="preserve"><value>Portfolio Summary</value></data>
+  <data name="Portfolio_TotalValue" xml:space="preserve"><value>Total Value</value></data>
+  <data name="Portfolio_TodaysChange" xml:space="preserve"><value>Today's Change</value></data>
+  <data name="Portfolio_Stocks" xml:space="preserve"><value>Stocks</value></data>
+  <data name="Export_CSV" xml:space="preserve"><value>Export CSV</value></data>
+  <data name="Export_JSON" xml:space="preserve"><value>Export JSON</value></data>
+  <data name="Import_Data" xml:space="preserve"><value>Import Data</value></data>
+  <data name="Lang_English" xml:space="preserve"><value>English</value></data>
+  <data name="Lang_French" xml:space="preserve"><value>Français</value></data>
+  <data name="Interval_10s" xml:space="preserve"><value>10 seconds</value></data>
+  <data name="Interval_30s" xml:space="preserve"><value>30 seconds</value></data>
+  <data name="Interval_1m" xml:space="preserve"><value>1 minute</value></data>
+  <data name="Interval_5m" xml:space="preserve"><value>5 minutes</value></data>
+  <!-- Listed Stocks page -->
+  <data name="Listed_Title" xml:space="preserve"><value>Listed Stocks</value></data>
+  <data name="Back_To_Dashboard" xml:space="preserve"><value>Back to Dashboard</value></data>
+  <data name="Listed_TotalHistPrices" xml:space="preserve"><value>Total historical prices:</value></data>
+  <data name="Listed_SearchPlaceholder" xml:space="preserve"><value>Search symbol or company name</value></data>
+  <data name="Listed_AllSectors" xml:space="preserve"><value>All Sectors</value></data>
+  <data name="Listed_AllIndustries" xml:space="preserve"><value>All Industries</value></data>
+  <data name="Apply" xml:space="preserve"><value>Apply</value></data>
+  <data name="Results" xml:space="preserve"><value>results</value></data>
+  <data name="Historical_Prices" xml:space="preserve"><value>Historical Prices</value></data>
+  <data name="Date" xml:space="preserve"><value>Date</value></data>
+  <data name="Open" xml:space="preserve"><value>Open</value></data>
+  <data name="High" xml:space="preserve"><value>High</value></data>
+  <data name="Low" xml:space="preserve"><value>Low</value></data>
+  <data name="Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Volume" xml:space="preserve"><value>Volume</value></data>
+  <data name="Symbol" xml:space="preserve"><value>Symbol</value></data>
+  <data name="Name" xml:space="preserve"><value>Name</value></data>
+  <data name="Last" xml:space="preserve"><value>Last</value></data>
+  <data name="Percent_Change" xml:space="preserve"><value>% Change</value></data>
+  <data name="Market_Cap" xml:space="preserve"><value>Market Cap</value></data>
+  <data name="Prev" xml:space="preserve"><value>Prev</value></data>
+  <data name="Next" xml:space="preserve"><value>Next</value></data>
+  <data name="Page" xml:space="preserve"><value>Page</value></data>
+  <data name="Of" xml:space="preserve"><value>of</value></data>
+  <data name="No_Historical_Data" xml:space="preserve"><value>No historical data</value></data>
+  <data name="Error_Loading_History" xml:space="preserve"><value>Error loading history</value></data>
+  <data name="Version_Label" xml:space="preserve"><value>Version:</value></data>
+  <!-- Additional new resources -->
+  <data name="Sector" xml:space="preserve"><value>Sector</value></data>
+  <data name="Industry" xml:space="preserve"><value>Industry</value></data>
+</root>

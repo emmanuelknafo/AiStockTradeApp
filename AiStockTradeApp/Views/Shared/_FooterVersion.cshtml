@@ -1,9 +1,11 @@
 @using System.Reflection
 @using AiStockTradeApp
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<SharedResource> Localizer
 @{
     var asm = Assembly.GetExecutingAssembly();
     var infoVersion = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
     var fileVersion = asm.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
     var display = infoVersion ?? fileVersion ?? "dev";
 }
-<span>Version: @display</span>
+<span>@Localizer["Version_Label"] @display</span>
