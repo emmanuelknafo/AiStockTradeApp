@@ -1,0 +1,86 @@
+# Azure Load Testing Configuration for AI Stock Trade API
+# This file defines the load test configuration for Azure Load Testing service
+
+# Test identification
+testName: "AI-Stock-API-Load-Test"
+description: "Comprehensive load test for AI Stock Trading API microservice covering all endpoints"
+tags:
+  environment: "development"
+  api: "stock-trading"
+  version: "v1"
+
+# Test duration and load profile
+engineInstances: 2
+testDuration: "PT5M"  # ISO 8601 duration format - 5 minutes
+
+# Load patterns
+loadTestConfiguration:
+  # Ramp-up pattern: gradually increase load
+  - pattern: "ramp-up"
+    startVirtualUsers: 5
+    endVirtualUsers: 50
+    rampUpDuration: "PT1M"    # 1 minute ramp-up
+    sustainDuration: "PT3M"   # 3 minutes sustained load
+    rampDownDuration: "PT1M"  # 1 minute ramp-down
+
+# Environment variables for the test
+environmentVariables:
+  API_BASE_URL: "https://your-api-app.azurewebsites.net"
+  API_VERSION: "v1"
+  TEST_DATA_SIZE: "medium"
+  THINK_TIME_MIN: "1"
+  THINK_TIME_MAX: "3"
+
+# Test files to upload
+testPlan: "api_load_test.py"  # Main Locust test file
+supportingFiles:
+  - "requirements.txt"
+  - ".env"
+
+# Monitoring and metrics
+monitoring:
+  # Application Insights integration
+  applicationInsights:
+    enabled: true
+    # Will auto-detect if Application Insights is configured for the target app
+
+# Success criteria
+successCriteria:
+  - metric: "response_time_95_percentile"
+    operator: "lessThan"
+    threshold: 2000  # 2 seconds
+
+  - metric: "error_rate"
+    operator: "lessThan" 
+    threshold: 5  # 5% error rate
+
+  - metric: "requests_per_second"
+    operator: "greaterThan"
+    threshold: 100  # Minimum 100 RPS
+
+# Network configuration
+networking:
+  subnetId: null  # Use default networking
+  
+# Security configuration  
+secrets:
+  # If API requires authentication, define secrets here
+  # These would be stored in Azure Key Vault
+  # API_KEY: "$(api-key-secret)"
+
+# Test data configuration
+testData:
+  # CSV files with test data (if needed)
+  stockSymbols: "stock_symbols.csv"
+  testUsers: "test_users.csv"
+
+# Advanced settings
+advanced:
+  # JVM settings for Java-based load generators
+  javaOpts: "-Xms1g -Xmx2g"
+  
+  # Python settings for Python-based tests (Locust)
+  pythonPath: "/usr/bin/python3"
+  
+  # Custom Docker image (if needed)
+  # customImage: "your-registry.azurecr.io/custom-loadtest:latest"
