@@ -1,0 +1,16 @@
+# Load Testing Dependencies
+locust>=2.20.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Optional: For enhanced reporting
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Testing utilities
+pytest>=7.4.0
+faker>=20.0.0
