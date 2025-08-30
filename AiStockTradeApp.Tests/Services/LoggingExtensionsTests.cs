@@ -292,5 +292,273 @@ namespace AiStockTradeApp.Tests.Services
             timer!.Dispose();
             timer.Invoking(t => t.Dispose()).Should().NotThrow();
         }
+
+        #region Authentication Logging Tests
+
+        [Fact]
+        public void LogAuthenticationEvent_WithSuccessfulEvent_ShouldLogInformation()
+        {
+            // Arrange
+            var eventType = "UserLogin";
+            var userIdentifier = "test@example.com";
+            var additionalData = new { IpAddress = "127.0.0.1", UserAgent = "TestAgent" };
+
+            // Act
+            _mockLogger.Object.LogAuthenticationEvent(eventType, userIdentifier, true, null, additionalData);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"Authentication event: {eventType} succeeded for user {userIdentifier}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogAuthenticationEvent_WithFailedEvent_ShouldLogWarning()
+        {
+            // Arrange
+            var eventType = "UserLogin";
+            var userIdentifier = "test@example.com";
+            var errorMessage = "Invalid credentials";
+            var additionalData = new { IpAddress = "127.0.0.1" };
+
+            // Act
+            _mockLogger.Object.LogAuthenticationEvent(eventType, userIdentifier, false, errorMessage, additionalData);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"Authentication event: {eventType} failed for user {userIdentifier} - {errorMessage}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogRegistrationAttempt_WithSuccessfulRegistration_ShouldLogInformation()
+        {
+            // Arrange
+            var email = "new@example.com";
+            var userContext = new { IpAddress = "127.0.0.1", UserAgent = "TestAgent" };
+
+            // Act
+            _mockLogger.Object.LogRegistrationAttempt(email, true, null, userContext);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"User registration succeeded for {email}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogRegistrationAttempt_WithFailedRegistration_ShouldLogWarning()
+        {
+            // Arrange
+            var email = "new@example.com";
+            var errors = new[] { "Password too weak", "Email already exists" };
+            var userContext = new { IpAddress = "127.0.0.1" };
+
+            // Act
+            _mockLogger.Object.LogRegistrationAttempt(email, false, errors, userContext);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"User registration failed for {email}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogLoginAttempt_WithSuccessfulLogin_ShouldLogInformation()
+        {
+            // Arrange
+            var email = "test@example.com";
+            var ipAddress = "127.0.0.1";
+            var userAgent = "Mozilla/5.0 Test";
+
+            // Act
+            _mockLogger.Object.LogLoginAttempt(email, true, ipAddress, userAgent);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"Login successful for {email} from {ipAddress}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogLoginAttempt_WithFailedLogin_ShouldLogWarning()
+        {
+            // Arrange
+            var email = "test@example.com";
+            var ipAddress = "127.0.0.1";
+            var userAgent = "Mozilla/5.0 Test";
+            var lockoutReason = "Invalid credentials";
+
+            // Act
+            _mockLogger.Object.LogLoginAttempt(email, false, ipAddress, userAgent, lockoutReason);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"Login failed for {email} from {ipAddress}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogPasswordChangeEvent_WithSuccessfulChange_ShouldLogInformation()
+        {
+            // Arrange
+            var userIdentifier = "user-123";
+
+            // Act
+            _mockLogger.Object.LogPasswordChangeEvent(userIdentifier, true);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"Password change succeeded for user {userIdentifier}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogPasswordChangeEvent_WithFailedChange_ShouldLogWarning()
+        {
+            // Arrange
+            var userIdentifier = "user-123";
+            var reason = "Current password incorrect";
+
+            // Act
+            _mockLogger.Object.LogPasswordChangeEvent(userIdentifier, false, reason);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"Password change failed for user {userIdentifier} - {reason}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogAccountLockout_ShouldLogWarning()
+        {
+            // Arrange
+            var userIdentifier = "test@example.com";
+            var lockoutEnd = DateTime.UtcNow.AddMinutes(15);
+            var failedAttempts = 5;
+            var triggeredBy = "Multiple failed login attempts";
+
+            // Act
+            _mockLogger.Object.LogAccountLockout(userIdentifier, lockoutEnd, failedAttempts, triggeredBy);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"Account lockout triggered for user {userIdentifier}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogSecurityEvent_ShouldLogWarning()
+        {
+            // Arrange
+            var eventType = "SuspiciousLogin";
+            var userIdentifier = "test@example.com";
+            var description = "Login from unusual location";
+            var securityContext = new { IpAddress = "192.168.1.100", Country = "Unknown" };
+
+            // Act
+            _mockLogger.Object.LogSecurityEvent(eventType, userIdentifier, description, securityContext);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"Security event: {eventType} for user {userIdentifier} - {description}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Theory]
+        [InlineData("UserRegistration")]
+        [InlineData("UserLogin")]
+        [InlineData("UserLogout")]
+        [InlineData("PasswordChange")]
+        public void LogAuthenticationEvent_WithDifferentEventTypes_ShouldIncludeEventTypeInLog(string eventType)
+        {
+            // Arrange
+            var userIdentifier = "test@example.com";
+
+            // Act
+            _mockLogger.Object.LogAuthenticationEvent(eventType, userIdentifier, true);
+
+            // Assert
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains($"Authentication event: {eventType}")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public void LogLoginAttempt_WithNullOptionalParameters_ShouldNotThrow()
+        {
+            // Arrange
+            var email = "test@example.com";
+
+            // Act & Assert
+            var act = () => _mockLogger.Object.LogLoginAttempt(email, true, null, null, null);
+            act.Should().NotThrow();
+
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
+        }
+
+        #endregion
     }
 }

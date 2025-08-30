@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 using AiStockTradeApp.Entities.Models;
 using AiStockTradeApp.ViewModels;
+using AiStockTradeApp.Services;
 using System.ComponentModel.DataAnnotations;
 
 namespace AiStockTradeApp.Controllers
@@ -58,11 +59,19 @@ namespace AiStockTradeApp.Controllers
 
             if (!ModelState.IsValid)
             {
+                _logger.LogAuthenticationEvent(LoggingConstants.UserLogin, model.Email, false, 
+                    "Invalid model state", new { ModelErrors = ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage)) });
                 return View(model);
             }
 
             try
             {
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+                var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
+                
+                _logger.LogAuthenticationEvent(LoggingConstants.UserLogin, model.Email, true, 
+                    null, new { IpAddress = ipAddress, UserAgent = userAgent, ReturnUrl = returnUrl });
+
                 // Try to sign in the user
                 var result = await _signInManager.PasswordSignInAsync(
                     model.Email, 
@@ -80,24 +89,46 @@ namespace AiStockTradeApp.Controllers
                         await _userManager.UpdateAsync(user);
                     }
 
-                    _logger.LogInformation("User {Email} logged in successfully", model.Email);
+                    _logger.LogLoginAttempt(model.Email, true, ipAddress, userAgent);
+                    _logger.LogInformation("User {Email} logged in successfully from {IpAddress}", model.Email, ipAddress);
                     return RedirectToLocal(returnUrl);
                 }
 
                 if (result.IsLockedOut)
                 {
-                    _logger.LogWarning("User {Email} account locked out", model.Email);
+                    var user = await _userManager.FindByEmailAsync(model.Email);
+                    var lockoutEnd = user?.LockoutEnd?.DateTime ?? DateTime.UtcNow.AddMinutes(5);
+                    var failedCount = await _userManager.GetAccessFailedCountAsync(user!);
+                    
+                    _logger.LogAccountLockout(model.Email, lockoutEnd, failedCount, 
+                        $"Login attempt from {ipAddress}");
+                    _logger.LogLoginAttempt(model.Email, false, ipAddress, userAgent, "Account locked out");
                     ModelState.AddModelError(string.Empty, _localizer["Account_Login_LockedOut"]);
+                }
+                else if (result.IsNotAllowed)
+                {
+                    _logger.LogLoginAttempt(model.Email, false, ipAddress, userAgent, "Account not allowed (email not confirmed)");
+                    ModelState.AddModelError(string.Empty, _localizer["Account_Login_NotAllowed"]);
+                }
+                else if (result.RequiresTwoFactor)
+                {
+                    _logger.LogAuthenticationEvent(LoggingConstants.TwoFactorAuthentication, model.Email, true, 
+                        null, new { IpAddress = ipAddress });
+                    // Handle two-factor authentication if implemented
+                    ModelState.AddModelError(string.Empty, "Two-factor authentication required");
                 }
                 else
                 {
-                    _logger.LogWarning("Invalid login attempt for {Email}", model.Email);
+                    _logger.LogLoginAttempt(model.Email, false, ipAddress, userAgent, "Invalid credentials");
                     ModelState.AddModelError(string.Empty, _localizer["Account_Login_InvalidCredentials"]);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during login for {Email}", model.Email);
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+                _logger.LogError(ex, "Error during login for {Email} from {IpAddress}", model.Email, ipAddress);
+                _logger.LogAuthenticationEvent(LoggingConstants.UserLogin, model.Email, false, 
+                    ex.Message, new { IpAddress = ipAddress, Exception = ex.GetType().Name });
                 ModelState.AddModelError(string.Empty, _localizer["Account_Login_Error"]);
             }
 
@@ -132,11 +163,30 @@ namespace AiStockTradeApp.Controllers
 
             if (!ModelState.IsValid)
             {
+                _logger.LogAuthenticationEvent(LoggingConstants.UserRegistration, model.Email, false, 
+                    "Invalid model state", new { ModelErrors = ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage)) });
                 return View(model);
             }
 
             try
             {
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+                var userAgent = HttpContext.Request.Headers.UserAgent.ToString();
+                
+                _logger.LogAuthenticationEvent(LoggingConstants.UserRegistration, model.Email, true, 
+                    null, new { IpAddress = ipAddress, UserAgent = userAgent, FirstName = model.FirstName, LastName = model.LastName });
+
+                // Check if user already exists
+                var existingUser = await _userManager.FindByEmailAsync(model.Email);
+                if (existingUser != null)
+                {
+                    _logger.LogRegistrationAttempt(model.Email, false, 
+                        new[] { "User with this email already exists" }, 
+                        new { IpAddress = ipAddress, AttemptedFirstName = model.FirstName, AttemptedLastName = model.LastName });
+                    ModelState.AddModelError(string.Empty, "User with this email already exists");
+                    return View(model);
+                }
+
                 var user = new ApplicationUser
                 {
                     UserName = model.Email,
@@ -152,23 +202,36 @@ namespace AiStockTradeApp.Controllers
 
                 if (result.Succeeded)
                 {
-                    _logger.LogInformation("User {Email} created successfully", model.Email);
+                    _logger.LogRegistrationAttempt(model.Email, true, null, 
+                        new { IpAddress = ipAddress, UserId = user.Id, UserName = user.UserName });
+                    _logger.LogInformation("User {Email} created successfully with ID {UserId} from {IpAddress}", 
+                        model.Email, user.Id, ipAddress);
 
                     // Automatically sign in the user after registration
                     await _signInManager.SignInAsync(user, isPersistent: false);
                     
+                    _logger.LogLoginAttempt(model.Email, true, ipAddress, userAgent);
                     return RedirectToLocal(returnUrl);
                 }
 
                 // Add any registration errors to model state
+                var errors = result.Errors.Select(e => e.Description).ToList();
+                _logger.LogRegistrationAttempt(model.Email, false, errors, 
+                    new { IpAddress = ipAddress, AttemptedFirstName = model.FirstName, AttemptedLastName = model.LastName });
+
                 foreach (var error in result.Errors)
                 {
                     ModelState.AddModelError(string.Empty, error.Description);
+                    _logger.LogWarning("Registration validation error for {Email}: {Code} - {Description}", 
+                        model.Email, error.Code, error.Description);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during registration for {Email}", model.Email);
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+                _logger.LogError(ex, "Error during registration for {Email} from {IpAddress}", model.Email, ipAddress);
+                _logger.LogAuthenticationEvent(LoggingConstants.UserRegistration, model.Email, false, 
+                    ex.Message, new { IpAddress = ipAddress, Exception = ex.GetType().Name, StackTrace = ex.StackTrace });
                 ModelState.AddModelError(string.Empty, _localizer["Account_Register_Error"]);
             }
 
@@ -184,12 +247,27 @@ namespace AiStockTradeApp.Controllers
         {
             try
             {
+                var userEmail = User.Identity?.Name;
+                var userId = _userManager.GetUserId(User);
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+                
                 await _signInManager.SignOutAsync();
-                _logger.LogInformation("User logged out");
+                
+                _logger.LogAuthenticationEvent(LoggingConstants.UserLogout, userEmail ?? userId ?? "Unknown", true, 
+                    null, new { IpAddress = ipAddress, UserId = userId });
+                _logger.LogInformation("User {UserEmail} (ID: {UserId}) logged out from {IpAddress}", 
+                    userEmail, userId, ipAddress);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during logout");
+                var userEmail = User.Identity?.Name;
+                var userId = _userManager.GetUserId(User);
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+                
+                _logger.LogError(ex, "Error during logout for user {UserEmail} (ID: {UserId}) from {IpAddress}", 
+                    userEmail, userId, ipAddress);
+                _logger.LogAuthenticationEvent(LoggingConstants.UserLogout, userEmail ?? userId ?? "Unknown", false, 
+                    ex.Message, new { IpAddress = ipAddress, Exception = ex.GetType().Name });
             }
 
             return RedirectToAction("Index", "Home");
