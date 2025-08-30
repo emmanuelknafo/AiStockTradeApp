@@ -89,11 +89,19 @@ namespace AiStockTradeApp
 
                 // Add Identity DbContext with SQL Server for production
                 builder.Services.AddDbContext<ApplicationIdentityContext>(options =>
-                    options.UseSqlServer(connectionString));
+                    options.UseSqlServer(connectionString, sql =>
+                    {
+                        sql.EnableRetryOnFailure();
+                        sql.MigrationsAssembly(typeof(ApplicationIdentityContext).Assembly.FullName);
+                    }));
 
                 // Add StockData DbContext with SQL Server for production
                 builder.Services.AddDbContext<StockDataContext>(options =>
-                    options.UseSqlServer(connectionString));
+                    options.UseSqlServer(connectionString, sql =>
+                    {
+                        sql.EnableRetryOnFailure();
+                        sql.MigrationsAssembly(typeof(StockDataContext).Assembly.FullName);
+                    }));
             }
 
             // Configure ASP.NET Core Identity
@@ -165,6 +173,25 @@ namespace AiStockTradeApp
             });
 
             var app = builder.Build();
+
+            // Ensure database exists and apply migrations for Identity context in local mode
+            if (!useInMemory)
+            {
+                using var scope = app.Services.CreateScope();
+                var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbMigration");
+                
+                try
+                {
+                    // Apply Identity migrations
+                    var identityContext = scope.ServiceProvider.GetRequiredService<ApplicationIdentityContext>();
+                    await identityContext.Database.MigrateAsync();
+                    logger.LogInformation("Identity database migrations applied successfully.");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to apply Identity database migrations.");
+                }
+            }
 
             // Add comprehensive request logging for monitoring
             app.UseRequestLogging();

@@ -293,6 +293,8 @@ function Start-LocalProcesses {
 
   # Launch UI with API endpoint pointing to the locally running API
   $uiEnv = @{
+    'ConnectionStrings__DefaultConnection' = $cs;
+    'USE_INMEMORY_DB' = 'false';
     'ASPNETCORE_ENVIRONMENT' = 'Development';
     'StockApi__BaseUrl' = 'https://localhost:7032';
     'StockApi__HttpBaseUrl' = 'http://localhost:5256'
