@@ -73,6 +73,7 @@ namespace AiStockTradeApp.Tests.Services
         {
             // Arrange
             var mockLogger = new Mock<ILogger>();
+            mockLogger.Setup(x => x.IsEnabled(LogLevel.Debug)).Returns(true);
             
             // Act
             mockLogger.Object.LogHttpRequest("GET", "https://www.alphavantage.co/query");
@@ -97,6 +98,7 @@ namespace AiStockTradeApp.Tests.Services
         {
             // Arrange
             var mockLogger = new Mock<ILogger>();
+            mockLogger.Setup(x => x.IsEnabled(LogLevel.Information)).Returns(true);
             var sessionId = "test-session-123";
             var context = new { Symbol = symbol, Timestamp = DateTime.UtcNow };
             
@@ -119,6 +121,7 @@ namespace AiStockTradeApp.Tests.Services
         {
             // Arrange
             var mockLogger = new Mock<ILogger>();
+            mockLogger.Setup(x => x.IsEnabled(LogLevel.Information)).Returns(true);
             var eventData = new 
             { 
                 Symbol = "AAPL", 
@@ -151,6 +154,7 @@ namespace AiStockTradeApp.Tests.Services
         {
             // Arrange
             var mockLogger = new Mock<ILogger>();
+            mockLogger.Setup(x => x.IsEnabled(LogLevel.Information)).Returns(true);
             
             // Act
             mockLogger.Object.LogPerformanceMetric(metricName, value, unit);

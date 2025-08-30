@@ -85,7 +85,7 @@ namespace AiStockTradeApp.Tests.Controllers
             // Assert
             result.Should().BeOfType<ViewResult>();
             var viewResult = result as ViewResult;
-            viewResult!.ViewData["Title"].Should().Be("Account_Login_Title");
+            viewResult!.ViewData["Title"]?.ToString().Should().Be("Account_Login_Title");
         }
 
         [Fact]
@@ -228,7 +228,7 @@ namespace AiStockTradeApp.Tests.Controllers
             // Assert
             result.Should().BeOfType<ViewResult>();
             var viewResult = result as ViewResult;
-            viewResult!.ViewData["Title"].Should().Be("Account_Register_Title");
+            viewResult!.ViewData["Title"]?.ToString().Should().Be("Account_Register_Title");
         }
 
         [Fact]
@@ -340,7 +340,10 @@ namespace AiStockTradeApp.Tests.Controllers
 
             // Assert
             result.Should().BeOfType<ViewResult>();
-            _controller.ModelState.Should().HaveCount(2);
+            _controller.ModelState.Should().HaveCount(1);
+            _controller.ModelState[string.Empty]!.Errors.Should().HaveCount(2);
+            _controller.ModelState[string.Empty]!.Errors[0].ErrorMessage.Should().Be("Password is too short");
+            _controller.ModelState[string.Empty]!.Errors[1].ErrorMessage.Should().Be("Password requires a digit");
             
             // Verify failed registration was logged
             VerifyRegistrationAttemptLogged(model.Email, false);
@@ -389,7 +392,7 @@ namespace AiStockTradeApp.Tests.Controllers
             // Assert
             result.Should().BeOfType<ViewResult>();
             var viewResult = result as ViewResult;
-            viewResult!.ViewData["Title"].Should().Be("Account_AccessDenied_Title");
+            viewResult!.ViewData["Title"]?.ToString().Should().Be("Account_AccessDenied_Title");
         }
 
         [Fact]

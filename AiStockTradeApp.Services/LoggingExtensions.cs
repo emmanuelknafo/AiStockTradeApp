@@ -43,11 +43,17 @@ namespace AiStockTradeApp.Services
         {
             if (duration.HasValue)
             {
+                if (!logger.IsEnabled(LogLevel.Information))
+                    return;
+                    
                 logger.LogInformation("HTTP {Method} to {Url} completed in {Duration}ms", 
                     method, url, duration.Value.TotalMilliseconds);
             }
             else
             {
+                if (!logger.IsEnabled(LogLevel.Debug))
+                    return;
+                    
                 logger.LogDebug("HTTP {Method} to {Url} starting", method, url);
             }
         }
@@ -57,6 +63,9 @@ namespace AiStockTradeApp.Services
         /// </summary>
         public static void LogUserAction(this ILogger logger, string action, string? sessionId = null, object? context = null)
         {
+            if (!logger.IsEnabled(LogLevel.Information))
+                return;
+                
             logger.LogInformation("User action: {Action} for session {SessionId} with context {Context}", 
                 action, sessionId, context);
         }
@@ -66,6 +75,9 @@ namespace AiStockTradeApp.Services
         /// </summary>
         public static void LogBusinessEvent(this ILogger logger, string eventName, object data)
         {
+            if (!logger.IsEnabled(LogLevel.Information))
+                return;
+                
             logger.LogInformation("Business event: {EventName} with data {Data}", eventName, data);
         }
 
@@ -74,6 +86,9 @@ namespace AiStockTradeApp.Services
         /// </summary>
         public static void LogPerformanceMetric(this ILogger logger, string metricName, double value, string? unit = null)
         {
+            if (!logger.IsEnabled(LogLevel.Information))
+                return;
+                
             logger.LogInformation("Performance metric: {MetricName} = {Value} {Unit}", metricName, value, unit);
         }
 

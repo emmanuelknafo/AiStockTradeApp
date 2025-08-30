@@ -89,6 +89,7 @@ namespace AiStockTradeApp.Tests.Services
         public void LogHttpRequest_WithDuration_ShouldLogInformation()
         {
             // Arrange
+            _mockLogger.Setup(x => x.IsEnabled(LogLevel.Information)).Returns(true);
             var duration = TimeSpan.FromMilliseconds(250);
             
             // Act
@@ -108,6 +109,9 @@ namespace AiStockTradeApp.Tests.Services
         [Fact]
         public void LogHttpRequest_WithoutDuration_ShouldLogDebug()
         {
+            // Arrange
+            _mockLogger.Setup(x => x.IsEnabled(LogLevel.Debug)).Returns(true);
+            
             // Act
             _mockLogger.Object.LogHttpRequest("POST", "https://api.example.com/stocks");
             
@@ -126,6 +130,7 @@ namespace AiStockTradeApp.Tests.Services
         public void LogUserAction_WithSessionIdAndContext_ShouldLogInformation()
         {
             // Arrange
+            _mockLogger.Setup(x => x.IsEnabled(LogLevel.Information)).Returns(true);
             var sessionId = "session123";
             var context = new { action = "AddToWatchlist", symbol = "AAPL" };
             
@@ -147,6 +152,7 @@ namespace AiStockTradeApp.Tests.Services
         public void LogBusinessEvent_WithEventData_ShouldLogInformation()
         {
             // Arrange
+            _mockLogger.Setup(x => x.IsEnabled(LogLevel.Information)).Returns(true);
             var eventData = new { Symbol = "MSFT", Price = 350.25m, Timestamp = DateTime.UtcNow };
             
             // Act
@@ -166,6 +172,9 @@ namespace AiStockTradeApp.Tests.Services
         [Fact]
         public void LogPerformanceMetric_WithValueAndUnit_ShouldLogInformation()
         {
+            // Arrange
+            _mockLogger.Setup(x => x.IsEnabled(LogLevel.Information)).Returns(true);
+            
             // Act
             _mockLogger.Object.LogPerformanceMetric("ResponseTime", 125.5, "ms");
             
@@ -183,6 +192,9 @@ namespace AiStockTradeApp.Tests.Services
         [Fact]
         public void LogPerformanceMetric_WithoutUnit_ShouldLogInformation()
         {
+            // Arrange
+            _mockLogger.Setup(x => x.IsEnabled(LogLevel.Information)).Returns(true);
+            
             // Act
             _mockLogger.Object.LogPerformanceMetric("CacheHitRatio", 0.85);
             

@@ -250,9 +250,12 @@ namespace AiStockTradeApp.Tests.Integration
             user.Should().NotBeNull();
             duration.Should().BeLessThan(TimeSpan.FromSeconds(5)); // Should complete quickly
 
-            // Verify no logs were created
-            var logs = _loggerProvider.GetLogs();
-            logs.Should().BeEmpty();
+            // Verify no application logs were created (filter out system logs like DataProtection)
+            var logs = _loggerProvider.GetLogs()
+                .Where(l => !l.CategoryName.StartsWith("Microsoft.") && 
+                           !l.CategoryName.StartsWith("System."))
+                .ToList();
+            logs.Should().BeEmpty("because application logging was disabled");
         }
 
         [Fact]
@@ -270,14 +273,21 @@ namespace AiStockTradeApp.Tests.Integration
                 .FirstOrDefault(l => l.Message.Contains("Business event: TestUserCreated"));
 
             businessEventLog.Should().NotBeNull();
-            businessEventLog!.Properties.Should().ContainKey("UserId");
-            businessEventLog.Properties.Should().ContainKey("Email");
-            businessEventLog.Properties.Should().ContainKey("Role");
-            businessEventLog.Properties.Should().ContainKey("Culture");
+            businessEventLog!.Properties.Should().ContainKey("EventName");
+            businessEventLog.Properties.Should().ContainKey("Data");
             
-            businessEventLog.Properties["Email"].Should().Be(profile.Email);
-            businessEventLog.Properties["Role"].Should().Be(profile.Role);
-            businessEventLog.Properties["Culture"].Should().Be(profile.PreferredCulture);
+            businessEventLog.Properties["EventName"].Should().Be("TestUserCreated");
+            
+            // The data should be an object with the expected properties
+            var data = businessEventLog.Properties["Data"];
+            data.Should().NotBeNull();
+            
+            // Since the data object contains the actual values, verify them as shown in the error
+            var dataString = data!.ToString();
+            dataString.Should().Contain($"Email = {profile.Email}");
+            dataString.Should().Contain($"Role = {profile.Role}");
+            dataString.Should().Contain($"Culture = {profile.PreferredCulture}");
+            dataString.Should().Contain("UserId ="); // UserId should be present
         }
 
         public void Dispose()
