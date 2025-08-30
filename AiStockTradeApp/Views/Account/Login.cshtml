@@ -1,0 +1,73 @@
+@model AiStockTradeApp.ViewModels.LoginViewModel
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<SharedResource> Localizer
+
+@{
+    ViewData["Title"] = Localizer["Account_Login_Title"];
+}
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0 text-center">
+                        <i class="fas fa-sign-in-alt me-2"></i>
+                        @Localizer["Account_Login_Title"]
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <form asp-action="Login" asp-controller="Account" method="post">
+                        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+                        
+                        <input name="ReturnUrl" type="hidden" value="@ViewData["ReturnUrl"]" />
+                        
+                        <div class="mb-3">
+                            <label asp-for="Email" class="form-label">
+                                <i class="fas fa-envelope me-1"></i>
+                                @Localizer["Account_Email_Label"]
+                            </label>
+                            <input asp-for="Email" class="form-control" placeholder="@Localizer["Account_Email_Placeholder"]" autofocus />
+                            <span asp-validation-for="Email" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Password" class="form-label">
+                                <i class="fas fa-lock me-1"></i>
+                                @Localizer["Account_Password_Label"]
+                            </label>
+                            <input asp-for="Password" class="form-control" placeholder="@Localizer["Account_Password_Placeholder"]" />
+                            <span asp-validation-for="Password" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-3 form-check">
+                            <input asp-for="RememberMe" type="checkbox" class="form-check-input" id="rememberMe" />
+                            <label class="form-check-label" for="rememberMe">
+                                @Localizer["Account_RememberMe_Label"]
+                            </label>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-sign-in-alt me-2"></i>
+                                @Localizer["Account_Login_Button"]
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer text-center">
+                    <p class="mb-0">
+                        @Localizer["Account_Login_NoAccount"]
+                        <a asp-action="Register" asp-controller="Account" asp-route-returnUrl="@ViewData["ReturnUrl"]" class="text-decoration-none">
+                            @Localizer["Account_Register_Link"]
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

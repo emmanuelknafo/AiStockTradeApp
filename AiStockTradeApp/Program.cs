@@ -8,6 +8,11 @@ using Microsoft.AspNetCore.Localization;
 using Microsoft.Extensions.Localization;
 using Microsoft.AspNetCore.Mvc.Razor;
 using System.Reflection;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using AiStockTradeApp.Entities.Models;
+using AiStockTradeApp.DataAccess.Data;
+using AiStockTradeApp.DataAccess;
 
 namespace AiStockTradeApp
 {
@@ -61,6 +66,59 @@ namespace AiStockTradeApp
 
             // Basic health checks (no DB dependency)
             builder.Services.AddHealthChecks();
+
+            // Configure Entity Framework and Identity
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+                ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+
+            // Add Identity DbContext
+            builder.Services.AddDbContext<ApplicationIdentityContext>(options =>
+                options.UseSqlServer(connectionString));
+
+            // Add StockData DbContext (for user-specific data like watchlists)
+            builder.Services.AddDbContext<StockDataContext>(options =>
+                options.UseSqlServer(connectionString));
+
+            // Configure ASP.NET Core Identity
+            builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+            {
+                // Password settings
+                options.Password.RequireDigit = true;
+                options.Password.RequireLowercase = true;
+                options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequireUppercase = true;
+                options.Password.RequiredLength = 6;
+                options.Password.RequiredUniqueChars = 1;
+
+                // Lockout settings
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+                options.Lockout.MaxFailedAccessAttempts = 5;
+                options.Lockout.AllowedForNewUsers = true;
+
+                // User settings
+                options.User.AllowedUserNameCharacters =
+                    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+";
+                options.User.RequireUniqueEmail = true;
+
+                // SignIn settings
+                options.SignIn.RequireConfirmedEmail = false; // Set to true in production with email service
+                options.SignIn.RequireConfirmedPhoneNumber = false;
+            })
+            .AddEntityFrameworkStores<ApplicationIdentityContext>()
+            .AddDefaultTokenProviders();
+
+            // Configure Application Cookie settings
+            builder.Services.ConfigureApplicationCookie(options =>
+            {
+                options.LoginPath = "/Account/Login";
+                options.LogoutPath = "/Account/Logout";
+                options.AccessDeniedPath = "/Account/AccessDenied";
+                options.ExpireTimeSpan = TimeSpan.FromDays(7);
+                options.SlidingExpiration = true;
+                options.Cookie.HttpOnly = true;
+                options.Cookie.IsEssential = true;
+                options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+            });
 
             // Register HttpClient for UI -> API client
             builder.Services.AddHttpClient<ApiStockDataServiceClient>((sp, http) =>
@@ -120,8 +178,10 @@ namespace AiStockTradeApp
             app.UseHttpsRedirection();
             app.UseRouting();
 
-            app.UseSession();
+            app.UseAuthentication();
             app.UseAuthorization();
+
+            app.UseSession();
 
             app.MapStaticAssets();
 

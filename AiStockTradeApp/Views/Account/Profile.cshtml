@@ -1,0 +1,120 @@
+@model AiStockTradeApp.ViewModels.UserProfileViewModel
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<SharedResource> Localizer
+
+@{
+    ViewData["Title"] = Localizer["Account_Profile_Title"];
+}
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow">
+                <div class="card-header bg-info text-white">
+                    <h3 class="mb-0">
+                        <i class="fas fa-user-cog me-2"></i>
+                        @Localizer["Account_Profile_Title"]
+                    </h3>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(ViewBag.Message))
+                    {
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            <i class="fas fa-check-circle me-2"></i>
+                            @ViewBag.Message
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    }
+
+                    <form asp-action="Profile" asp-controller="Account" method="post">
+                        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label asp-for="FirstName" class="form-label">
+                                    <i class="fas fa-user me-1"></i>
+                                    @Localizer["Account_FirstName_Label"]
+                                </label>
+                                <input asp-for="FirstName" class="form-control" />
+                                <span asp-validation-for="FirstName" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label asp-for="LastName" class="form-label">
+                                    <i class="fas fa-user me-1"></i>
+                                    @Localizer["Account_LastName_Label"]
+                                </label>
+                                <input asp-for="LastName" class="form-control" />
+                                <span asp-validation-for="LastName" class="text-danger"></span>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Email" class="form-label">
+                                <i class="fas fa-envelope me-1"></i>
+                                @Localizer["Account_Email_Label"]
+                            </label>
+                            <input asp-for="Email" class="form-control" readonly />
+                            <div class="form-text">
+                                @Localizer["Account_Email_ReadOnly"]
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="PreferredCulture" class="form-label">
+                                <i class="fas fa-language me-1"></i>
+                                @Localizer["Account_Language_Label"]
+                            </label>
+                            <select asp-for="PreferredCulture" class="form-select">
+                                <option value="en" selected="@(Model.PreferredCulture == "en")">English</option>
+                                <option value="fr" selected="@(Model.PreferredCulture == "fr")">Français</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3 form-check">
+                            <input asp-for="EnablePriceAlerts" type="checkbox" class="form-check-input" id="enableAlerts" />
+                            <label class="form-check-label" for="enableAlerts">
+                                <i class="fas fa-bell me-1"></i>
+                                @Localizer["Account_EnableAlerts_Label"]
+                            </label>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label class="form-label">
+                                        <i class="fas fa-calendar me-1"></i>
+                                        @Localizer["Account_MemberSince_Label"]
+                                    </label>
+                                    <div class="form-control-plaintext">
+                                        @Model.CreatedAt.ToString("MMM dd, yyyy")
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">
+                                        <i class="fas fa-clock me-1"></i>
+                                        @Localizer["Account_LastLogin_Label"]
+                                    </label>
+                                    <div class="form-control-plaintext">
+                                        @(Model.LastLoginAt?.ToString("MMM dd, yyyy HH:mm") ?? Localizer["Account_LastLogin_Never"])
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i>
+                                @Localizer["Account_Profile_SaveButton"]
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
