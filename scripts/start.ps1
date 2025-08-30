@@ -42,11 +42,72 @@ param(
   [string]$SqlDatabase = 'StockTraderDb',
   [string]$ApiProfile = 'https',
   [string]$UiProfile = 'https',
-  [switch]$UseHttps
+  [switch]$UseHttps,
+  
+  # Help parameter
+  [switch]$Help
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Show help if requested or if running with default parameters in an interactive manner
+if ($Help) {
+    Write-Host @'
+
+AI Stock Trade App - Development Startup Script
+===============================================
+
+USAGE:
+    ./scripts/start.ps1 [-Mode <Docker|Local>] [Options...]
+    ./scripts/start.ps1 -Help
+
+MODES:
+    Docker  - Clean rebuild containers and start via docker-compose
+    Local   - Start API and UI in separate PowerShell windows with local SQL Server
+
+EXAMPLES:
+    # Quick start with containers (recommended for most development)
+    ./scripts/start.ps1 -Mode Docker
+
+    # Run locally with default SQL Server instance
+    ./scripts/start.ps1 -Mode Local
+
+    # Run locally with custom SQL Server settings
+    ./scripts/start.ps1 -Mode Local -SqlServer "localhost\SQLEXPRESS" -SqlDatabase "MyStockDb"
+
+    # Run locally without HTTPS (useful for debugging)
+    ./scripts/start.ps1 -Mode Local -UseHttps:$false
+
+DOCKER MODE:
+    - Performs complete cleanup (removes containers, images, volumes)
+    - Rebuilds all images from scratch (no cache)
+    - Starts services and waits for SQL Server to be healthy
+    - Services available at: UI (http://localhost:8080), API (http://localhost:8081)
+
+LOCAL MODE:
+    - Builds solution and starts API/UI in separate PowerShell windows
+    - Uses local SQL Server instance (default: "." for default instance)
+    - API available at: https://localhost:7032 (HTTP: 5256)
+    - UI available at: https://localhost:7043 (HTTP: 5259)
+    - Requires SQL Server to be running and accessible
+
+PREREQUISITES:
+    Docker Mode: Docker Desktop installed and running
+    Local Mode:  .NET SDK 9.0+, SQL Server running locally
+
+For detailed parameter descriptions, use: Get-Help ./scripts/start.ps1 -Detailed
+
+'@ -ForegroundColor Cyan
+    exit 0
+}
+
+# Display quick usage hint when running with all defaults (most common beginner scenario)
+if ($PSCmdlet.MyInvocation.BoundParameters.Count -eq 0) {
+    Write-Host "`nAI Stock Trade App Startup" -ForegroundColor Green
+    Write-Host "Running in LOCAL mode with default settings..." -ForegroundColor Cyan
+    Write-Host "For usage examples and Docker mode, run: ./scripts/start.ps1 -Help`n" -ForegroundColor Yellow
+}
 
 # Compute effective HTTPS setting (defaults to true unless explicitly disabled)
 $UseHttpsEffective = $true
