@@ -24,6 +24,9 @@
 .PARAMETER UseHttps
   If set in Local mode, ensures dev HTTPS certs are trusted and uses HTTPS launch profiles. Default: $true.
 
+.PARAMETER NoBrowser
+  If set, prevents automatic opening of browser windows for UI and API endpoints.
+
 .EXAMPLES
   # Clean rebuild and start containers
   ./scripts/start.ps1 -Mode Docker
@@ -43,6 +46,7 @@ param(
   [string]$ApiProfile = 'https',
   [string]$UiProfile = 'https',
   [switch]$UseHttps,
+  [switch]$NoBrowser,
   
   # Help parameter
   [switch]$Help
@@ -79,11 +83,15 @@ EXAMPLES:
     # Run locally without HTTPS (useful for debugging)
     ./scripts/start.ps1 -Mode Local -UseHttps:$false
 
+    # Run without opening browser windows automatically
+    ./scripts/start.ps1 -Mode Docker -NoBrowser
+
 DOCKER MODE:
     - Performs complete cleanup (removes containers, images, volumes)
     - Rebuilds all images from scratch (no cache)
     - Starts services and waits for SQL Server to be healthy
     - Services available at: UI (http://localhost:8080), API (http://localhost:8081)
+    - Automatically opens browser windows to both UI and API
 
 LOCAL MODE:
     - Builds solution and starts API/UI in separate PowerShell windows
@@ -91,6 +99,7 @@ LOCAL MODE:
     - API available at: https://localhost:7032 (HTTP: 5256)
     - UI available at: https://localhost:7043 (HTTP: 5259)
     - Requires SQL Server to be running and accessible
+    - Automatically opens browser windows to both UI and API
 
 PREREQUISITES:
     Docker Mode: Docker Desktop installed and running
@@ -124,6 +133,42 @@ $uiProj  = Join-Path $repoRoot 'AiStockTradeApp/AiStockTradeApp.csproj'
 function Test-CommandExists {
   param([Parameter(Mandatory)][string]$Name)
   return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Open-BrowserWindows {
+  param(
+    [string]$UiUrl,
+    [string]$ApiUrl,
+    [string]$Mode
+  )
+  
+  Write-Host "`nOpening browser windows..." -ForegroundColor Cyan
+  
+  try {
+    # Open UI in default browser
+    Write-Host "Opening UI at: $UiUrl" -ForegroundColor Green
+    Start-Process $UiUrl
+    
+    # Wait a moment before opening the second window
+    Start-Sleep -Seconds 2
+    
+    # Open API documentation/health endpoint in a new browser window
+    Write-Host "Opening API at: $ApiUrl" -ForegroundColor Green
+    Start-Process $ApiUrl
+    
+    Write-Host "`n🎉 Browser windows opened successfully!" -ForegroundColor Green
+    Write-Host "UI Application: $UiUrl" -ForegroundColor Cyan
+    Write-Host "API Endpoint:   $ApiUrl" -ForegroundColor Cyan
+    
+    if ($Mode -eq 'Local') {
+      Write-Host "`n💡 Tip: Keep the PowerShell windows open to maintain the services running." -ForegroundColor Yellow
+    }
+    
+  } catch {
+    Write-Warning "Failed to open browser windows automatically. You can manually navigate to:"
+    Write-Host "UI:  $UiUrl" -ForegroundColor Cyan
+    Write-Host "API: $ApiUrl" -ForegroundColor Cyan
+  }
 }
 
 function Invoke-DockerCleanUpAndUp {
@@ -168,6 +213,15 @@ function Invoke-DockerCleanUpAndUp {
 
   Write-Host 'Compose status:' -ForegroundColor Cyan
   & docker compose -f $composeFile ps
+  
+  # Open browser windows for Docker mode
+  if (-not $NoBrowser) {
+    Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8081/health" -Mode "Docker"
+  } else {
+    Write-Host "`n✅ Services started successfully!" -ForegroundColor Green
+    Write-Host "UI Application: http://localhost:8080" -ForegroundColor Cyan
+    Write-Host "API Endpoint:   http://localhost:8081/health" -ForegroundColor Cyan
+  }
 }
 
 function Enable-DevHttpsCert {
@@ -249,6 +303,28 @@ function Start-LocalProcesses {
   Start-Process -FilePath 'pwsh' -ArgumentList $uiArgs -WorkingDirectory $repoRoot -Environment $uiEnv | Out-Null
 
   Write-Host 'Local processes started. API (7032/5256), UI (7043/5259) per launchSettings.' -ForegroundColor Green
+  
+  # Wait a moment for UI to start before opening browsers
+  if (-not $NoBrowser) {
+    Write-Host 'Waiting for UI to initialize...' -ForegroundColor Cyan
+    Start-Sleep -Seconds 5
+    
+    # Determine URLs based on profile settings
+    $uiUrl = if ($UiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7043" } else { "http://localhost:5259" }
+    $apiUrl = if ($ApiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7032/health" } else { "http://localhost:5256/health" }
+    
+    # Open browser windows for Local mode
+    Open-BrowserWindows -UiUrl $uiUrl -ApiUrl $apiUrl -Mode "Local"
+  } else {
+    # Determine URLs based on profile settings for display
+    $uiUrl = if ($UiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7043" } else { "http://localhost:5259" }
+    $apiUrl = if ($ApiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7032/health" } else { "http://localhost:5256/health" }
+    
+    Write-Host "`n✅ Services started successfully!" -ForegroundColor Green
+    Write-Host "UI Application: $uiUrl" -ForegroundColor Cyan
+    Write-Host "API Endpoint:   $apiUrl" -ForegroundColor Cyan
+    Write-Host "`n💡 Tip: Keep the PowerShell windows open to maintain the services running." -ForegroundColor Yellow
+  }
 }
 
 switch ($Mode) {
