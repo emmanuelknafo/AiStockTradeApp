@@ -41,17 +41,29 @@ public class StockDashboardPage
     {
         await TickerInput.FillAsync(symbol);
         await AddButton.ClickAsync();
-        await _page.WaitForTimeoutAsync(3000); // Wait longer for API call and potential page actions
         
-        // Wait for either success notification or stock card to appear
+        // Wait for success notification to appear
         try
         {
-            await _page.WaitForSelectorAsync($"#card-{symbol}", new() { Timeout = 5000 });
+            await _page.WaitForSelectorAsync(".notification.success", new() { Timeout = 5000 });
         }
         catch (TimeoutException)
         {
-            // Stock might not be added due to API issues, but that's ok for tests
+            // Might have failed to add stock, but continue anyway
         }
+        
+        // Wait for page reload to complete (JavaScript triggers reload after 1 second)
+        // We need to wait for network idle to ensure the page has fully reloaded
+        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 10000 });
+        
+        // Additional wait to ensure stock card rendering is complete
+        await _page.WaitForTimeoutAsync(1000);
+    }
+
+    public async Task AddStockAndWaitForLoad(string symbol)
+    {
+        await AddStock(symbol);
+        await WaitForStockToLoad(symbol);
     }
 
     public async Task RemoveStock(string symbol)
@@ -216,17 +228,32 @@ public class StockDashboardPage
     }
 
     // Validation Helpers
-    public async Task WaitForStockToLoad(string symbol, int timeoutMs = 10000)
+    public async Task WaitForStockToLoad(string symbol, int timeoutMs = 20000)
     {
+        // First wait for the stock card to be present after potential page reload
         var stockCard = GetStockCard(symbol);
+        
+        // Wait for stock card to exist in DOM first (handles page reload scenario)
+        try
+        {
+            await stockCard.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = timeoutMs / 2 });
+        }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException($"Stock card for {symbol} did not appear within {timeoutMs / 2}ms");
+        }
+        
         var priceElement = stockCard.Locator(".price span");
         
-        // Use simple wait with retry pattern instead of WaitForFunctionAsync
+        // Use simple wait with retry pattern for price data to load
         var endTime = DateTime.Now.AddMilliseconds(timeoutMs);
         while (DateTime.Now < endTime)
         {
             try
             {
+                // Wait for price element to be visible first
+                await priceElement.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 1000 });
+                
                 var text = await priceElement.TextContentAsync();
                 if (!string.IsNullOrEmpty(text) && !text.Contains("Loading"))
                 {
@@ -235,13 +262,26 @@ public class StockDashboardPage
             }
             catch
             {
-                // Element might not be ready yet, continue waiting
+                // Element might not be ready yet or still loading, continue waiting
             }
             
             await Task.Delay(500); // Wait 500ms before checking again
         }
         
         throw new TimeoutException($"Stock {symbol} did not load within {timeoutMs}ms");
+    }
+
+    public async Task<bool> TryWaitForStockToLoad(string symbol, int timeoutMs = 20000)
+    {
+        try
+        {
+            await WaitForStockToLoad(symbol, timeoutMs);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
     }
 
     public async Task WaitForNotification(int timeoutMs = 5000)
