@@ -90,7 +90,7 @@ DOCKER MODE:
     - Performs complete cleanup (removes containers, images, volumes)
     - Rebuilds all images from scratch (no cache)
     - Starts services and waits for SQL Server to be healthy
-    - Services available at: UI (http://localhost:8080), API (http://localhost:8081)
+    - Services available at: UI (http://localhost:8080), API (http://localhost:8082)
     - Automatically opens browser windows to both UI and API
 
 LOCAL MODE:
@@ -216,11 +216,11 @@ function Invoke-DockerCleanUpAndUp {
   
   # Open browser windows for Docker mode
   if (-not $NoBrowser) {
-    Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8081" -Mode "Docker"
+    Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8082" -Mode "Docker"
   } else {
     Write-Host "`n✅ Services started successfully!" -ForegroundColor Green
     Write-Host "UI Application: http://localhost:8080" -ForegroundColor Cyan
-    Write-Host "API Endpoint:   http://localhost:8081" -ForegroundColor Cyan
+    Write-Host "API Endpoint:   http://localhost:8082" -ForegroundColor Cyan
   }
 }
 
