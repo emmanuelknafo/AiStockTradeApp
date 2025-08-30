@@ -152,7 +152,7 @@ function Open-BrowserWindows {
     # Wait a moment before opening the second window
     Start-Sleep -Seconds 2
     
-    # Open API documentation/health endpoint in a new browser window
+    # Open API documentation/root endpoint in a new browser window
     Write-Host "Opening API at: $ApiUrl" -ForegroundColor Green
     Start-Process $ApiUrl
     
@@ -216,11 +216,11 @@ function Invoke-DockerCleanUpAndUp {
   
   # Open browser windows for Docker mode
   if (-not $NoBrowser) {
-    Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8081/health" -Mode "Docker"
+    Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8081" -Mode "Docker"
   } else {
     Write-Host "`n✅ Services started successfully!" -ForegroundColor Green
     Write-Host "UI Application: http://localhost:8080" -ForegroundColor Cyan
-    Write-Host "API Endpoint:   http://localhost:8081/health" -ForegroundColor Cyan
+    Write-Host "API Endpoint:   http://localhost:8081" -ForegroundColor Cyan
   }
 }
 
@@ -311,14 +311,14 @@ function Start-LocalProcesses {
     
     # Determine URLs based on profile settings
     $uiUrl = if ($UiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7043" } else { "http://localhost:5259" }
-    $apiUrl = if ($ApiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7032/health" } else { "http://localhost:5256/health" }
+    $apiUrl = if ($ApiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7032" } else { "http://localhost:5256" }
     
     # Open browser windows for Local mode
     Open-BrowserWindows -UiUrl $uiUrl -ApiUrl $apiUrl -Mode "Local"
   } else {
     # Determine URLs based on profile settings for display
     $uiUrl = if ($UiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7043" } else { "http://localhost:5259" }
-    $apiUrl = if ($ApiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7032/health" } else { "http://localhost:5256/health" }
+    $apiUrl = if ($ApiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7032" } else { "http://localhost:5256" }
     
     Write-Host "`n✅ Services started successfully!" -ForegroundColor Green
     Write-Host "UI Application: $uiUrl" -ForegroundColor Cyan
