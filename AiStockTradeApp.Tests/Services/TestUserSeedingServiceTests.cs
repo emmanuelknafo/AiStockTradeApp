@@ -24,12 +24,12 @@ namespace AiStockTradeApp.Tests.Services
             // Mock UserManager
             var userStore = new Mock<IUserStore<ApplicationUser>>();
             _mockUserManager = new Mock<UserManager<ApplicationUser>>(
-                userStore.Object, null, null, null, null, null, null, null, null);
+                userStore.Object, null!, null!, null!, null!, null!, null!, null!, null!);
 
             // Mock RoleManager
             var roleStore = new Mock<IRoleStore<IdentityRole>>();
             _mockRoleManager = new Mock<RoleManager<IdentityRole>>(
-                roleStore.Object, null, null, null, null);
+                roleStore.Object, null!, null!, null!, null!);
 
             _mockLogger = new Mock<ILogger<TestUserSeedingService>>();
 

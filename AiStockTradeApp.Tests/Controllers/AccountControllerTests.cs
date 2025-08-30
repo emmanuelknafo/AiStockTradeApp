@@ -30,7 +30,7 @@ namespace AiStockTradeApp.Tests.Controllers
             // Setup UserManager mock
             var userStore = new Mock<IUserStore<ApplicationUser>>();
             _mockUserManager = new Mock<UserManager<ApplicationUser>>(
-                userStore.Object, null, null, null, null, null, null, null, null);
+                userStore.Object, null!, null!, null!, null!, null!, null!, null!, null!);
 
             // Setup SignInManager mock
             var contextAccessor = new Mock<IHttpContextAccessor>();

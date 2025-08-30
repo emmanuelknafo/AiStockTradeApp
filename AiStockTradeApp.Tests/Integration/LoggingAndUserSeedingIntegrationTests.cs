@@ -336,7 +336,7 @@ namespace AiStockTradeApp.Tests.Integration
             _getMinimumLevel = getMinimumLevel;
         }
 
-        public IDisposable BeginScope<TState>(TState state) => NullDisposable.Instance;
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullDisposable.Instance;
 
         public bool IsEnabled(LogLevel logLevel) => logLevel >= _getMinimumLevel();
 
