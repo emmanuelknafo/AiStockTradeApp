@@ -1,5 +1,6 @@
 using AiStockTradeApp.UITests.PageObjects;
 using FluentAssertions;
+using Microsoft.Playwright;
 using NUnit.Framework;
 
 namespace AiStockTradeApp.UITests.Tests;
@@ -59,17 +60,19 @@ public class StockDashboardPageObjectTests : BaseUITest
     [Test]
     public async Task RemoveStock_UsingPageObject_ShouldWork()
     {
-        // First add a stock
-    await _dashboardPage.AddStock("AAPL");
-    var isAdded = await _dashboardPage.IsStockInWatchlist("AAPL");
+        // First add a stock and wait for it to be fully loaded
+        await _dashboardPage.AddStock("AAPL");
+        await _dashboardPage.WaitForStockToLoadOrTimeout("AAPL", 10000);
+        
+        var isAdded = await _dashboardPage.IsStockInWatchlist("AAPL");
         isAdded.Should().BeTrue();
 
         // Remove the stock
-    await _dashboardPage.RemoveStock("AAPL");
+        await _dashboardPage.RemoveStock("AAPL");
 
-        // Verify stock was removed
-    var isRemoved = await _dashboardPage.IsStockInWatchlist("AAPL");
-        isRemoved.Should().BeFalse();
+        // Verify stock was removed with retry logic
+        var removed = await _dashboardPage.WaitForStockToBeRemoved("AAPL", 5000);
+        removed.Should().BeTrue();
     }
 
     [Test]
@@ -156,9 +159,26 @@ public class StockDashboardPageObjectTests : BaseUITest
             await dialog.AcceptAsync();
         };
 
+        // Set up navigation handler for page reload
+        var navigationTask = Page.WaitForURLAsync(Page.Url, new() { Timeout = 10000 });
+
         // Clear all stocks
         await _dashboardPage.ClearAllButton.ClickAsync();
-        await Page.WaitForTimeoutAsync(3000); // Wait longer for page reload
+        
+        // Wait for page reload to complete
+        try
+        {
+            await navigationTask;
+            await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10000 });
+        }
+        catch (TimeoutException)
+        {
+            // If navigation doesn't happen as expected, wait and try to continue
+            await Page.WaitForTimeoutAsync(3000);
+        }
+
+        // Re-create the page object after reload to handle the new page context
+        _dashboardPage = new StockDashboardPage(Page, BaseUrl);
 
         // Verify all stocks were removed (page should reload)
         var countAfterClearing = await _dashboardPage.GetStockCardCount();

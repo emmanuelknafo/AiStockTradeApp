@@ -54,7 +54,14 @@ public class StockDashboardPage
         
         // Wait for page reload to complete (JavaScript triggers reload after 1 second)
         // We need to wait for network idle to ensure the page has fully reloaded
-        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 10000 });
+        try
+        {
+            await _page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10000 });
+        }
+        catch (TimeoutException)
+        {
+            // Page might not reload if there was an error, continue anyway
+        }
         
         // Additional wait to ensure stock card rendering is complete
         await _page.WaitForTimeoutAsync(1000);
@@ -69,14 +76,27 @@ public class StockDashboardPage
     public async Task RemoveStock(string symbol)
     {
         var stockCard = GetStockCard(symbol);
+        
+        // Ensure the stock card is visible before trying to remove
+        await stockCard.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
+        
         var removeButton = stockCard.Locator(".remove-button");
         await removeButton.ClickAsync();
-        await _page.WaitForTimeoutAsync(2000); // Wait longer for removal
         
-        // Wait for the card to disappear
+        // Wait for success notification to appear
         try
         {
-            await stockCard.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = 3000 });
+            await _page.WaitForSelectorAsync(".notification.success", new() { Timeout = 3000 });
+        }
+        catch (TimeoutException)
+        {
+            // Notification might not appear if there's an error, but continue
+        }
+        
+        // Wait for the card to be removed from DOM
+        try
+        {
+            await stockCard.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = 5000 });
         }
         catch (TimeoutException)
         {
@@ -282,6 +302,45 @@ public class StockDashboardPage
         {
             return false;
         }
+    }
+
+    public async Task WaitForStockToLoadOrTimeout(string symbol, int timeoutMs = 10000)
+    {
+        try
+        {
+            await WaitForStockToLoad(symbol, timeoutMs);
+        }
+        catch (TimeoutException)
+        {
+            // Ignore timeout - this is for tests that want to continue even if stock doesn't load
+        }
+    }
+
+    public async Task<bool> WaitForStockToBeRemoved(string symbol, int timeoutMs = 5000)
+    {
+        var stockCard = GetStockCard(symbol);
+        var endTime = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        
+        while (DateTime.UtcNow < endTime)
+        {
+            try
+            {
+                var isVisible = await stockCard.IsVisibleAsync();
+                if (!isVisible)
+                {
+                    return true; // Stock was removed
+                }
+            }
+            catch
+            {
+                // Element might be detached/removed, which is what we want
+                return true;
+            }
+            
+            await Task.Delay(500);
+        }
+        
+        return false; // Stock was not removed within timeout
     }
 
     public async Task WaitForNotification(int timeoutMs = 5000)
