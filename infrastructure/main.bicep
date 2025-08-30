@@ -91,7 +91,8 @@ var webAppName = 'app-${resourceNamePrefix}-${instanceNumber}'
 var webApiName = 'api-${resourceNamePrefix}-${instanceNumber}'
 var containerRegistryResourceName = 'cr${toLower(replace(containerRegistryName, '-', ''))}${toLower(environment)}${instanceNumber}${uniqueString(resourceGroup().id)}'
 var keyVaultName = 'kv-${resourceNamePrefix}-${instanceNumber}'
-var applicationInsightsName = 'appi-${resourceNamePrefix}-${instanceNumber}'
+var applicationInsightsUiName = 'appi-ui-${resourceNamePrefix}-${instanceNumber}'
+var applicationInsightsApiName = 'appi-api-${resourceNamePrefix}-${instanceNumber}'
 var logAnalyticsWorkspaceName = 'log-${resourceNamePrefix}-${instanceNumber}'
 var sqlServerName = 'sql-${resourceNamePrefix}-${instanceNumber}'
 var sqlDatabaseName = 'sqldb-${resourceNamePrefix}-${instanceNumber}'
@@ -125,9 +126,20 @@ resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2025-02
   }
 }
 
-// Application Insights
-resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
-	name: applicationInsightsName
+// Application Insights for UI
+resource applicationInsightsUI 'Microsoft.Insights/components@2020-02-02' = {
+	name: applicationInsightsUiName
+	location: location
+	kind: 'web'
+	properties: {
+		Application_Type: 'web'
+		WorkspaceResourceId: logAnalyticsWorkspace.id
+	}
+}
+
+// Application Insights for API
+resource applicationInsightsAPI 'Microsoft.Insights/components@2020-02-02' = {
+	name: applicationInsightsApiName
 	location: location
 	kind: 'web'
 	properties: {
@@ -345,11 +357,11 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
         }
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: applicationInsights.properties.ConnectionString
+          value: applicationInsightsUI.properties.ConnectionString
         }
         {
           name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
-          value: applicationInsights.properties.InstrumentationKey
+          value: applicationInsightsUI.properties.InstrumentationKey
         }
         {
           name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
@@ -451,11 +463,11 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
         }
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: applicationInsights.properties.ConnectionString
+          value: applicationInsightsAPI.properties.ConnectionString
         }
         {
           name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
-          value: applicationInsights.properties.InstrumentationKey
+          value: applicationInsightsAPI.properties.InstrumentationKey
         }
         {
           name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
@@ -698,7 +710,10 @@ output containerRegistryLoginServer string = deployContainerRegistry
   ? containerRegistry!.properties.loginServer
   : 'not-deployed'
 output keyVaultName string = keyVault.name
-output applicationInsightsName string = applicationInsights.name
+output applicationInsightsUiName string = applicationInsightsUI.name
+output applicationInsightsApiName string = applicationInsightsAPI.name
+output applicationInsightsUiConnectionString string = applicationInsightsUI.properties.ConnectionString
+output applicationInsightsApiConnectionString string = applicationInsightsAPI.properties.ConnectionString
 output vnetName string = (requireVNetIntegration && manageNetworking) ? vnetName : 'not-deployed'
 output privateSqlEnabled bool = enablePrivateSql
 
