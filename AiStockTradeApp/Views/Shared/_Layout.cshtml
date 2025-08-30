@@ -9,13 +9,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - @Localizer["App_Title"]</title>
     <link rel="stylesheet" href="~/css/stock-tracker.css" asp-append-version="true" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
 </head>
 <body>
     <main role="main">
         <div style="padding:8px 16px; border-bottom:1px solid #eee; margin-bottom:12px; display:flex; gap:12px; align-items:center;">
             <a href="@Url.Action("Dashboard","Stock")" style="margin-right:12px;">@Localizer["Nav_Dashboard"]</a>
             <a href="@Url.Action("Index","ListedStocks")">@Localizer["Nav_ListedStocks"]</a>
-            <div style="margin-left:auto;">
+            <div style="margin-left:auto; display:flex; gap:12px; align-items:center;">
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <span style="color:#666;">@Localizer["Nav_Welcome"], @User.Identity.Name</span>
+                        <a href="@Url.Action("Profile","Account")" style="text-decoration:none;">
+                            <i class="fas fa-user"></i> @Localizer["Nav_Profile"]
+                        </a>
+                        <form method="post" action="@Url.Action("Logout","Account")" style="display:inline;">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" style="background:none; border:none; color:#007bff; text-decoration:underline; cursor:pointer;">
+                                <i class="fas fa-sign-out-alt"></i> @Localizer["Nav_Logout"]
+                            </button>
+                        </form>
+                    </div>
+                }
+                else
+                {
+                    <div style="display:flex; gap:8px;">
+                        <a href="@Url.Action("Login","Account")" style="text-decoration:none;">
+                            <i class="fas fa-sign-in-alt"></i> @Localizer["Nav_Login"]
+                        </a>
+                        <a href="@Url.Action("Register","Account")" style="text-decoration:none;">
+                            <i class="fas fa-user-plus"></i> @Localizer["Nav_Register"]
+                        </a>
+                    </div>
+                }
                 <form id="culture-form" method="post" action="@Url.Action("SetLanguage","Home")" class="form-inline">
                     @Html.AntiForgeryToken()
                     <select name="culture" onchange="document.getElementById('culture-form').submit();">

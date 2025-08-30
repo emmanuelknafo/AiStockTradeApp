@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using AiStockTradeApp.Entities;
+using AiStockTradeApp.Entities.Models;
 
 namespace AiStockTradeApp.DataAccess
 {
@@ -12,6 +13,8 @@ namespace AiStockTradeApp.DataAccess
     public DbSet<StockData> StockData { get; set; }
     public DbSet<ListedStock> ListedStocks { get; set; }
     public DbSet<HistoricalPrice> HistoricalPrices { get; set; }
+    public DbSet<UserWatchlistItem> UserWatchlistItems { get; set; }
+    public DbSet<UserPriceAlert> UserPriceAlerts { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -104,6 +107,55 @@ namespace AiStockTradeApp.DataAccess
                 entity.Property(e => e.High).HasPrecision(18, 4);
                 entity.Property(e => e.Low).HasPrecision(18, 4);
                 entity.Property(e => e.Close).HasPrecision(18, 4);
+            });
+
+            // Configure UserWatchlistItem entity
+            modelBuilder.Entity<UserWatchlistItem>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                
+                // Composite index for user + symbol (unique)
+                entity.HasIndex(e => new { e.UserId, e.Symbol })
+                    .IsUnique()
+                    .HasDatabaseName("IX_UserWatchlistItem_UserId_Symbol");
+                
+                // Index for user (for querying user's watchlist)
+                entity.HasIndex(e => e.UserId)
+                    .HasDatabaseName("IX_UserWatchlistItem_UserId");
+
+                // Configure properties
+                entity.Property(e => e.UserId).HasMaxLength(450).IsRequired();
+                entity.Property(e => e.Symbol).HasMaxLength(10).IsRequired();
+                entity.Property(e => e.Alias).HasMaxLength(100);
+                entity.Property(e => e.TargetPrice).HasPrecision(18, 2);
+                entity.Property(e => e.StopLossPrice).HasPrecision(18, 2);
+                
+                entity.Property(e => e.AddedAt)
+                    .HasDefaultValueSql("GETUTCDATE()");
+            });
+
+            // Configure UserPriceAlert entity
+            modelBuilder.Entity<UserPriceAlert>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                
+                // Index for user + symbol (multiple alerts per symbol allowed)
+                entity.HasIndex(e => new { e.UserId, e.Symbol })
+                    .HasDatabaseName("IX_UserPriceAlert_UserId_Symbol");
+                
+                // Index for active alerts (for background processing)
+                entity.HasIndex(e => e.IsActive)
+                    .HasDatabaseName("IX_UserPriceAlert_IsActive");
+
+                // Configure properties
+                entity.Property(e => e.UserId).HasMaxLength(450).IsRequired();
+                entity.Property(e => e.Symbol).HasMaxLength(10).IsRequired();
+                entity.Property(e => e.AlertType).HasMaxLength(20).IsRequired();
+                entity.Property(e => e.TargetValue).HasPrecision(18, 2);
+                entity.Property(e => e.Message).HasMaxLength(500);
+                
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("GETUTCDATE()");
             });
         }
     }

@@ -79,7 +79,57 @@ namespace AiStockTradeApp.Services
                 ["Error_Loading_History"] = "Error loading history",
                 ["Version_Label"] = "Version:",
                 ["Sector"] = "Sector",
-                ["Industry"] = "Industry"
+                ["Industry"] = "Industry",
+
+                // Authentication translations
+                ["Nav_Welcome"] = "Welcome",
+                ["Nav_Profile"] = "Profile",
+                ["Nav_Login"] = "Login",
+                ["Nav_Logout"] = "Logout",
+                ["Nav_Register"] = "Register",
+
+                ["Account_Login_Title"] = "Login",
+                ["Account_Register_Title"] = "Create Account",
+                ["Account_Profile_Title"] = "User Profile",
+                ["Account_AccessDenied_Title"] = "Access Denied",
+
+                ["Account_Email_Label"] = "Email Address",
+                ["Account_Email_Placeholder"] = "Enter your email",
+                ["Account_Email_ReadOnly"] = "Email cannot be changed",
+                ["Account_Password_Label"] = "Password",
+                ["Account_Password_Placeholder"] = "Enter your password",
+                ["Account_Password_Requirements"] = "Minimum 6 characters, including uppercase, lowercase, and digit",
+                ["Account_FirstName_Label"] = "First Name",
+                ["Account_FirstName_Placeholder"] = "Enter your first name",
+                ["Account_LastName_Label"] = "Last Name",
+                ["Account_LastName_Placeholder"] = "Enter your last name",
+                ["Account_ConfirmPassword_Label"] = "Confirm Password",
+                ["Account_ConfirmPassword_Placeholder"] = "Confirm your password",
+                ["Account_RememberMe_Label"] = "Remember me",
+                ["Account_Language_Label"] = "Preferred Language",
+                ["Account_EnableAlerts_Label"] = "Enable price alerts",
+                ["Account_MemberSince_Label"] = "Member Since",
+                ["Account_LastLogin_Label"] = "Last Login",
+                ["Account_LastLogin_Never"] = "Never",
+
+                ["Account_Login_Button"] = "Login",
+                ["Account_Register_Button"] = "Create Account",
+                ["Account_Profile_SaveButton"] = "Save Changes",
+                ["Account_Login_Link"] = "Login",
+                ["Account_Register_Link"] = "Create account",
+
+                ["Account_Login_NoAccount"] = "Don't have an account?",
+                ["Account_Register_HaveAccount"] = "Already have an account?",
+                ["Account_Login_InvalidCredentials"] = "Invalid email or password",
+                ["Account_Login_LockedOut"] = "Account temporarily locked due to multiple failed attempts",
+                ["Account_Login_Error"] = "An error occurred during login. Please try again.",
+                ["Account_Register_Error"] = "An error occurred during registration. Please try again.",
+                ["Account_Profile_UpdateSuccess"] = "Profile updated successfully",
+                ["Account_Profile_UpdateError"] = "Error updating profile. Please try again.",
+
+                ["Account_AccessDenied_Message"] = "You don't have permission to access this resource",
+                ["Account_AccessDenied_Description"] = "Please login with an account that has the required permissions.",
+                ["Account_AccessDenied_BackHome"] = "Back to Home"
             };
 
             // French translations
@@ -145,7 +195,57 @@ namespace AiStockTradeApp.Services
                 ["Error_Loading_History"] = "Erreur de chargement de l'historique",
                 ["Version_Label"] = "Version :",
                 ["Sector"] = "Secteur",
-                ["Industry"] = "Industrie"
+                ["Industry"] = "Industrie",
+
+                // Authentication translations
+                ["Nav_Welcome"] = "Bienvenue",
+                ["Nav_Profile"] = "Profil",
+                ["Nav_Login"] = "Connexion",
+                ["Nav_Logout"] = "Déconnexion",
+                ["Nav_Register"] = "S'inscrire",
+
+                ["Account_Login_Title"] = "Connexion",
+                ["Account_Register_Title"] = "Créer un compte",
+                ["Account_Profile_Title"] = "Profil utilisateur",
+                ["Account_AccessDenied_Title"] = "Accès refusé",
+
+                ["Account_Email_Label"] = "Adresse email",
+                ["Account_Email_Placeholder"] = "Entrez votre email",
+                ["Account_Email_ReadOnly"] = "L'email ne peut pas être modifié",
+                ["Account_Password_Label"] = "Mot de passe",
+                ["Account_Password_Placeholder"] = "Entrez votre mot de passe",
+                ["Account_Password_Requirements"] = "Minimum 6 caractères, incluant majuscules, minuscules et chiffres",
+                ["Account_FirstName_Label"] = "Prénom",
+                ["Account_FirstName_Placeholder"] = "Entrez votre prénom",
+                ["Account_LastName_Label"] = "Nom",
+                ["Account_LastName_Placeholder"] = "Entrez votre nom",
+                ["Account_ConfirmPassword_Label"] = "Confirmer le mot de passe",
+                ["Account_ConfirmPassword_Placeholder"] = "Confirmez votre mot de passe",
+                ["Account_RememberMe_Label"] = "Se souvenir de moi",
+                ["Account_Language_Label"] = "Langue préférée",
+                ["Account_EnableAlerts_Label"] = "Activer les alertes de prix",
+                ["Account_MemberSince_Label"] = "Membre depuis",
+                ["Account_LastLogin_Label"] = "Dernière connexion",
+                ["Account_LastLogin_Never"] = "Jamais",
+
+                ["Account_Login_Button"] = "Se connecter",
+                ["Account_Register_Button"] = "Créer le compte",
+                ["Account_Profile_SaveButton"] = "Enregistrer",
+                ["Account_Login_Link"] = "Se connecter",
+                ["Account_Register_Link"] = "Créer un compte",
+
+                ["Account_Login_NoAccount"] = "Pas de compte ?",
+                ["Account_Register_HaveAccount"] = "Déjà un compte ?",
+                ["Account_Login_InvalidCredentials"] = "Email ou mot de passe invalide",
+                ["Account_Login_LockedOut"] = "Compte temporairement verrouillé suite à plusieurs tentatives",
+                ["Account_Login_Error"] = "Erreur lors de la connexion. Veuillez réessayer.",
+                ["Account_Register_Error"] = "Erreur lors de l'inscription. Veuillez réessayer.",
+                ["Account_Profile_UpdateSuccess"] = "Profil mis à jour avec succès",
+                ["Account_Profile_UpdateError"] = "Erreur lors de la mise à jour. Veuillez réessayer.",
+
+                ["Account_AccessDenied_Message"] = "Vous n'avez pas l'autorisation d'accéder à cette ressource",
+                ["Account_AccessDenied_Description"] = "Veuillez vous connecter avec un compte ayant les permissions requises.",
+                ["Account_AccessDenied_BackHome"] = "Retour à l'accueil"
             };
         }
 
