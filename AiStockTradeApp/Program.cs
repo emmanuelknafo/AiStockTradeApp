@@ -1,6 +1,7 @@
 using AiStockTradeApp.Services.Interfaces;
 using AiStockTradeApp.Services.Implementations;
 using AiStockTradeApp.Services;
+using AiStockTradeApp.Middleware;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using Microsoft.AspNetCore.Localization;
@@ -15,6 +16,25 @@ namespace AiStockTradeApp
         private static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Configure comprehensive logging
+            builder.Logging.ClearProviders();
+            builder.Logging.AddConsole();
+            builder.Logging.AddDebug();
+            
+            // Add Application Insights telemetry
+            if (!string.IsNullOrEmpty(builder.Configuration["ApplicationInsights:ConnectionString"]))
+            {
+                builder.Services.AddApplicationInsightsTelemetry(options =>
+                {
+                    options.ConnectionString = builder.Configuration["ApplicationInsights:ConnectionString"];
+                });
+                builder.Logging.AddApplicationInsights(
+                    configureTelemetryConfiguration: (config) => 
+                        config.ConnectionString = builder.Configuration["ApplicationInsights:ConnectionString"],
+                    configureApplicationInsightsLoggerOptions: (options) => { }
+                );
+            }
 
             // Add services to the container.
             builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
@@ -69,6 +89,9 @@ namespace AiStockTradeApp
             });
 
             var app = builder.Build();
+
+            // Add comprehensive request logging for monitoring
+            app.UseRequestLogging();
 
             // Localization: supported cultures
             var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("fr") };
