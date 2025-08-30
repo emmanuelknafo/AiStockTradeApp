@@ -1,0 +1,68 @@
+# Alternative checkout strategy for GitHub PR issues
+# This can be used instead of the standard checkout: self approach
+
+steps:
+  # Try standard checkout first
+  - checkout: none # Don't checkout automatically
+  
+  - task: Bash@3
+    displayName: "Manual Git Checkout with PR Handling"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -e
+        
+        echo "=== Manual Checkout Strategy ==="
+        echo "Build.Reason: $(Build.Reason)"
+        echo "Build.SourceBranch: $(Build.SourceBranch)"
+        echo "Build.SourceBranchName: $(Build.SourceBranchName)"
+        
+        # Initialize git repo
+        git init
+        git remote add origin https://github.com/emmanuelknafo/AiStockTradeApp.git
+        
+        # Configure git
+        git config core.longpaths true
+        git config gc.auto 0
+        
+        if [[ "$(Build.Reason)" == "PullRequest" ]]; then
+          echo "=== Handling Pull Request ==="
+          
+          # For PRs, checkout the source branch directly
+          SOURCE_BRANCH="$(System.PullRequest.SourceBranch)"
+          TARGET_BRANCH="$(System.PullRequest.TargetBranch)"
+          
+          echo "Source Branch: $SOURCE_BRANCH"
+          echo "Target Branch: $TARGET_BRANCH"
+          
+          # Fetch both branches
+          git fetch origin "$TARGET_BRANCH"
+          git fetch origin "$SOURCE_BRANCH"
+          
+          # Checkout the source branch
+          git checkout "$SOURCE_BRANCH"
+          
+          echo "Successfully checked out PR source branch: $SOURCE_BRANCH"
+          
+        else
+          echo "=== Handling Regular Build ==="
+          
+          # For regular builds, use the source branch
+          BRANCH_NAME="$(Build.SourceBranchName)"
+          echo "Branch Name: $BRANCH_NAME"
+          
+          # Fetch the branch
+          git fetch origin "$BRANCH_NAME"
+          
+          # Checkout the branch
+          git checkout "$BRANCH_NAME"
+          
+          echo "Successfully checked out branch: $BRANCH_NAME"
+        fi
+        
+        # Get full history for GitVersion if needed
+        git fetch --unshallow || echo "Repository already has full history"
+        
+        echo "=== Final Git Status ==="
+        git status
+        git log --oneline -5
