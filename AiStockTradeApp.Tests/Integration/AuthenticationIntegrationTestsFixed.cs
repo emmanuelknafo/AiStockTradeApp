@@ -13,11 +13,11 @@ using Microsoft.Extensions.Configuration;
 
 namespace AiStockTradeApp.Tests.Integration
 {
-    public class AuthenticationIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+    public class AuthenticationIntegrationTestsFixed : IClassFixture<WebApplicationFactory<Program>>
     {
         private readonly WebApplicationFactory<Program> _baseFactory;
 
-        public AuthenticationIntegrationTests(WebApplicationFactory<Program> factory)
+        public AuthenticationIntegrationTestsFixed(WebApplicationFactory<Program> factory)
         {
             _baseFactory = factory;
         }

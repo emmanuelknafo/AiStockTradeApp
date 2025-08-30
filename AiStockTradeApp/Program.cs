@@ -68,16 +68,33 @@ namespace AiStockTradeApp
             builder.Services.AddHealthChecks();
 
             // Configure Entity Framework and Identity
-            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-                ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+            // Check if we should use in-memory database (for testing)
+            var useInMemory = string.Equals(builder.Configuration["USE_INMEMORY_DB"], "true", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
 
-            // Add Identity DbContext
-            builder.Services.AddDbContext<ApplicationIdentityContext>(options =>
-                options.UseSqlServer(connectionString));
+            if (useInMemory)
+            {
+                // Add Identity DbContext with InMemory database for testing
+                builder.Services.AddDbContext<ApplicationIdentityContext>(options =>
+                    options.UseInMemoryDatabase("TestIdentityDb"));
 
-            // Add StockData DbContext (for user-specific data like watchlists)
-            builder.Services.AddDbContext<StockDataContext>(options =>
-                options.UseSqlServer(connectionString));
+                // Add StockData DbContext with InMemory database for testing
+                builder.Services.AddDbContext<StockDataContext>(options =>
+                    options.UseInMemoryDatabase("TestStockDataDb"));
+            }
+            else
+            {
+                var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+                    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+
+                // Add Identity DbContext with SQL Server for production
+                builder.Services.AddDbContext<ApplicationIdentityContext>(options =>
+                    options.UseSqlServer(connectionString));
+
+                // Add StockData DbContext with SQL Server for production
+                builder.Services.AddDbContext<StockDataContext>(options =>
+                    options.UseSqlServer(connectionString));
+            }
 
             // Configure ASP.NET Core Identity
             builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
