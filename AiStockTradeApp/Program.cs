@@ -27,18 +27,32 @@ namespace AiStockTradeApp
             builder.Logging.AddConsole();
             builder.Logging.AddDebug();
             
-            // Add Application Insights telemetry
-            if (!string.IsNullOrEmpty(builder.Configuration["ApplicationInsights:ConnectionString"]))
+            // Add Application Insights telemetry with robust error handling
+            var appInsightsConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING") 
+                ?? builder.Configuration["ApplicationInsights:ConnectionString"];
+
+            // Validate connection string format before using it
+            bool isValidConnectionString = !string.IsNullOrEmpty(appInsightsConnectionString) && 
+                                         !appInsightsConnectionString.Contains("#{") && // Check for placeholder tokens
+                                         appInsightsConnectionString.Contains("=") && // Basic format check
+                                         !appInsightsConnectionString.Equals("invalid-format", StringComparison.OrdinalIgnoreCase);
+
+            if (isValidConnectionString)
             {
-                builder.Services.AddApplicationInsightsTelemetry(options =>
+                try
                 {
-                    options.ConnectionString = builder.Configuration["ApplicationInsights:ConnectionString"];
-                });
-                builder.Logging.AddApplicationInsights(
-                    configureTelemetryConfiguration: (config) => 
-                        config.ConnectionString = builder.Configuration["ApplicationInsights:ConnectionString"],
-                    configureApplicationInsightsLoggerOptions: (options) => { }
-                );
+                    builder.Services.AddApplicationInsightsTelemetry();
+                    Console.WriteLine("Application Insights telemetry configured successfully.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Failed to configure Application Insights: {ex.Message}");
+                }
+            }
+            else
+            {
+                var displayString = appInsightsConnectionString?.Substring(0, Math.Min(50, appInsightsConnectionString.Length)) ?? "null";
+                Console.WriteLine($"Skipping Application Insights configuration - invalid or missing connection string: {displayString}");
             }
 
             // Add services to the container.
