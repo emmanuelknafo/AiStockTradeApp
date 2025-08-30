@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using AiStockTradeApp.Entities;
 using AiStockTradeApp.Entities.ViewModels;
 using AiStockTradeApp.Services.Interfaces;
+using AiStockTradeApp.Services;
 using System.Text.Json;
 
 namespace AiStockTradeApp.Controllers
@@ -28,16 +29,24 @@ namespace AiStockTradeApp.Controllers
         public async Task<IActionResult> Dashboard()
         {
             var sessionId = GetSessionId();
+            using var operation = _logger.LogOperationStart("LoadDashboard", new { SessionId = sessionId });
+            
             var watchlist = await _watchlistService.GetWatchlistAsync(sessionId);
+            _logger.LogUserAction("DashboardAccessed", sessionId, new { WatchlistCount = watchlist.Count });
             
             // Fetch fresh data for all stocks in watchlist
+            var stockUpdateTasks = new List<Task>();
             foreach (var item in watchlist)
             {
                 try
                 {
+                    _logger.LogDebug(LoggingConstants.StockDataRequested, item.Symbol);
                     var stockResponse = await _stockDataService.GetStockQuoteAsync(item.Symbol);
                     if (stockResponse.Success && stockResponse.Data != null)
                     {
+                        _logger.LogDebug("Successfully retrieved stock data for {Symbol}: Price={Price}, Change={Change}", 
+                            item.Symbol, stockResponse.Data.Price, stockResponse.Data.Change);
+                            
                         var (analysis, recommendation, reasoning) = await _aiAnalysisService.GenerateAnalysisAsync(item.Symbol, stockResponse.Data);
                         
                         stockResponse.Data.AIAnalysis = analysis;
@@ -50,7 +59,9 @@ namespace AiStockTradeApp.Controllers
                         {
                             try
                             {
+                                _logger.LogDebug("Fetching chart data for {Symbol}", item.Symbol);
                                 stockResponse.Data.ChartData = await _stockDataService.GetHistoricalDataAsync(item.Symbol);
+                                _logger.LogDebug("Successfully retrieved chart data for {Symbol}", item.Symbol);
                             }
                             catch (Exception chartEx)
                             {
@@ -59,6 +70,11 @@ namespace AiStockTradeApp.Controllers
                         }
                         
                         item.StockData = stockResponse.Data;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to retrieve stock data for {Symbol}: {ErrorMessage}", 
+                            item.Symbol, stockResponse.ErrorMessage);
                     }
                 }
                 catch (Exception ex)
@@ -69,6 +85,13 @@ namespace AiStockTradeApp.Controllers
 
             var portfolio = await _watchlistService.CalculatePortfolioSummaryAsync(watchlist);
             var alerts = await _watchlistService.GetAlertsAsync(sessionId);
+            
+            _logger.LogBusinessEvent("DashboardLoaded", new { 
+                SessionId = sessionId, 
+                PortfolioValue = portfolio.TotalValue, 
+                StockCount = watchlist.Count,
+                AlertCount = alerts.Count 
+            });
 
             var viewModel = new DashboardViewModel
             {
@@ -84,33 +107,46 @@ namespace AiStockTradeApp.Controllers
         [HttpPost]
         public async Task<IActionResult> AddStock([FromBody] AddStockRequest request)
         {
+            var sessionId = GetSessionId();
+            using var operation = _logger.LogOperationStart("AddStockToWatchlist", new { Symbol = request?.Symbol, SessionId = sessionId });
+                
             try
             {
-                if (!ModelState.IsValid)
+                if (!ModelState.IsValid || request?.Symbol == null)
                 {
+                    _logger.LogWarning("Invalid model state when adding stock {Symbol} for session {SessionId}. Errors: {Errors}", 
+                        request?.Symbol, sessionId, string.Join(", ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
                     return Json(new { success = false, message = "Invalid stock symbol" });
                 }
 
-                var sessionId = GetSessionId();
+                _logger.LogDebug("Validating stock existence for {Symbol}", request.Symbol);
                 
                 // Validate stock exists by fetching its data
                 var stockResponse = await _stockDataService.GetStockQuoteAsync(request.Symbol);
                 if (!stockResponse.Success)
                 {
+                    _logger.LogWarning("Failed to validate stock {Symbol}: {ErrorMessage}", 
+                        request.Symbol, stockResponse.ErrorMessage);
                     return Json(new { success = false, message = stockResponse.ErrorMessage ?? "Stock not found" });
                 }
 
+                _logger.LogDebug("Adding {Symbol} to watchlist for session {SessionId}", request.Symbol, sessionId);
                 await _watchlistService.AddToWatchlistAsync(sessionId, request.Symbol);
+                
+                _logger.LogUserAction("StockAddedToWatchlist", sessionId, new { Symbol = request.Symbol });
+                _logger.LogBusinessEvent("WatchlistUpdated", new { SessionId = sessionId, Action = "Add", Symbol = request.Symbol });
                 
                 return Json(new { success = true, message = $"Added {request.Symbol.ToUpper()} to watchlist" });
             }
             catch (InvalidOperationException ex)
             {
+                _logger.LogWarning(ex, "Invalid operation when adding stock {Symbol} for session {SessionId}: {Message}", 
+                    request?.Symbol, sessionId, ex.Message);
                 return Json(new { success = false, message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error adding stock {Symbol}", request.Symbol);
+                _logger.LogError(ex, "Error adding stock {Symbol} for session {SessionId}", request?.Symbol, sessionId);
                 return Json(new { success = false, message = "Error adding stock to watchlist" });
             }
         }
