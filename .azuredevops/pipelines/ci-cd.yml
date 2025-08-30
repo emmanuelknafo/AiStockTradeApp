@@ -36,6 +36,7 @@ pr:
   branches:
     include:
       - main
+      - develop
   paths:
     exclude:
       - "**.md"
@@ -61,6 +62,7 @@ pr:
       - ".azuredevops/pipelines/generate-changelog.yml"
       - "load-tests/**"
       - "infrastructure/**"
+
 resources:
   repositories:
     - repository: self
@@ -139,16 +141,16 @@ stages:
             submodules: false # Disable submodules to avoid additional ref issues
             lfs: false # Disable LFS to avoid additional ref issues
           
-          # Add diagnostic step to understand what we're working with
+          # Add diagnostic step to understand what we're working with and fix GitHub PR checkout
           - task: Bash@3
             displayName: "Git diagnostics and fallback checkout"
             inputs:
               targetType: "inline"
               script: |
                 echo "=== Git Status ==="
-                git status
+                git status || echo "Git status failed"
                 echo "=== Git Branch Info ==="
-                git branch -a
+                git branch -a || echo "No branches found"
                 echo "=== Git Remote Info ==="
                 git remote -v
                 echo "=== Build Source Branch ==="
@@ -158,16 +160,42 @@ stages:
                 echo "System.PullRequest.SourceBranch: $(System.PullRequest.SourceBranch)"
                 echo "System.PullRequest.TargetBranch: $(System.PullRequest.TargetBranch)"
                 
-                # If this is a PR, try to checkout the source branch instead of merge ref
+                # For GitHub PRs, we need to handle checkout differently
                 if [[ "$(Build.Reason)" == "PullRequest" ]]; then
-                  echo "=== PR Detected - Attempting source branch checkout ==="
+                  echo "=== PR Detected - Fixing GitHub PR checkout ==="
                   SOURCE_BRANCH="$(System.PullRequest.SourceBranch)"
+                  TARGET_BRANCH="$(System.PullRequest.TargetBranch)"
+                  
+                  # First, ensure we have the target branch
+                  echo "Fetching target branch: $TARGET_BRANCH"
+                  git fetch origin "$TARGET_BRANCH:$TARGET_BRANCH" || echo "Target branch fetch failed"
+                  
+                  # Then fetch the source branch with proper ref format
                   if [[ -n "$SOURCE_BRANCH" ]]; then
-                    echo "Attempting to checkout source branch: $SOURCE_BRANCH"
-                    git fetch origin "$SOURCE_BRANCH" || echo "Fetch failed, continuing with current state"
-                    git checkout "$SOURCE_BRANCH" || echo "Checkout failed, continuing with current state"
+                    echo "Fetching source branch: $SOURCE_BRANCH"
+                    git fetch origin "$SOURCE_BRANCH:$SOURCE_BRANCH" || echo "Source branch fetch failed"
+                    
+                    # Try to checkout the source branch
+                    echo "Checking out source branch: $SOURCE_BRANCH"
+                    git checkout "$SOURCE_BRANCH" || {
+                      echo "Direct checkout failed, trying with origin prefix"
+                      git checkout -b "$SOURCE_BRANCH" "origin/$SOURCE_BRANCH" || echo "Branch checkout failed"
+                    }
+                  fi
+                else
+                  echo "=== Non-PR build - checking current state ==="
+                  # For non-PR builds, ensure we're on the right branch
+                  BRANCH_NAME="$(Build.SourceBranchName)"
+                  if [[ -n "$BRANCH_NAME" && "$BRANCH_NAME" != "merge" ]]; then
+                    echo "Ensuring we're on branch: $BRANCH_NAME"
+                    git checkout "$BRANCH_NAME" || git checkout -b "$BRANCH_NAME" "origin/$BRANCH_NAME" || echo "Branch checkout failed"
                   fi
                 fi
+                
+                echo "=== Final Git State ==="
+                git branch -a || echo "No branches"
+                git status || echo "Git status failed"
+                echo "Current HEAD: $(git rev-parse HEAD 2>/dev/null || echo 'No HEAD')"
             condition: always()
             
           - task: Bash@3
@@ -393,6 +421,39 @@ stages:
             persistCredentials: true
             clean: true
             fetchTags: false # Avoid PR merge ref issues with GitHub
+            submodules: false # Disable submodules to avoid additional ref issues
+            lfs: false # Disable LFS to avoid additional ref issues
+          
+          # Add diagnostic step for UI tests checkout
+          - task: Bash@3
+            displayName: "Git diagnostics and fallback checkout (UI Tests)"
+            inputs:
+              targetType: "inline"
+              script: |
+                echo "=== UI Tests Git Diagnostics ==="
+                # For GitHub PRs, we need to handle checkout differently
+                if [[ "$(Build.Reason)" == "PullRequest" ]]; then
+                  echo "PR Detected - Fixing GitHub PR checkout for UI tests"
+                  SOURCE_BRANCH="$(System.PullRequest.SourceBranch)"
+                  TARGET_BRANCH="$(System.PullRequest.TargetBranch)"
+                  
+                  # Fetch the source branch
+                  if [[ -n "$SOURCE_BRANCH" ]]; then
+                    echo "Fetching and checking out source branch: $SOURCE_BRANCH"
+                    git fetch origin "$SOURCE_BRANCH:$SOURCE_BRANCH" || echo "Source branch fetch failed"
+                    git checkout "$SOURCE_BRANCH" || {
+                      echo "Direct checkout failed, trying with origin prefix"
+                      git checkout -b "$SOURCE_BRANCH" "origin/$SOURCE_BRANCH" || echo "Branch checkout failed"
+                    }
+                  fi
+                else
+                  echo "Non-PR build - checking current state"
+                  git status || echo "Git status failed"
+                fi
+                echo "Current branch: $(git branch --show-current 2>/dev/null || echo 'unknown')"
+                echo "Current HEAD: $(git rev-parse HEAD 2>/dev/null || echo 'No HEAD')"
+            condition: always()
+            
           - task: Bash@3
             displayName: "Docker pre-clean (global)"
             inputs:
@@ -810,6 +871,39 @@ stages:
             persistCredentials: true
             clean: true
             fetchTags: false # Avoid PR merge ref issues with GitHub
+            submodules: false # Disable submodules to avoid additional ref issues
+            lfs: false # Disable LFS to avoid additional ref issues
+          
+          # Add diagnostic step for Build stage checkout
+          - task: Bash@3
+            displayName: "Git diagnostics and fallback checkout (Build)"
+            inputs:
+              targetType: "inline"
+              script: |
+                echo "=== Build Stage Git Diagnostics ==="
+                # For GitHub PRs, we need to handle checkout differently
+                if [[ "$(Build.Reason)" == "PullRequest" ]]; then
+                  echo "PR Detected - Fixing GitHub PR checkout for Build stage"
+                  SOURCE_BRANCH="$(System.PullRequest.SourceBranch)"
+                  TARGET_BRANCH="$(System.PullRequest.TargetBranch)"
+                  
+                  # Fetch the source branch
+                  if [[ -n "$SOURCE_BRANCH" ]]; then
+                    echo "Fetching and checking out source branch: $SOURCE_BRANCH"
+                    git fetch origin "$SOURCE_BRANCH:$SOURCE_BRANCH" || echo "Source branch fetch failed"
+                    git checkout "$SOURCE_BRANCH" || {
+                      echo "Direct checkout failed, trying with origin prefix"
+                      git checkout -b "$SOURCE_BRANCH" "origin/$SOURCE_BRANCH" || echo "Branch checkout failed"
+                    }
+                  fi
+                else
+                  echo "Non-PR build - checking current state"
+                  git status || echo "Git status failed"
+                fi
+                echo "Current branch: $(git branch --show-current 2>/dev/null || echo 'unknown')"
+                echo "Current HEAD: $(git rev-parse HEAD 2>/dev/null || echo 'No HEAD')"
+            condition: always()
+            
           - task: Bash@3
             displayName: "Docker pre-clean (global)"
             inputs:
