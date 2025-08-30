@@ -62,6 +62,11 @@ pr:
       - "load-tests/**"
       - "infrastructure/**"
 resources:
+  repositories:
+    - repository: self
+      type: github
+      name: emmanuelknafo/AiStockTradeApp
+      endpoint: github.com_emmanuelknafo # Replace with your GitHub service connection name
   pipelines:
     - pipeline: infrastructurePipeline
       source: emmanuelknafo.AiStockTradeApp.infrastructure
@@ -130,6 +135,41 @@ stages:
             fetchDepth: 0 # full history for GitVersion
             persistCredentials: true
             clean: true
+            fetchTags: false # Avoid PR merge ref issues with GitHub
+            submodules: false # Disable submodules to avoid additional ref issues
+            lfs: false # Disable LFS to avoid additional ref issues
+          
+          # Add diagnostic step to understand what we're working with
+          - task: Bash@3
+            displayName: "Git diagnostics and fallback checkout"
+            inputs:
+              targetType: "inline"
+              script: |
+                echo "=== Git Status ==="
+                git status
+                echo "=== Git Branch Info ==="
+                git branch -a
+                echo "=== Git Remote Info ==="
+                git remote -v
+                echo "=== Build Source Branch ==="
+                echo "Build.SourceBranch: $(Build.SourceBranch)"
+                echo "Build.SourceBranchName: $(Build.SourceBranchName)"
+                echo "Build.Reason: $(Build.Reason)"
+                echo "System.PullRequest.SourceBranch: $(System.PullRequest.SourceBranch)"
+                echo "System.PullRequest.TargetBranch: $(System.PullRequest.TargetBranch)"
+                
+                # If this is a PR, try to checkout the source branch instead of merge ref
+                if [[ "$(Build.Reason)" == "PullRequest" ]]; then
+                  echo "=== PR Detected - Attempting source branch checkout ==="
+                  SOURCE_BRANCH="$(System.PullRequest.SourceBranch)"
+                  if [[ -n "$SOURCE_BRANCH" ]]; then
+                    echo "Attempting to checkout source branch: $SOURCE_BRANCH"
+                    git fetch origin "$SOURCE_BRANCH" || echo "Fetch failed, continuing with current state"
+                    git checkout "$SOURCE_BRANCH" || echo "Checkout failed, continuing with current state"
+                  fi
+                fi
+            condition: always()
+            
           - task: Bash@3
             displayName: "Docker pre-clean (global)"
             inputs:
@@ -352,6 +392,7 @@ stages:
             fetchDepth: 0
             persistCredentials: true
             clean: true
+            fetchTags: false # Avoid PR merge ref issues with GitHub
           - task: Bash@3
             displayName: "Docker pre-clean (global)"
             inputs:
@@ -768,6 +809,7 @@ stages:
             fetchDepth: 0
             persistCredentials: true
             clean: true
+            fetchTags: false # Avoid PR merge ref issues with GitHub
           - task: Bash@3
             displayName: "Docker pre-clean (global)"
             inputs:
@@ -1141,6 +1183,7 @@ stages:
                   fetchDepth: 0
                   persistCredentials: true
                   clean: true
+                  fetchTags: false # Avoid PR merge ref issues with GitHub
 
                 - task: DownloadPipelineArtifact@2
                   displayName: "Download build outputs"
@@ -1405,6 +1448,7 @@ stages:
                   fetchDepth: 0
                   persistCredentials: true
                   clean: true
+                  fetchTags: false # Avoid PR merge ref issues with GitHub
 
                 - task: DownloadPipelineArtifact@2
                   displayName: "Download build outputs"
@@ -2109,6 +2153,7 @@ stages:
             fetchDepth: 0
             persistCredentials: true
             clean: true
+            fetchTags: false # Avoid PR merge ref issues with GitHub
 
           - task: DownloadPipelineArtifact@2
             displayName: "Download build outputs"
