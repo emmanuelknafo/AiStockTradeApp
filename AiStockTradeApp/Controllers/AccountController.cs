@@ -298,8 +298,8 @@ namespace AiStockTradeApp.Controllers
 
             var model = new UserProfileViewModel
             {
-                FirstName = user.FirstName,
-                LastName = user.LastName,
+                FirstName = user.FirstName ?? string.Empty,
+                LastName = user.LastName ?? string.Empty,
                 Email = user.Email!,
                 PreferredCulture = user.PreferredCulture,
                 EnablePriceAlerts = user.EnablePriceAlerts,

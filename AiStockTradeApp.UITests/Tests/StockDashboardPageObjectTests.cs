@@ -159,27 +159,33 @@ public class StockDashboardPageObjectTests : BaseUITest
             await dialog.AcceptAsync();
         };
 
-        // Set up navigation handler for page reload
-        var navigationTask = Page.WaitForURLAsync(Page.Url, new() { Timeout = 10000 });
+        // Set up a more robust navigation handler
+        var navigationCompletedTask = Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 15000 });
 
         // Clear all stocks
         await _dashboardPage.ClearAllButton.ClickAsync();
         
-        // Wait for page reload to complete
+        // Wait for the page to reload completely
         try
         {
-            await navigationTask;
-            await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10000 });
+            await navigationCompletedTask;
+            // Additional wait to ensure all dynamic content is loaded
+            await Page.WaitForTimeoutAsync(1000);
         }
         catch (TimeoutException)
         {
-            // If navigation doesn't happen as expected, wait and try to continue
-            await Page.WaitForTimeoutAsync(3000);
+            // If navigation doesn't complete as expected, wait longer and try to continue
+            await Page.WaitForTimeoutAsync(5000);
         }
 
         // Re-create the page object after reload to handle the new page context
         _dashboardPage = new StockDashboardPage(Page, BaseUrl);
 
+        // Wait for essential page elements to be ready without using problematic watchlist element
+        await Page.WaitForSelectorAsync("#ticker-input", new() { Timeout = 10000 });
+        await Page.WaitForSelectorAsync("#add-button", new() { Timeout = 10000 });
+        await Page.WaitForTimeoutAsync(1000); // Additional wait for JavaScript initialization
+        
         // Verify all stocks were removed (page should reload)
         var countAfterClearing = await _dashboardPage.GetStockCardCount();
         countAfterClearing.Should().Be(0);

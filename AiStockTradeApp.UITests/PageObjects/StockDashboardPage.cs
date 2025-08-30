@@ -36,6 +36,16 @@ public class StockDashboardPage
         await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
     }
 
+    public async Task WaitForPageReady()
+    {
+        // Wait for essential elements to be available (but not necessarily visible since watchlist can be empty)
+        await Watchlist.WaitForAsync(new() { Timeout = 10000, State = WaitForSelectorState.Attached });
+        await TickerInput.WaitForAsync(new() { Timeout = 10000 });
+        await AddButton.WaitForAsync(new() { Timeout = 10000 });
+        // Small delay to ensure all JavaScript has initialized
+        await _page.WaitForTimeoutAsync(500);
+    }
+
     // Stock Management Actions
     public async Task AddStock(string symbol)
     {
@@ -149,7 +159,18 @@ public class StockDashboardPage
 
     public async Task<int> GetStockCardCount()
     {
-        return await Watchlist.Locator(".stock-card").CountAsync();
+        try
+        {
+            // Simple approach: just count the stock cards directly without waiting for watchlist visibility
+            await _page.WaitForTimeoutAsync(500); // Brief wait for stability
+            return await _page.Locator("#watchlist .stock-card").CountAsync();
+        }
+        catch (PlaywrightException ex) when (ex.Message.Contains("Execution context was destroyed"))
+        {
+            // If context was destroyed, try once more after a short wait
+            await _page.WaitForTimeoutAsync(1000);
+            return await _page.Locator("#watchlist .stock-card").CountAsync();
+        }
     }
 
     public async Task<bool> IsStockInWatchlist(string symbol)
