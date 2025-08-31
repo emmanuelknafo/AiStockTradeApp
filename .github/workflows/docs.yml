@@ -2,7 +2,7 @@ name: Documentation Updates
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - '**.md'
       - '**/README.md'

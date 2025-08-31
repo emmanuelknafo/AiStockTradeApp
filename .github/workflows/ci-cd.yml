@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     paths-ignore:
       - "**.md"
       - "**/README.md"
@@ -894,8 +894,8 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: build
     name: Deploy to Development
-    # Run for develop (normal dev flow) and main (promote immediately before prod)
-    if: ${{ github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev') }}
+    # Run for main branch pushes and manual deployment requests
+    if: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev') }}
     environment: ${{ github.event_name == 'workflow_dispatch' && format('development-{0}', github.event.inputs.instanceNumber) || 'development-002' }}
     permissions:
       id-token: write

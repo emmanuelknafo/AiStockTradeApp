@@ -3,9 +3,6 @@ branches:
   main:
     regex: ^main$
     tag: ''
-  develop:
-    regex: ^develop$
-    tag: 'alpha'
 ignore:
   sha: []
 increment: Patch

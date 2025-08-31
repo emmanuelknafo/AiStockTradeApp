@@ -5,7 +5,6 @@ trigger:
   branches:
     include:
       - main
-      - develop
   paths:
     exclude:
       - "**.md"
@@ -36,7 +35,6 @@ pr:
   branches:
     include:
       - main
-      - develop
   paths:
     exclude:
       - "**.md"
@@ -76,7 +74,6 @@ resources:
         branches:
           include:
             - main
-            - develop
         stages: []
 
 # trigger: none  # CI temporarily disabled
@@ -1160,7 +1157,7 @@ stages:
 
           - task: Bash@3
             displayName: "Create and push git semantic tag"
-            condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+            condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
             inputs:
               targetType: inline
               script: |
@@ -1253,7 +1250,6 @@ stages:
       and(
         succeeded(),
         or(
-          eq(variables['Build.SourceBranch'], 'refs/heads/develop'),
           eq(variables['Build.SourceBranch'], 'refs/heads/main'),
           and(
             eq(variables['Build.Reason'], 'Manual'),
