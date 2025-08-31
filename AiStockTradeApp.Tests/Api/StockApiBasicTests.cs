@@ -38,12 +38,15 @@ namespace AiStockTradeApp.Tests.Api
 
                 builder.ConfigureServices(services =>
                 {
-                    // Remove any conflicting services that might be registered
+                    // Remove ALL potentially problematic services
                     var servicesToRemove = services.Where(s => 
                         s.ServiceType.FullName?.Contains("ApplicationInsights") == true ||
                         s.ServiceType.FullName?.Contains("Swagger") == true ||
                         s.ServiceType.FullName?.Contains("TelemetryClient") == true ||
-                        s.ServiceType.FullName?.Contains("TelemetryConfiguration") == true)
+                        s.ServiceType.FullName?.Contains("TelemetryConfiguration") == true ||
+                        s.ServiceType.FullName?.Contains("ApiDescriptions") == true ||
+                        s.ServiceType.FullName?.Contains("DocumentProvider") == true ||
+                        s.ServiceType.FullName?.Contains("EndpointsApi") == true)
                         .ToList();
 
                     foreach (var service in servicesToRemove)

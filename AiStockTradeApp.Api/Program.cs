@@ -25,48 +25,6 @@ var isTesting = builder.Environment.EnvironmentName == "Testing" ||
                 string.Equals(builder.Configuration["ASPNETCORE_ENVIRONMENT"], "Testing", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Testing", StringComparison.OrdinalIgnoreCase);
 
-// Add services to the container.
-// Only add Application Insights if not in testing environment
-if (!isTesting)
-{
-    try
-    {
-        builder.Services.AddApplicationInsightsTelemetry();
-    }
-    catch
-    {
-        // Ignore Application Insights failures in test scenarios
-    }
-}
-
-// Add Swagger services for UI - exclude from testing environment
-if (!isTesting)
-{
-    try
-    {
-        builder.Services.AddEndpointsApiExplorer();
-        builder.Services.AddSwaggerGen(c =>
-        {
-            c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
-            {
-                Title = "AI Stock Trade API",
-                Version = "v1",
-                Description = "API for AI-powered stock tracking and analysis"
-            });
-            
-            var xmlFile = Path.Combine(AppContext.BaseDirectory, "AiStockTradeApp.Api.xml");
-            if (File.Exists(xmlFile))
-            {
-                c.IncludeXmlComments(xmlFile, true);
-            }
-        });
-    }
-    catch
-    {
-        // Ignore Swagger setup failures in test scenarios
-    }
-}
-
 // EF Core for caching
 var useInMemory =
     string.Equals(builder.Configuration["USE_INMEMORY_DB"], "true", StringComparison.OrdinalIgnoreCase) ||
@@ -98,25 +56,6 @@ builder.Services.AddScoped<IHistoricalPriceRepository, HistoricalPriceRepository
 builder.Services.AddHttpClient<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IListedStockService, ListedStockService>();
-
-// Register TelemetryClient for DI only if not in testing
-if (!isTesting)
-{
-    try
-    {
-        builder.Services.AddSingleton<Microsoft.ApplicationInsights.TelemetryClient>(sp =>
-        {
-            var config = sp.GetService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>();
-            return config != null ? new Microsoft.ApplicationInsights.TelemetryClient(config) : new Microsoft.ApplicationInsights.TelemetryClient();
-        });
-    }
-    catch
-    {
-        // Fallback for testing scenarios
-        builder.Services.AddSingleton<Microsoft.ApplicationInsights.TelemetryClient>(sp => new Microsoft.ApplicationInsights.TelemetryClient());
-    }
-}
-
 builder.Services.AddScoped<IHistoricalPriceService, HistoricalPriceService>();
 builder.Services.AddSingleton<IImportJobQueue, ImportJobQueue>();
 builder.Services.AddHostedService<ImportJobProcessor>();
@@ -128,39 +67,49 @@ builder.Services.AddCors(options =>
         p.AllowAnyHeader().AllowAnyMethod().AllowCredentials().SetIsOriginAllowed(_ => true));
 });
 
-var app = builder.Build();
-
-// Add logging middleware only if not testing
+// Only add Application Insights and Swagger for non-testing environments
 if (!isTesting)
 {
     try
     {
-        app.UseMiddleware<RequestResponseLoggingMiddleware>();
-        app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
-    }
-    catch
-    {
-        // Skip middleware in case of DI issues during testing
-    }
-}
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment() && !isTesting)
-{
-    try
-    {
-        app.UseSwagger();
-        app.UseSwaggerUI(c =>
+        builder.Services.AddApplicationInsightsTelemetry();
+        builder.Services.AddSingleton<Microsoft.ApplicationInsights.TelemetryClient>(sp =>
         {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "AI Stock Trade API v1");
-            c.RoutePrefix = string.Empty;
+            var config = sp.GetService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>();
+            return config != null ? new Microsoft.ApplicationInsights.TelemetryClient(config) : new Microsoft.ApplicationInsights.TelemetryClient();
         });
     }
     catch
     {
-        // Ignore Swagger UI setup failures
+        // Ignore Application Insights failures
+    }
+
+    try
+    {
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(c =>
+        {
+            c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+            {
+                Title = "AI Stock Trade API",
+                Version = "v1",
+                Description = "API for AI-powered stock tracking and analysis"
+            });
+            
+            var xmlFile = Path.Combine(AppContext.BaseDirectory, "AiStockTradeApp.Api.xml");
+            if (File.Exists(xmlFile))
+            {
+                c.IncludeXmlComments(xmlFile, true);
+            }
+        });
+    }
+    catch
+    {
+        // Ignore Swagger setup failures
     }
 }
+
+var app = builder.Build();
 
 // Skip database migrations during testing
 if (!useInMemory)
@@ -200,6 +149,28 @@ app.UseCors("StockUi");
 
 // Health check
 app.MapGet("/health", () => Results.Ok("OK"));
+
+// Configure the HTTP request pipeline - ONLY add Swagger UI if not testing AND has swagger services
+if (app.Environment.IsDevelopment() && !isTesting)
+{
+    var swaggerProvider = app.Services.GetService<Swashbuckle.AspNetCore.Swagger.ISwaggerProvider>();
+    if (swaggerProvider != null)
+    {
+        try
+        {
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "AI Stock Trade API v1");
+                c.RoutePrefix = string.Empty;
+            });
+        }
+        catch
+        {
+            // Ignore Swagger UI setup failures
+        }
+    }
+}
 
 // Simplified endpoints for all environments
 app.MapGet("/api/stocks/quote", async ([FromQuery] string symbol, IStockDataService svc, ILogger<Program> logger) =>
