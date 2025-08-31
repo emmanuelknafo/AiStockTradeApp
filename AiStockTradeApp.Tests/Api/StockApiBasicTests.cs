@@ -5,8 +5,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.EntityFrameworkCore;
-using AiStockTradeApp.DataAccess;
 using Xunit;
 using AiStockTradeApp.Api;
 
@@ -22,21 +20,27 @@ namespace AiStockTradeApp.Tests.Api
             {
                 builder.ConfigureAppConfiguration((ctx, cfg) =>
                 {
+                    // Clear existing configuration and add test-specific config
+                    cfg.Sources.Clear();
                     cfg.AddInMemoryCollection(new Dictionary<string, string?>
                     {
                         ["USE_INMEMORY_DB"] = "true",
                         ["AlphaVantage:ApiKey"] = "",
                         ["TwelveData:ApiKey"] = "",
                         ["ApplicationInsights:ConnectionString"] = "",
-                        ["ASPNETCORE_ENVIRONMENT"] = "Development"
+                        ["ASPNETCORE_ENVIRONMENT"] = "Testing",
+                        ["Logging:LogLevel:Default"] = "Warning",
+                        ["Logging:LogLevel:Microsoft"] = "Warning",
+                        ["Logging:LogLevel:System"] = "Warning"
                     }!);
                 });
 
                 builder.ConfigureServices(services =>
                 {
-                    // Configure logging for tests to reduce noise
+                    // Configure minimal logging for tests
                     services.AddLogging(builder =>
                     {
+                        builder.ClearProviders();
                         builder.AddConsole();
                         builder.SetMinimumLevel(LogLevel.Warning);
                     });
@@ -58,7 +62,7 @@ namespace AiStockTradeApp.Tests.Api
             
             // The endpoint should return OK with data or NotFound, but not 500 errors
             Assert.True(resp.StatusCode == HttpStatusCode.OK || resp.StatusCode == HttpStatusCode.NotFound, 
-                $"Expected OK or NotFound but got {resp.StatusCode}");
+                $"Expected OK or NotFound but got {resp.StatusCode}. Response: {await resp.Content.ReadAsStringAsync()}");
             
             if (resp.StatusCode == HttpStatusCode.OK)
             {
@@ -72,7 +76,12 @@ namespace AiStockTradeApp.Tests.Api
         public async Task Suggestions_Endpoint_Should_Return_List()
         {
             var resp = await _client.GetAsync("/api/stocks/suggestions?query=AA");
-            resp.EnsureSuccessStatusCode();
+            
+            if (resp.StatusCode != HttpStatusCode.OK)
+            {
+                var errorContent = await resp.Content.ReadAsStringAsync();
+                Assert.True(false, $"Expected OK but got {resp.StatusCode}. Response: {errorContent}");
+            }
             
             var list = await resp.Content.ReadFromJsonAsync<List<string>>();
             Assert.NotNull(list);
@@ -83,7 +92,12 @@ namespace AiStockTradeApp.Tests.Api
         public async Task Historical_Endpoint_Should_Return_List(string symbol, int days)
         {
             var resp = await _client.GetAsync($"/api/stocks/historical?symbol={symbol}&days={days}");
-            resp.EnsureSuccessStatusCode();
+            
+            if (resp.StatusCode != HttpStatusCode.OK)
+            {
+                var errorContent = await resp.Content.ReadAsStringAsync();
+                Assert.True(false, $"Expected OK but got {resp.StatusCode}. Response: {errorContent}");
+            }
             
             var list = await resp.Content.ReadFromJsonAsync<List<ChartDataPoint>>();
             Assert.NotNull(list);
@@ -94,7 +108,12 @@ namespace AiStockTradeApp.Tests.Api
         public async Task Health_Endpoint_Should_Return_Ok()
         {
             var resp = await _client.GetAsync("/health");
-            resp.EnsureSuccessStatusCode();
+            
+            if (resp.StatusCode != HttpStatusCode.OK)
+            {
+                var errorContent = await resp.Content.ReadAsStringAsync();
+                Assert.True(false, $"Expected OK but got {resp.StatusCode}. Response: {errorContent}");
+            }
             
             var content = await resp.Content.ReadAsStringAsync();
             Assert.Equal("OK", content);

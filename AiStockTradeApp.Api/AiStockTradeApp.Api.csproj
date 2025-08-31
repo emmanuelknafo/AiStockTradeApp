@@ -4,7 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>ai_stock_trade_app.Api</RootNamespace>
+    <RootNamespace>AiStockTradeApp.Api</RootNamespace>
     <UserSecretsId>f384af0c-3381-4b7d-9acc-ab665e11dba5</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <ApplicationInsightsResourceId>/subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/microsoft.insights/components/appi-api-aistock-dev-002</ApplicationInsightsResourceId>
