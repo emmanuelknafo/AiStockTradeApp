@@ -33,13 +33,13 @@ AiStockTradeApp/                    # Root solution folder
 | Project | Purpose | Key Components | Dependencies |
 |---------|---------|----------------|--------------|
 | **AiStockTradeApp** | Web UI, MVC controllers, Razor views, API client | Controllers, Views, wwwroot, ApiStockDataServiceClient | Services (API client only) |
-| **AiStockTradeApp.Api** | REST API, background services, data access | API controllers, SignalR hubs, business services | Services, DataAccess |
-| **AiStockTradeApp.Entities** | Domain models, view models | Stock data, portfolio models | None (pure models) |
+| **AiStockTradeApp.Api** | REST API (Minimal API), background services, data access | Minimal API endpoints, background job processing, ImportJobProcessor | Services, DataAccess |
+| **AiStockTradeApp.Entities** | Domain models, view models | Stock data, portfolio models, historical prices, listed stocks | None (pure models) |
 | **AiStockTradeApp.DataAccess** | Database access, EF Core | DbContext, repositories, migrations | Entities |
-| **AiStockTradeApp.Services** | Business logic, external APIs, API client | Stock services, AI analysis, API client | DataAccess, Entities |
+| **AiStockTradeApp.Services** | Business logic, external APIs, API client | Stock services, AI analysis, API client, historical data services | DataAccess, Entities |
 | **AiStockTradeApp.Tests** | Unit testing | Service tests, controller tests | All projects |
 | **AiStockTradeApp.UITests** | End-to-end testing | Playwright page objects | Web UI |
-| **AiStockTradeApp.Cli** | Command line tools | Data migration, utilities | Services |
+| **AiStockTradeApp.Cli** | Command line tools | Data migration, historical data download/import | Services |
 
 ## 🛠️ Technology Stack
 
@@ -58,8 +58,7 @@ AiStockTradeApp/                    # Root solution folder
 
 ### Backend Services
 - **Dependency Injection** - Built-in DI container
-- **SignalR** - Real-time updates
-- **Background Services** - Scheduled tasks
+- **Background Services** - Scheduled tasks and job processing
 - **HTTP Clients** - External API integration
 - **Memory Caching** - In-memory performance optimization
 
@@ -200,6 +199,33 @@ public class SimpleStringLocalizer : IStringLocalizer<SharedResource>
 
 ## 🔧 Development Patterns
 
+### API Architecture Pattern (Minimal API)
+```csharp
+// AiStockTradeApp.Api uses Minimal API pattern with endpoints defined in Program.cs
+app.MapGet("/api/stocks/quote", async ([FromQuery] string symbol, IStockDataService svc) =>
+{
+    try
+    {
+        var quote = await svc.GetStockDataAsync(symbol);
+        return Results.Ok(quote);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/historical-prices/{symbol}/import-csv", async (
+    string symbol, 
+    HttpRequest req, 
+    IImportJobQueue queue) =>
+{
+    // Background job processing for CSV imports
+    var jobId = await queue.EnqueueHistoricalPriceImportAsync(symbol, req.Body);
+    return Results.Accepted($"/api/jobs/{jobId}", new { JobId = jobId });
+});
+```
+
 ### Dependency Injection Patterns
 ```csharp
 // Service registration in Program.cs (UI Project)
@@ -221,7 +247,14 @@ builder.Services.AddSingleton<IWatchlistService, WatchlistService>();
 
 // API Project service registration would include:
 // builder.Services.AddScoped<IStockDataService, StockDataService>();
+// builder.Services.AddScoped<IHistoricalPriceService, HistoricalPriceService>();
+// builder.Services.AddScoped<IListedStockService, ListedStockService>();
 // builder.Services.AddScoped<IStockDataRepository, StockDataRepository>();
+
+// API endpoints are defined using Minimal API pattern in Program.cs:
+// app.MapGet("/api/stocks/quote", async (string symbol, IStockDataService svc) => { ... });
+// app.MapGet("/api/historical-prices/{symbol}", async (string symbol, IHistoricalPriceService svc) => { ... });
+// app.MapPost("/api/historical-prices/{symbol}/import-csv", async (string symbol, HttpRequest req) => { ... });
 
 // Constructor injection
 public class StockController : Controller
@@ -285,9 +318,12 @@ public class StockDataRepository : IStockDataRepository
 
 ### Core Entities
 - **StockData** - Stock information, prices, analysis
+- **HistoricalPrice** - Historical stock price data points
+- **ListedStock** - Listed companies and stock metadata
 - **WatchlistItem** - User watchlist entries
 - **PriceAlert** - User-defined price alerts
-- **CachedStockData** - Performance optimization cache
+- **ApplicationUser** - User authentication and profile data
+- **UserPreferences** - User settings and preferences
 
 ### Entity Relationships
 ```csharp
@@ -299,6 +335,27 @@ public class StockData
     public decimal ChangePercent { get; set; }
     public string? AIAnalysis { get; set; }
     public DateTime LastUpdated { get; set; }
+}
+
+public class HistoricalPrice
+{
+    public int Id { get; set; }
+    public string Symbol { get; set; }
+    public DateTime Date { get; set; }
+    public decimal Open { get; set; }
+    public decimal High { get; set; }
+    public decimal Low { get; set; }
+    public decimal Close { get; set; }
+    public long Volume { get; set; }
+}
+
+public class ListedStock
+{
+    public string Symbol { get; set; }
+    public string CompanyName { get; set; }
+    public string Exchange { get; set; }
+    public string Sector { get; set; }
+    public string Industry { get; set; }
 }
 
 public class WatchlistItem
@@ -484,7 +541,7 @@ public class CacheCleanupService : BackgroundService
 ```
 
 ### Stock Price Monitoring
-- **Real-time updates** via SignalR
+- **Background job processing** for CSV imports and data validation
 - **Price alert notifications** for threshold breaches
 - **Automatic data refresh** at configurable intervals
 
@@ -660,7 +717,7 @@ When working with this codebase:
 - Use the established namespaces and folder structure
 - Follow the dependency injection patterns for service registration
 - For UI project: Use ApiStockDataServiceClient for data access (HTTP calls to API)
-- For API project: Use direct service implementations with database access
+- For API project: Use direct service implementations with database access and Minimal API endpoints
 - Implement proper error handling with logging
 - Add appropriate validation attributes to models
 - Include XML documentation comments for public APIs
