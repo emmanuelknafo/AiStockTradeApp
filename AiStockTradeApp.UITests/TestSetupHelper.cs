@@ -92,16 +92,7 @@ public static class TestSetupHelper
             // Force in-memory DB for API so SQL Server is not required during UI tests
             psi.Environment["USE_INMEMORY_DB"] = "true";
 
-            _apiProcess = new Process { StartInfo = new ProcessStartInfo
-            {
-                FileName = psi.FileName,
-                Arguments = psi.Arguments,
-                WorkingDirectory = psi.WorkingDirectory,
-                RedirectStandardOutput = psi.RedirectStandardOutput,
-                RedirectStandardError = psi.RedirectStandardError,
-                UseShellExecute = psi.UseShellExecute,
-                CreateNoWindow = psi.CreateNoWindow
-            }, EnableRaisingEvents = true };
+            _apiProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
             try
             {

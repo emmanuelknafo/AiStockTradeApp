@@ -3,8 +3,12 @@ using System.Net.Http.Json;
 using AiStockTradeApp.Entities;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using AiStockTradeApp.DataAccess;
 using Xunit;
-using ai_stock_trade_app.Api;
+using AiStockTradeApp.Api;
 
 namespace AiStockTradeApp.Tests.Api
 {
@@ -20,8 +24,22 @@ namespace AiStockTradeApp.Tests.Api
                 {
                     cfg.AddInMemoryCollection(new Dictionary<string, string?>
                     {
-                        ["USE_INMEMORY_DB"] = "true"
+                        ["USE_INMEMORY_DB"] = "true",
+                        ["AlphaVantage:ApiKey"] = "",
+                        ["TwelveData:ApiKey"] = "",
+                        ["ApplicationInsights:ConnectionString"] = "",
+                        ["ASPNETCORE_ENVIRONMENT"] = "Development"
                     }!);
+                });
+
+                builder.ConfigureServices(services =>
+                {
+                    // Configure logging for tests to reduce noise
+                    services.AddLogging(builder =>
+                    {
+                        builder.AddConsole();
+                        builder.SetMinimumLevel(LogLevel.Warning);
+                    });
                 });
             });
 
@@ -37,7 +55,11 @@ namespace AiStockTradeApp.Tests.Api
         public async Task Quote_Endpoint_Should_Return_Ok_Or_NotFound(string symbol)
         {
             var resp = await _client.GetAsync($"/api/stocks/quote?symbol={symbol}");
-            Assert.True(resp.StatusCode == HttpStatusCode.OK || resp.StatusCode == HttpStatusCode.NotFound);
+            
+            // The endpoint should return OK with data or NotFound, but not 500 errors
+            Assert.True(resp.StatusCode == HttpStatusCode.OK || resp.StatusCode == HttpStatusCode.NotFound, 
+                $"Expected OK or NotFound but got {resp.StatusCode}");
+            
             if (resp.StatusCode == HttpStatusCode.OK)
             {
                 var data = await resp.Content.ReadFromJsonAsync<StockData>();
@@ -49,7 +71,10 @@ namespace AiStockTradeApp.Tests.Api
         [Fact]
         public async Task Suggestions_Endpoint_Should_Return_List()
         {
-            var list = await _client.GetFromJsonAsync<List<string>>("/api/stocks/suggestions?query=AA");
+            var resp = await _client.GetAsync("/api/stocks/suggestions?query=AA");
+            resp.EnsureSuccessStatusCode();
+            
+            var list = await resp.Content.ReadFromJsonAsync<List<string>>();
             Assert.NotNull(list);
         }
 
@@ -57,8 +82,22 @@ namespace AiStockTradeApp.Tests.Api
         [InlineData("AAPL", 10)]
         public async Task Historical_Endpoint_Should_Return_List(string symbol, int days)
         {
-            var list = await _client.GetFromJsonAsync<List<ChartDataPoint>>($"/api/stocks/historical?symbol={symbol}&days={days}");
+            var resp = await _client.GetAsync($"/api/stocks/historical?symbol={symbol}&days={days}");
+            resp.EnsureSuccessStatusCode();
+            
+            var list = await resp.Content.ReadFromJsonAsync<List<ChartDataPoint>>();
             Assert.NotNull(list);
+            Assert.True(list.Count > 0, "Historical data should contain at least one data point");
+        }
+
+        [Fact]
+        public async Task Health_Endpoint_Should_Return_Ok()
+        {
+            var resp = await _client.GetAsync("/health");
+            resp.EnsureSuccessStatusCode();
+            
+            var content = await resp.Content.ReadAsStringAsync();
+            Assert.Equal("OK", content);
         }
     }
 }
