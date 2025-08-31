@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 using AiStockTradeApp.Api;
 
@@ -29,20 +30,33 @@ namespace AiStockTradeApp.Tests.Api
                         ["TwelveData:ApiKey"] = "",
                         ["ApplicationInsights:ConnectionString"] = "",
                         ["ASPNETCORE_ENVIRONMENT"] = "Testing",
-                        ["Logging:LogLevel:Default"] = "Warning",
-                        ["Logging:LogLevel:Microsoft"] = "Warning",
-                        ["Logging:LogLevel:System"] = "Warning"
+                        ["Logging:LogLevel:Default"] = "Error",
+                        ["Logging:LogLevel:Microsoft"] = "Error",
+                        ["Logging:LogLevel:System"] = "Error"
                     }!);
                 });
 
                 builder.ConfigureServices(services =>
                 {
+                    // Remove any conflicting services that might be registered
+                    var servicesToRemove = services.Where(s => 
+                        s.ServiceType.FullName?.Contains("ApplicationInsights") == true ||
+                        s.ServiceType.FullName?.Contains("Swagger") == true ||
+                        s.ServiceType.FullName?.Contains("TelemetryClient") == true ||
+                        s.ServiceType.FullName?.Contains("TelemetryConfiguration") == true)
+                        .ToList();
+
+                    foreach (var service in servicesToRemove)
+                    {
+                        services.Remove(service);
+                    }
+
                     // Configure minimal logging for tests
                     services.AddLogging(builder =>
                     {
                         builder.ClearProviders();
                         builder.AddConsole();
-                        builder.SetMinimumLevel(LogLevel.Warning);
+                        builder.SetMinimumLevel(LogLevel.Error);
                     });
                 });
             });

@@ -105,11 +105,15 @@ namespace AiStockTradeApp.Tests.Integration
             var getResponse = await client.GetAsync("/Account/Register");
             getResponse.EnsureSuccessStatusCode();
             var getContent = await getResponse.Content.ReadAsStringAsync();
+            
+            // Extract anti-forgery token
             var token = ExtractAntiForgeryToken(getContent);
 
             if (string.IsNullOrEmpty(token))
             {
-                Assert.True(false, "Could not extract anti-forgery token from registration page");
+                // Log part of the HTML for debugging
+                var htmlSnippet = getContent.Length > 1000 ? getContent.Substring(0, 1000) : getContent;
+                Assert.True(false, $"Could not extract anti-forgery token from registration page. HTML snippet: {htmlSnippet}");
             }
 
             var formData = new List<KeyValuePair<string, string>>(registerData.Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value)))
@@ -123,13 +127,27 @@ namespace AiStockTradeApp.Tests.Integration
             // Debug information
             var responseContent = await response.Content.ReadAsStringAsync();
 
-            // Assert - Check if we got a successful response (either redirect or OK with success)
+            // Check for model validation errors first
+            if (response.StatusCode == HttpStatusCode.OK && responseContent.Contains("field-validation-error"))
+            {
+                // Extract validation errors
+                var errorPattern = @"<span class=""field-validation-error""[^>]*>([^<]+)</span>";
+                var errorMatches = Regex.Matches(responseContent, errorPattern);
+                var errors = string.Join(", ", errorMatches.Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value));
+                Assert.True(false, $"Registration failed with validation errors: {errors}");
+            }
+
+            // Assert - Check if we got a successful response (either redirect or successful OK)
             var isSuccess = response.StatusCode == HttpStatusCode.Redirect || 
                            response.StatusCode == HttpStatusCode.SeeOther ||
-                           response.StatusCode == HttpStatusCode.Found ||
-                           (response.StatusCode == HttpStatusCode.OK && !responseContent.Contains("error") && !responseContent.Contains("Invalid"));
+                           response.StatusCode == HttpStatusCode.Found;
             
-            isSuccess.Should().BeTrue($"Expected successful registration but got {response.StatusCode}. Content: {responseContent.Substring(0, Math.Min(500, responseContent.Length))}");
+            if (!isSuccess)
+            {
+                // For debugging, show a meaningful portion of the response
+                var debugContent = responseContent.Length > 500 ? responseContent.Substring(0, 500) + "..." : responseContent;
+                Assert.True(false, $"Expected successful registration but got {response.StatusCode}. Response contains: {debugContent}");
+            }
 
             // Verify user was created in database using the same factory
             using var scope = factory.Services.CreateScope();
@@ -143,21 +161,22 @@ namespace AiStockTradeApp.Tests.Integration
 
         private static string ExtractAntiForgeryToken(string html)
         {
-            // Try multiple patterns to find the anti-forgery token
-            var patterns = new[]
+            // Simple pattern to find the anti-forgery token
+            var pattern = @"name=""__RequestVerificationToken""\s+value=""([^""]+)""";
+            var match = Regex.Match(html, pattern, RegexOptions.IgnoreCase);
+            
+            if (match.Success)
             {
-                @"name=""__RequestVerificationToken""\s+value=""([^""]+)""",
-                @"<input[^>]*name=""__RequestVerificationToken""[^>]*value=""([^""]+)""[^>]*>",
-                @"<input[^>]*value=""([^""]+)""[^>]*name=""__RequestVerificationToken""[^>]*>"
-            };
+                return match.Groups[1].Value;
+            }
 
-            foreach (var pattern in patterns)
+            // Try alternative pattern
+            pattern = @"value=""([^""]+)""\s+name=""__RequestVerificationToken""";
+            match = Regex.Match(html, pattern, RegexOptions.IgnoreCase);
+            
+            if (match.Success)
             {
-                var match = Regex.Match(html, pattern, RegexOptions.IgnoreCase);
-                if (match.Success)
-                {
-                    return match.Groups[1].Value;
-                }
+                return match.Groups[1].Value;
             }
 
             return string.Empty;
