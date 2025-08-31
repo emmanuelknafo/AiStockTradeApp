@@ -1166,32 +1166,36 @@ stages:
                 if [ -z "$VERSION" ] || [ "$VERSION" = "0.0.0-local" ]; then
                   echo "No valid semantic version available; skipping git tag."; exit 0; fi
                 if [[ "$VERSION" != v* ]]; then VERSION="v$VERSION"; fi
+                
+                # Check if GitHub token is available
+                if [ -z "$GITHUB_TOKEN" ]; then
+                  echo "GITHUB_TOKEN not available; skipping git tag creation"
+                  echo "##vso[build.addbuildtag]$VERSION"
+                  exit 0
+                fi
+                
                 git config user.name "ci-bot"
                 git config user.email "ci-bot@users.noreply.local"
-                # Ensure tags are current before creating new one
                 echo "Preparing to create tag $VERSION on commit $(Build.SourceVersion)"
 
-                # If this commit modified any workflow files, skip tag creation to avoid
-                # GitHub App 'workflows' permission rejection when pushing the tag.
-                if git diff-tree --no-commit-id --name-only -r "$(Build.SourceVersion)" | grep -E '^\.github/workflows/' >/dev/null 2>&1; then
-                  echo "Detected changes to .github/workflows/* in commit $(Build.SourceVersion); skipping tag creation/push.";
-                  exit 0;
-                fi
-
+                # Fetch existing tags
                 git fetch --tags --prune || true
+                
+                # Check if tag already exists
                 if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
                   echo "Tag $VERSION already exists; skipping."; exit 0; fi
+                
+                # Create the tag
                 git tag -a "$VERSION" -m "Release $VERSION (Azure DevOps CI)" $(Build.SourceVersion)
-                # Use OAuth token if available
-                if [ -n "$SYSTEM_ACCESSTOKEN" ]; then
-                  git -c http.extraheader="AUTHORIZATION: bearer $SYSTEM_ACCESSTOKEN" push origin "$VERSION" || {
-                    echo "Tag push failed even with token"; exit 1; }
-                else
-                  git push origin "$VERSION" || echo "Push failed (no SYSTEM_ACCESSTOKEN)"
-                fi
-                echo "Tag operation complete"
+                
+                # Push tag using GitHub token with workflows permission
+                git -c http.extraheader="AUTHORIZATION: token $GITHUB_TOKEN" push origin "$VERSION" || {
+                  echo "Tag push failed with GitHub token"; exit 1; }
+                
+                echo "Successfully created and pushed tag $VERSION"
+                echo "##vso[build.addbuildtag]$VERSION"
             env:
-              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              GITHUB_TOKEN: $(GITHUB_TOKEN)
 
           - task: Bash@3
             displayName: "Extract and set container image for deployment"

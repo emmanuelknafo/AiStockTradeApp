@@ -75,8 +75,8 @@ if (!isTesting)
         builder.Services.AddApplicationInsightsTelemetry();
         builder.Services.AddSingleton<Microsoft.ApplicationInsights.TelemetryClient>(sp =>
         {
-            var config = sp.GetService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>();
-            return config != null ? new Microsoft.ApplicationInsights.TelemetryClient(config) : new Microsoft.ApplicationInsights.TelemetryClient();
+            var config = sp.GetRequiredService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>();
+            return new Microsoft.ApplicationInsights.TelemetryClient(config);
         });
     }
     catch
