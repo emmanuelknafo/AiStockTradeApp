@@ -4,6 +4,8 @@ using AiStockTradeApp.DataAccess.Repositories;
 using AiStockTradeApp.Entities;
 using AiStockTradeApp.Services.Implementations;
 using AiStockTradeApp.Services.Interfaces;
+using AiStockTradeApp.Services;
+using AiStockTradeApp.Api.Middleware;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
@@ -14,6 +16,11 @@ using Azure.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Enhanced logging configuration
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 // Note: Using Swagger (AddEndpointsApiExplorer + AddSwaggerGen); minimal AddOpenApi helper not used.
@@ -23,7 +30,16 @@ builder.Services.AddApplicationInsightsTelemetry();
 
 // Add Swagger services for UI
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+    {
+        Title = "AI Stock Trade API",
+        Version = "v1",
+        Description = "API for AI-powered stock tracking and analysis"
+    });
+    c.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, "AiStockTradeApp.Api.xml"), true);
+});
 
 // EF Core for caching
 // Prefer configuration (so tests can inject it), fall back to environment variable
@@ -75,6 +91,10 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Add logging middleware early in the pipeline
+app.UseMiddleware<RequestResponseLoggingMiddleware>();
+app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -149,30 +169,71 @@ app.UseCors("StockUi");
 app.MapGet("/health", () => Results.Ok("OK"));
 
 // Map minimal API endpoints
-app.MapGet("/api/stocks/quote", async ([FromQuery] string symbol, IStockDataService svc) =>
+app.MapGet("/api/stocks/quote", async ([FromQuery] string symbol, IStockDataService svc, ILogger<Program> logger, HttpContext context) =>
 {
-    if (string.IsNullOrWhiteSpace(symbol))
-        return Results.BadRequest(new { error = "Symbol is required" });
+    var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? Guid.NewGuid().ToString("N")[..8];
+    
+    return await logger.LogApiOperationAsync(
+        "GetStockQuote",
+        async () =>
+        {
+            if (string.IsNullOrWhiteSpace(symbol))
+            {
+                logger.LogValidationError("GetStockQuote", "symbol", symbol, "Symbol is required", correlationId);
+                return Results.BadRequest(new { error = "Symbol is required" });
+            }
 
-    var result = await svc.GetStockQuoteAsync(symbol);
-    if (!result.Success)
-        return Results.NotFound(new { error = result.ErrorMessage ?? "Not found" });
+            logger.LogStockDataEvent("QuoteRequested", symbol.ToUpperInvariant(), new { symbol }, correlationId);
+            
+            var result = await svc.GetStockQuoteAsync(symbol);
+            if (!result.Success)
+            {
+                logger.LogWarning("Stock quote not found for symbol {Symbol} - CorrelationId: {CorrelationId}, Error: {Error}",
+                    symbol, correlationId, result.ErrorMessage);
+                return Results.NotFound(new { error = result.ErrorMessage ?? "Not found" });
+            }
 
-    return Results.Ok(result.Data);
+            logger.LogStockDataEvent("QuoteRetrieved", symbol.ToUpperInvariant(), 
+                new { symbol, price = result.Data?.Price, change = result.Data?.Change }, correlationId);
+            
+            return Results.Ok(result.Data);
+        },
+        new { symbol },
+        correlationId);
 })
 .WithName("GetStockQuote")
 .Produces<StockData>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status400BadRequest)
 .Produces(StatusCodes.Status404NotFound);
 
-app.MapGet("/api/stocks/historical", async ([FromQuery] string symbol, [FromQuery] int days, IStockDataService svc) =>
+app.MapGet("/api/stocks/historical", async ([FromQuery] string symbol, [FromQuery] int days, IStockDataService svc, ILogger<Program> logger, HttpContext context) =>
 {
-    if (string.IsNullOrWhiteSpace(symbol))
-        return Results.BadRequest(new { error = "Symbol is required" });
+    var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? Guid.NewGuid().ToString("N")[..8];
+    
+    return await logger.LogApiOperationAsync(
+        "GetHistoricalData",
+        async () =>
+        {
+            if (string.IsNullOrWhiteSpace(symbol))
+            {
+                logger.LogValidationError("GetHistoricalData", "symbol", symbol, "Symbol is required", correlationId);
+                return Results.BadRequest(new { error = "Symbol is required" });
+            }
 
-    days = days <= 0 ? 30 : days;
-    var data = await svc.GetHistoricalDataAsync(symbol, days);
-    return Results.Ok(data);
+            days = days <= 0 ? 30 : days;
+            
+            logger.LogStockDataEvent("HistoricalDataRequested", symbol.ToUpperInvariant(), 
+                new { symbol, days }, correlationId);
+            
+            var data = await svc.GetHistoricalDataAsync(symbol, days);
+            
+            logger.LogStockDataEvent("HistoricalDataRetrieved", symbol.ToUpperInvariant(), 
+                new { symbol, days, pointCount = data.Count }, correlationId);
+            
+            return Results.Ok(data);
+        },
+        new { symbol, days },
+        correlationId);
 })
 .WithName("GetHistoricalData")
 .Produces<List<ChartDataPoint>>(StatusCodes.Status200OK)
@@ -289,21 +350,49 @@ app.MapGet("/api/listed-stocks/facets/industries", async (IListedStockService sv
 .Produces<List<string>>(StatusCodes.Status200OK);
 
 // Import screener CSV (text/csv or text/plain body) - enqueue background job, return 202
-app.MapPost("/api/listed-stocks/import-csv", async (HttpRequest req, IImportJobQueue queue) =>
+app.MapPost("/api/listed-stocks/import-csv", async (HttpRequest req, IImportJobQueue queue, ILogger<Program> logger) =>
 {
-    using var reader = new StreamReader(req.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: false);
-    var content = await reader.ReadToEndAsync();
-    if (string.IsNullOrWhiteSpace(content))
-        return Results.BadRequest(new { error = "Empty body" });
+    var correlationId = req.Headers["X-Correlation-ID"].FirstOrDefault() ?? Guid.NewGuid().ToString("N")[..8];
+    
+    return await logger.LogApiOperationAsync(
+        "ImportListedStocksCsv",
+        async () =>
+        {
+            using var reader = new StreamReader(req.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: false);
+            var content = await reader.ReadToEndAsync();
+            
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                logger.LogValidationError("ImportListedStocksCsv", "body", "[empty]", "Empty body", correlationId);
+                return Results.BadRequest(new { error = "Empty body" });
+            }
 
-    var job = new ImportJob
-    {
-        Content = content,
-        SourceName = req.Headers.ContainsKey("X-File-Name") ? req.Headers["X-File-Name"].ToString() : null
-    };
-    var status = queue.Enqueue(job);
-    var location = $"/api/listed-stocks/import-jobs/{status.Id}";
-    return Results.Accepted(location, new { jobId = status.Id, status = status.Status.ToString(), location });
+            var fileName = req.Headers.ContainsKey("X-File-Name") ? req.Headers["X-File-Name"].ToString() : null;
+            var contentLength = content.Length;
+            var lineCount = content.Split('\n').Length;
+            
+            var job = new ImportJob
+            {
+                Content = content,
+                SourceName = fileName
+            };
+            
+            var status = queue.Enqueue(job);
+            var location = $"/api/listed-stocks/import-jobs/{status.Id}";
+            
+            logger.LogImportJobProgress(status.Id, "ListedStocksCsv", status.Status.ToString());
+            logger.LogBusinessEvent("ImportJobCreated", new { 
+                jobId = status.Id, 
+                fileName, 
+                contentLength, 
+                lineCount,
+                correlationId 
+            });
+            
+            return Results.Accepted(location, new { jobId = status.Id, status = status.Status.ToString(), location });
+        },
+        new { fileName = req.Headers["X-File-Name"].ToString() },
+        correlationId);
 })
 .WithName("ImportListedStocksCsv")
 .Produces(StatusCodes.Status202Accepted)
