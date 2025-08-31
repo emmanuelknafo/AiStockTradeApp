@@ -1,344 +1,215 @@
-# Stock Data API - .NET Core 9 MVC Project
+# AiStockTradeApp.Api - REST API Backend
 
 ## Project Overview
 
-Build a comprehensive stock data API using .NET Core 9 MVC architecture that functions similarly to Alpha Vantage API or Twelve Data. The API will store historical stock data in a SQL database using Entity Framework Core and provide endpoints for data retrieval and bulk uploads.
+The API backend for the AI Stock Trade Application built with .NET 9 Minimal API. This service provides REST endpoints for stock data retrieval, historical price management, and background processing jobs.
 
 ## Technology Stack
 
-- **.NET Core 9** - Web API Framework
+- **.NET 9** - Minimal API Framework
 - **Entity Framework Core** - ORM for database operations
-- **SQL Server** - Primary database (configurable for other providers)
-- **AutoMapper** - Object mapping
-- **Swagger/OpenAPI** - API documentation
-- **FluentValidation** - Input validation
-- **Serilog** - Structured logging
+- **SQL Server/Azure SQL** - Primary database
+- **Swagger/OpenAPI** - API documentation  
+- **Application Insights** - Telemetry and monitoring
+- **Background Services** - Hosted background job processing
 
-## Architecture Requirements
-
-### MVC Pattern Implementation
-- **Models**: Entity models, DTOs, and view models
-- **Views**: Not applicable (API-only)
-- **Controllers**: API controllers for stock data operations
+## Current Implementation
 
 ### Project Structure
 ```
-StockDataApi/
-├── Controllers/
-│   ├── StockController.cs
-│   ├── HistoricalDataController.cs
-│   └── UploadController.cs
-├── Models/
-│   ├── Entities/
-│   │   ├── Stock.cs
-│   │   ├── StockPrice.cs
-│   │   └── StockMetadata.cs
-│   ├── DTOs/
-│   │   ├── StockDto.cs
-│   │   ├── StockPriceDto.cs
-│   │   └── BulkUploadDto.cs
-│   └── Requests/
-│       ├── StockDataRequest.cs
-│       └── HistoricalDataRequest.cs
-├── Services/
-│   ├── IStockService.cs
-│   ├── StockService.cs
-│   ├── IDataUploadService.cs
-│   └── DataUploadService.cs
-├── Data/
-│   ├── StockDbContext.cs
-│   ├── Repositories/
-│   └── Migrations/
-├── Validators/
-├── Mappings/
-└── Extensions/
+AiStockTradeApp.Api/
+├── Background/
+│   ├── ImportJobModels.cs      # Job processing models
+│   └── ImportJobProcessor.cs   # Background CSV import processor
+├── Middleware/
+│   └── (Custom middleware implementations)
+├── Properties/
+│   └── launchSettings.json
+├── ApiAssemblyMarker.cs        # Assembly marker for DI
+├── Program.cs                  # Application entry point and configuration
+├── appsettings.json            # Configuration settings
+├── appsettings.Development.json
+└── Dockerfile                  # Container configuration
 ```
 
-## Database Schema Requirements
+## Current API Endpoints
 
-### Core Entities
+### Historical Data Management
 
-#### Stock Entity
-```csharp
-public class Stock
-{
-    public int Id { get; set; }
-    public string Symbol { get; set; } // e.g., "AAPL"
-    public string CompanyName { get; set; }
-    public string Exchange { get; set; } // e.g., "NASDAQ"
-    public string Sector { get; set; }
-    public string Industry { get; set; }
-    public string Currency { get; set; } // e.g., "USD"
-    public bool IsActive { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-    
-    // Navigation Properties
-    public ICollection<StockPrice> Prices { get; set; }
-}
-```
+#### Get Historical Prices
 
-#### StockPrice Entity (Historical Data)
-```csharp
-public class StockPrice
-{
-    public long Id { get; set; }
-    public int StockId { get; set; }
-    public DateTime Date { get; set; }
-    public decimal Open { get; set; }
-    public decimal High { get; set; }
-    public decimal Low { get; set; }
-    public decimal Close { get; set; }
-    public decimal AdjustedClose { get; set; }
-    public long Volume { get; set; }
-    public decimal? DividendAmount { get; set; }
-    public decimal? SplitCoefficient { get; set; }
-    public DateTime CreatedAt { get; set; }
-    
-    // Navigation Properties
-    public Stock Stock { get; set; }
-}
-```
-
-### Database Indexes
-- Unique index on `Stock.Symbol`
-- Composite index on `StockPrice.StockId` and `StockPrice.Date`
-- Index on `StockPrice.Date` for time-range queries
-
-## API Endpoints Specification
-
-### Stock Management Endpoints
-
-#### 1. Get Stock Information
-```
-GET /api/stocks/{symbol}
-GET /api/stocks?symbols=AAPL,GOOGL,MSFT
-```
-
-#### 2. Search Stocks
-```
-GET /api/stocks/search?query={searchTerm}
-```
-
-### Historical Data Endpoints
-
-#### 3. Get Time Series Data
-```
-GET /api/stocks/{symbol}/prices?interval=daily&outputsize=compact
-GET /api/stocks/{symbol}/prices?from=2023-01-01&to=2023-12-31
-
-Additionally in this solution (minimal API):
-
-- Get historical prices stored in DB
-```
+```http
 GET /api/historical-prices/{symbol}?from=2025-08-01&to=2025-08-19&take=30
 ```
 
-- Import historical CSV for a symbol (AAPL style: Date,Close/Last,Volume,Open,High,Low)
-```
+Retrieves historical price data for a stock symbol within a date range.
+
+**Parameters:**
+- `symbol` - Stock ticker symbol (e.g., AAPL, GOOGL)
+- `from` - Start date (YYYY-MM-DD format)
+- `to` - End date (YYYY-MM-DD format)  
+- `take` - Maximum number of records to return
+
+#### Import CSV Data
+
+```http
 POST /api/historical-prices/{symbol}/import-csv
 Content-Type: text/csv or text/plain
 ```
-Headers: optional `X-File-Name: HistoricalData_AAPL.csv`
-Response: 202 Accepted with job status location
 
-```
+Imports historical price data from CSV format. Supports NASDAQ-style CSV with columns:
+Date, Close/Last, Volume, Open, High, Low
 
-**Query Parameters:**
-- `interval`: daily, weekly, monthly
-- `outputsize`: compact (last 100 data points), full (all available)
-- `from`, `to`: Date range (YYYY-MM-DD format)
+**Headers:**
+- `X-File-Name` (optional) - Original filename for tracking
 
-#### 4. Get Latest Quote
-```
-GET /api/stocks/{symbol}/quote
-```
+**Response:**
+- `202 Accepted` with job status location for tracking import progress
 
-#### 5. Get Multiple Quotes
-```
-GET /api/quotes?symbols=AAPL,GOOGL,MSFT
-```
+### Background Processing
 
-### Data Upload Endpoints
+The API includes background job processing for:
 
-#### 6. Upload CSV Data
-```
-POST /api/upload/csv
-Content-Type: multipart/form-data
-```
+- **CSV Import Jobs** - Asynchronous processing of uploaded CSV files
+- **Data Validation** - Ensures data integrity during imports
+- **Progress Tracking** - Monitor import job status and completion
 
-**CSV Format Requirements:**
-```csv
-Symbol,Date,Open,High,Low,Close,AdjustedClose,Volume,DividendAmount,SplitCoefficient
-AAPL,2023-01-03,130.28,130.90,124.17,125.07,124.19,112117471,0,1
-```
+## Configuration
 
-#### 7. Upload JSON Data
-```
-POST /api/upload/json
-Content-Type: application/json
-```
+### Database Connection
 
-**JSON Format:**
-```json
-{
-  "data": [
-    {
-      "symbol": "AAPL",
-      "date": "2023-01-03",
-      "open": 130.28,
-      "high": 130.90,
-      "low": 124.17,
-      "close": 125.07,
-      "adjustedClose": 124.19,
-      "volume": 112117471,
-      "dividendAmount": 0,
-      "splitCoefficient": 1
-    }
-  ]
-}
-```
-
-#### 8. Bulk Operations
-```
-POST /api/upload/bulk
-DELETE /api/stocks/{symbol}/prices?from=2023-01-01&to=2023-12-31
-```
-
-## Key Features Implementation
-
-### 1. Data Upload & Processing
-- **CSV Parser**: Handle large CSV files with streaming
-- **JSON Processor**: Batch processing for JSON uploads
-- **Data Validation**: Validate ticker symbols, dates, and price data
-- **Duplicate Handling**: Upsert logic for existing data points
-- **Error Reporting**: Detailed validation errors and processing results
-
-### 2. Historical Data Management
-- **Time Series Storage**: Efficient storage of daily, weekly, monthly data
-- **Data Integrity**: Ensure no gaps in historical data
-- **Adjusted Prices**: Handle stock splits and dividends
-- **Data Retention**: Configurable data retention policies
-
-### 3. Query Optimization
-- **Pagination**: Support for large result sets
-- **Filtering**: Date ranges, multiple symbols
-- **Caching**: Redis cache for frequently accessed data
-- **Compression**: GZIP compression for large responses
-
-### 4. Data Quality & Validation
-- **Market Calendar**: Validate trading days
-- **Price Validation**: Logical price checks (high >= low, etc.)
-- **Volume Validation**: Non-negative volume checks
-- **Corporate Actions**: Handle splits and dividends
-
-## Configuration Requirements
-
-### Database Configuration
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost;Database=StockDataApi;Trusted_Connection=true;TrustServerCertificate=true"
+    "DefaultConnection": "Server=localhost;Database=StockTracker;Trusted_Connection=true;TrustServerCertificate=true"
   }
 }
 ```
 
-### API Configuration
+### Application Insights
+
 ```json
 {
-  "ApiSettings": {
-    "DefaultPageSize": 100,
-    "MaxPageSize": 1000,
-    "CacheExpirationMinutes": 15,
-    "MaxUploadSizeBytes": 52428800
+  "ApplicationInsights": {
+    "ConnectionString": "Your-Application-Insights-Connection-String"
   }
 }
 ```
 
-## Performance Requirements
+## Dependencies
 
-### Response Time Targets
-- Individual stock quote: < 100ms
-- Historical data (1 year): < 500ms
-- Bulk upload (1000 records): < 5 seconds
-- Search queries: < 200ms
+The API project references:
 
-### Scalability Considerations
-- Support for 10,000+ stock symbols
-- Handle 1M+ daily price records
-- Concurrent upload processing
-- Read-heavy workload optimization
+- **AiStockTradeApp.Entities** - Domain models and DTOs
+- **AiStockTradeApp.DataAccess** - Entity Framework data access layer  
+- **AiStockTradeApp.Services** - Business logic and external API integrations
 
-## Security & Validation
+## Running the API
 
-### Input Validation
-- Ticker symbol format validation
-- Date range validation
-- Numeric data validation
-- File size and type restrictions
+### Development
 
-### Rate Limiting
-- Implement rate limiting per API key
-- Different limits for different endpoints
-- Configurable rate limits
+```bash
+# From the API project directory
+dotnet run
 
-### Authentication (Optional)
-- API key authentication
-- JWT token support
-- Role-based access control
+# Or from solution root
+dotnet run --project AiStockTradeApp.Api
+```
 
-## Testing Requirements
+The API will be available at:
+- HTTPS: `https://localhost:7043`
+- HTTP: `http://localhost:5043`
 
-### Unit Tests
-- Service layer testing
-- Repository pattern testing
-- Validation logic testing
-- Mapping logic testing
+### Docker
 
-### Integration Tests
-- Database integration tests
-- API endpoint tests
-- File upload tests
-- Performance tests
+```bash
+# Build container
+docker build -t ai-stock-api .
 
-## Documentation Requirements
+# Run container
+docker run -p 5043:8080 ai-stock-api
+```
 
-### API Documentation
-- Swagger/OpenAPI specification
-- Interactive API explorer
-- Example requests/responses
-- Error code documentation
+## API Documentation
 
-### Development Documentation
-- Setup instructions
-- Database migration guide
-- Deployment instructions
-- Performance tuning guide
+When running in Development mode, Swagger UI is available at:
+- `https://localhost:7043/swagger`
 
-## Deployment Configuration
+The OpenAPI specification provides interactive documentation for all available endpoints.
 
-### Environment Setup
-- Development, Staging, Production configurations
-- Docker containerization support
-- Health check endpoints
-- Logging and monitoring setup
+## Background Services
 
-## Success Criteria
+### Import Job Processor
 
-1. **Functional**: All endpoints working as specified
-2. **Performance**: Meeting response time targets
-3. **Reliability**: 99.9% uptime for data retrieval
-4. **Scalability**: Handle expected data volumes
-5. **Maintainability**: Clean, testable code architecture
-6. **Documentation**: Complete API and setup documentation
+Handles asynchronous processing of CSV data imports:
 
-## Getting Started
+- **Job Queuing** - Accepts import requests and queues for processing
+- **Data Parsing** - Validates and parses CSV data
+- **Batch Processing** - Efficiently inserts data in batches
+- **Error Handling** - Logs and reports processing errors
+- **Progress Tracking** - Updates job status throughout processing
 
-1. Clone the repository
-2. Configure database connection string
-3. Run Entity Framework migrations
-4. Seed initial stock symbols (optional)
-5. Start the API and navigate to Swagger UI
-6. Test with sample CSV/JSON uploads
+## Security Features
 
-This API will serve as a comprehensive stock data platform capable of handling large-scale financial data operations while maintaining high performance and reliability standards.
+- **HTTPS Enforcement** - All endpoints require secure connections
+- **Input Validation** - Validates all incoming data
+- **Error Handling** - Secure error responses without sensitive information
+- **CORS Configuration** - Configurable cross-origin request policies
+
+## Monitoring and Logging
+
+- **Application Insights Integration** - Comprehensive telemetry
+- **Structured Logging** - Detailed logging with correlation IDs
+- **Health Checks** - Endpoint health monitoring
+- **Performance Metrics** - Request timing and throughput tracking
+
+## Testing
+
+Run API tests from the solution root:
+
+```bash
+# Unit tests
+dotnet test AiStockTradeApp.Tests
+
+# Integration tests specifically for API
+dotnet test --filter "Category=Integration"
+```
+
+## Deployment
+
+### Azure App Service
+
+The API is designed for deployment to Azure App Service with:
+
+- **Managed Identity** - Secure access to Azure resources
+- **Application Insights** - Built-in monitoring
+- **Auto-scaling** - Automatic scaling based on demand
+- **Health Checks** - Automated health monitoring
+
+### Environment Variables
+
+Set these environment variables for production:
+
+```bash
+ASPNETCORE_ENVIRONMENT=Production
+ConnectionStrings__DefaultConnection="Your-SQL-Connection-String"
+ApplicationInsights__ConnectionString="Your-AI-Connection-String"
+```
+
+## Contributing
+
+When adding new endpoints:
+
+1. Follow RESTful conventions
+2. Add appropriate validation
+3. Include comprehensive error handling
+4. Update Swagger documentation
+5. Add corresponding unit tests
+6. Ensure proper logging
+
+## Related Projects
+
+- **[AiStockTradeApp](../AiStockTradeApp/)** - Web UI that consumes this API
+- **[AiStockTradeApp.Entities](../AiStockTradeApp.Entities/)** - Shared domain models
+- **[AiStockTradeApp.DataAccess](../AiStockTradeApp.DataAccess/)** - Data access layer
+- **[AiStockTradeApp.Services](../AiStockTradeApp.Services/)** - Business services

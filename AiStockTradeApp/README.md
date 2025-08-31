@@ -45,22 +45,34 @@ This application combines traditional stock market data with artificial intellig
 - **Session Storage**: In-memory session management
 
 ### Project Structure
+
 ```
 AiStockTradeApp/
 ├── Controllers/
-│   ├── StockController.cs    # Main stock operations
-│   └── HomeController.cs     # Dashboard redirects
-├── Models/
-│   ├── StockData.cs         # Core stock data model
-│   └── ViewModels.cs        # Dashboard and UI models
+│   ├── StockController.cs       # Main stock operations
+│   ├── HomeController.cs        # Dashboard and redirects
+│   ├── AccountController.cs     # User account management
+│   ├── ListedStocksController.cs # Listed stocks data
+│   ├── VersionController.cs     # Application version info
+│   └── DiagnosticsController.cs # System diagnostics
+├── ViewModels/
+│   ├── DashboardViewModel.cs    # Dashboard data models
+│   ├── StockViewModel.cs        # Stock display models
+│   └── ErrorViewModel.cs        # Error page models
 ├── Services/
-│   ├── StockDataService.cs  # External API integration
-│   ├── AIAnalysisService.cs # AI-powered analysis
-│   └── WatchlistService.cs  # Portfolio management
+│   └── ApiStockDataServiceClient.cs # HTTP client for API calls
 ├── Views/
-│   ├── Stock/              # Stock-related views
-│   └── Shared/             # Shared layouts
-└── wwwroot/                # Static assets (CSS, JS)
+│   ├── Stock/                   # Stock-related views
+│   ├── Home/                    # Dashboard views
+│   ├── Account/                 # Account management views
+│   └── Shared/                  # Shared layouts and partials
+├── Resources/                   # Localization resources
+├── Middleware/                  # Custom middleware
+├── wwwroot/                     # Static assets (CSS, JS, images)
+│   ├── css/                     # Custom stylesheets
+│   ├── js/                      # JavaScript files
+│   └── lib/                     # Third-party libraries
+└── Properties/                  # Launch settings
 ```
 
 ## 🔧 Setup & Installation
