@@ -132,6 +132,9 @@ namespace AiStockTradeApp.DataAccess
                 
                 entity.Property(e => e.AddedAt)
                     .HasDefaultValueSql("GETUTCDATE()");
+
+                // Ignore the navigation property to prevent EF from creating ApplicationUser table
+                entity.Ignore(e => e.User);
             });
 
             // Configure UserPriceAlert entity
@@ -156,6 +159,9 @@ namespace AiStockTradeApp.DataAccess
                 
                 entity.Property(e => e.CreatedAt)
                     .HasDefaultValueSql("GETUTCDATE()");
+
+                // Ignore the navigation property to prevent EF from creating ApplicationUser table
+                entity.Ignore(e => e.User);
             });
         }
     }
