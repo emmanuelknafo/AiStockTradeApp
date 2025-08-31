@@ -9,20 +9,19 @@
 <div class="container">
     <div class="row justify-content-center">
         <div class="col-md-8 col-lg-6">
-            <div class="card shadow">
-                <div class="card-header bg-info text-white">
-                    <h3 class="mb-0">
+            <div class="stock-card" style="margin-top:40px;">
+                <div class="app-header" style="border-bottom:none; padding-bottom:0; margin-bottom:0;">
+                    <h2 style="font-size:2rem; margin:0;">
                         <i class="fas fa-user-cog me-2"></i>
                         @Localizer["Account_Profile_Title"]
-                    </h3>
+                    </h2>
                 </div>
-                <div class="card-body">
+                <div class="card-body" style="padding-top:0;">
                     @if (!string.IsNullOrEmpty(ViewBag.Message))
                     {
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <div class="notification success" style="position:relative; margin-bottom:20px; animation:none;">
                             <i class="fas fa-check-circle me-2"></i>
                             @ViewBag.Message
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
                     }
 
@@ -103,7 +102,7 @@
                         </div>
 
                         <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                            <button type="submit" class="btn btn-primary">
+                            <button type="submit" class="btn btn-primary" style="padding:12px 24px; font-size:1.1rem; border-radius:8px;">
                                 <i class="fas fa-save me-2"></i>
                                 @Localizer["Account_Profile_SaveButton"]
                             </button>
