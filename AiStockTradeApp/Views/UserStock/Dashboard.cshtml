@@ -152,7 +152,8 @@
             autoRefresh: @Model.Settings.AutoRefresh.ToString().ToLower(),
             soundNotifications: @Model.Settings.SoundNotifications.ToString().ToLower(),
             showCharts: @Model.Settings.ShowCharts.ToString().ToLower(),
-            theme: '@Model.Settings.Theme'
+            theme: '@Model.Settings.Theme',
+            controller: 'UserStock'  // Specify which controller to use for AJAX calls
         };
     </script>
 }

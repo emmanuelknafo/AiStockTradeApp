@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
+using AiStockTradeApp.Entities;
 using AiStockTradeApp.Entities.Models;
+using AiStockTradeApp.Entities.ViewModels;
 using AiStockTradeApp.Services.Interfaces;
 using Microsoft.Extensions.Localization;
 using AiStockTradeApp.Services;
+using System.Text.Json;
 
 namespace AiStockTradeApp.Controllers
 {
@@ -53,9 +56,30 @@ namespace AiStockTradeApp.Controllers
             if (User.Identity?.IsAuthenticated == true)
             {
                 var user = await _userManager.GetUserAsync(User);
-                return user?.Id;
+                if (user != null)
+                {
+                    return user.Id;
+                }
+                else
+                {
+                    // User is authenticated but doesn't exist in database - this can happen
+                    // if the database was reset but auth cookies remain. Log this issue.
+                    _logger.LogWarning("Authenticated user not found in database. Authentication cookie may be stale. User: {UserName}", 
+                        User.Identity.Name);
+                }
             }
             return null;
+        }
+
+        /// <summary>
+        /// Get user and session IDs with fallback logic for stale authentication
+        /// </summary>
+        private async Task<(string? userId, string? sessionId)> GetUserAndSessionAsync()
+        {
+            var userId = await GetUserIdAsync();
+            // If user is authenticated but doesn't exist in DB, fall back to session storage
+            var sessionId = (userId == null) ? GetSessionId() : null;
+            return (userId, sessionId);
         }
 
         /// <summary>
@@ -109,23 +133,28 @@ namespace AiStockTradeApp.Controllers
         /// Add stock to user's persistent watchlist or session
         /// </summary>
         [HttpPost]
-        public async Task<IActionResult> AddStock([FromBody] string symbol)
+        public async Task<IActionResult> AddStock([FromBody] AddStockRequest request)
         {
             try
             {
-                if (string.IsNullOrEmpty(symbol))
+                if (!ModelState.IsValid || request?.Symbol == null)
                 {
-                    return Json(new { success = false, message = _localizer["Error_InvalidSymbol"] });
+                    return Json(new { success = false, message = _localizer["Error_InvalidSymbol"].Value });
                 }
 
-                var userId = await GetUserIdAsync();
-                var sessionId = User.Identity?.IsAuthenticated == true ? null : GetSessionId();
+                var symbol = request.Symbol.ToUpper().Trim();
+                var (userId, sessionId) = await GetUserAndSessionAsync();
+                
+                _logger.LogInformation("AddStock called for {Symbol}. UserId: {UserId}, SessionId: {SessionId}", 
+                    symbol, userId ?? "[null]", sessionId ?? "[null]");
 
                 // Validate that the stock exists
                 var stockQuote = await _stockDataService.GetStockQuoteAsync(symbol);
                 if (!stockQuote.Success || stockQuote.Data == null)
                 {
-                    return Json(new { success = false, message = _localizer["Error_StockNotFound"] });
+                    _logger.LogWarning("Failed to get stock quote for {Symbol}. Success: {Success}, ErrorMessage: {ErrorMessage}", 
+                        symbol, stockQuote.Success, stockQuote.ErrorMessage);
+                    return Json(new { success = false, message = stockQuote.ErrorMessage ?? _localizer["Error_StockNotFound"].Value });
                 }
 
                 await _userWatchlistService.AddToWatchlistAsync(symbol, userId, sessionId);
@@ -154,7 +183,7 @@ namespace AiStockTradeApp.Controllers
                 return Json(new
                 {
                     success = true,
-                    message = _localizer["Success_StockAdded", symbol.ToUpper()],
+                    message = _localizer["Success_StockAdded", symbol.ToUpper()].Value,
                     stockData = new
                     {
                         symbol = stockQuote.Data.Symbol,
@@ -173,8 +202,8 @@ namespace AiStockTradeApp.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error adding stock {Symbol}", symbol);
-                return Json(new { success = false, message = _localizer["Error_AddingStock"] });
+                _logger.LogError(ex, "Error adding stock {Symbol}", request?.Symbol);
+                return Json(new { success = false, message = ex.Message });
             }
         }
 
@@ -182,12 +211,16 @@ namespace AiStockTradeApp.Controllers
         /// Remove stock from user's watchlist
         /// </summary>
         [HttpPost]
-        public async Task<IActionResult> RemoveStock([FromBody] string symbol)
+        public async Task<IActionResult> RemoveStock(string symbol)
         {
             try
             {
-                var userId = await GetUserIdAsync();
-                var sessionId = User.Identity?.IsAuthenticated == true ? null : GetSessionId();
+                if (string.IsNullOrEmpty(symbol))
+                {
+                    return Json(new { success = false, message = _localizer["Error_InvalidSymbol"].Value });
+                }
+
+                var (userId, sessionId) = await GetUserAndSessionAsync();
 
                 await _userWatchlistService.RemoveFromWatchlistAsync(symbol, userId, sessionId);
 
@@ -200,12 +233,12 @@ namespace AiStockTradeApp.Controllers
                     _logger.LogInformation("Session {SessionId} removed {Symbol} from session watchlist", sessionId, symbol);
                 }
 
-                return Json(new { success = true, message = _localizer["Success_StockRemoved", symbol.ToUpper()] });
+                return Json(new { success = true, message = _localizer["Success_StockRemoved", symbol.ToUpper()].Value });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error removing stock {Symbol}", symbol);
-                return Json(new { success = false, message = _localizer["Error_RemovingStock"] });
+                return Json(new { success = false, message = _localizer["Error_RemovingStock"].Value });
             }
         }
 
@@ -231,12 +264,12 @@ namespace AiStockTradeApp.Controllers
                     _logger.LogInformation("Session {SessionId} cleared session watchlist", sessionId);
                 }
 
-                return Json(new { success = true, message = _localizer["Success_WatchlistCleared"] });
+                return Json(new { success = true, message = _localizer["Success_WatchlistCleared"].Value });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error clearing watchlist");
-                return Json(new { success = false, message = _localizer["Error_ClearingWatchlist"] });
+                return Json(new { success = false, message = _localizer["Error_ClearingWatchlist"].Value });
             }
         }
 
@@ -301,7 +334,7 @@ namespace AiStockTradeApp.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting watchlist");
-                return Json(new { success = false, message = _localizer["Error_LoadingWatchlist"] });
+                return Json(new { success = false, message = _localizer["Error_LoadingWatchlist"].Value });
             }
         }
 
@@ -345,7 +378,7 @@ namespace AiStockTradeApp.Controllers
             {
                 if (!ModelState.IsValid)
                 {
-                    return Json(new { success = false, message = _localizer["Error_InvalidAlert"] });
+                    return Json(new { success = false, message = _localizer["Error_InvalidAlert"].Value });
                 }
 
                 var userId = await GetUserIdAsync();
@@ -356,7 +389,7 @@ namespace AiStockTradeApp.Controllers
                 
                 if (stockItem?.StockData == null)
                 {
-                    return Json(new { success = false, message = _localizer["Error_StockNotInWatchlist"] });
+                    return Json(new { success = false, message = _localizer["Error_StockNotInWatchlist"].Value });
                 }
 
                 var currentPrice = stockItem.StockData.Price;
@@ -380,7 +413,7 @@ namespace AiStockTradeApp.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error setting alert for {Symbol}", request.Symbol);
-                return Json(new { success = false, message = _localizer["Error_SettingAlert"] });
+                return Json(new { success = false, message = _localizer["Error_SettingAlert"].Value });
             }
         }
 
@@ -566,6 +599,328 @@ namespace AiStockTradeApp.Controllers
                 _logger.LogError(ex, "Error removing item {ItemId} from watchlist", request.ItemId);
                 return Json(new { success = false, message = "Failed to remove item" });
             }
+        }
+
+        /// <summary>
+        /// Get chart data for a specific stock symbol
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetChartData(string symbol, int days = 30)
+        {
+            try
+            {
+                var chartData = await _stockDataService.GetHistoricalDataAsync(symbol, days);
+                return Json(new { success = true, data = chartData });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching chart data for {Symbol}", symbol);
+                return Json(new { success = false, message = _localizer["Error_FetchingChartData"].Value });
+            }
+        }
+
+        /// <summary>
+        /// Get stock symbol suggestions for search
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetSuggestions(string query)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(query))
+                {
+                    return Json(new List<string>());
+                }
+
+                var userId = await GetUserIdAsync();
+                var sessionId = User.Identity?.IsAuthenticated == true ? null : GetSessionId();
+                var watchlist = await _userWatchlistService.GetWatchlistAsync(userId, sessionId);
+                var existingSymbols = watchlist.Select(w => w.Symbol.ToUpper()).ToHashSet();
+
+                var suggestions = await _stockDataService.GetStockSuggestionsAsync(query);
+                
+                // Filter out symbols already in watchlist
+                var filteredSuggestions = suggestions.Where(s => !existingSymbols.Contains(s)).ToList();
+                
+                return Json(filteredSuggestions);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting suggestions for query: {Query}", query);
+                return Json(new List<string>());
+            }
+        }
+
+        /// <summary>
+        /// Export watchlist data as CSV
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> ExportCsv()
+        {
+            try
+            {
+                var userId = await GetUserIdAsync();
+                var sessionId = User.Identity?.IsAuthenticated == true ? null : GetSessionId();
+                var watchlist = await _userWatchlistService.GetWatchlistAsync(userId, sessionId);
+                
+                // Load current stock data for export
+                foreach (var item in watchlist)
+                {
+                    try
+                    {
+                        var stockQuote = await _stockDataService.GetStockQuoteAsync(item.Symbol);
+                        item.StockData = stockQuote.Data;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to load stock data for export: {Symbol}", item.Symbol);
+                    }
+                }
+                
+                var csv = GenerateCsv(watchlist);
+                var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+                
+                return File(bytes, "text/csv", $"watchlist_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting CSV");
+                return Json(new { success = false, message = _localizer["Error_ExportingCsv"].Value });
+            }
+        }
+
+        /// <summary>
+        /// Export watchlist data as JSON
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> ExportJson()
+        {
+            try
+            {
+                var userId = await GetUserIdAsync();
+                var sessionId = User.Identity?.IsAuthenticated == true ? null : GetSessionId();
+                var watchlist = await _userWatchlistService.GetWatchlistAsync(userId, sessionId);
+                var alerts = await _userWatchlistService.GetAlertsAsync(userId, sessionId);
+                var portfolio = await _userWatchlistService.CalculatePortfolioSummaryAsync(watchlist);
+                
+                // Load current stock data for export
+                foreach (var item in watchlist)
+                {
+                    try
+                    {
+                        var stockQuote = await _stockDataService.GetStockQuoteAsync(item.Symbol);
+                        item.StockData = stockQuote.Data;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to load stock data for export: {Symbol}", item.Symbol);
+                    }
+                }
+
+                var exportData = new ExportData
+                {
+                    Watchlist = watchlist,
+                    Portfolio = portfolio,
+                    ExportDate = DateTime.UtcNow,
+                    Version = "1.0"
+                };
+                
+                var json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions 
+                { 
+                    WriteIndented = true,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+                var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                
+                return File(bytes, "application/json", $"watchlist_{DateTime.Now:yyyyMMdd_HHmmss}.json");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting JSON");
+                return Json(new { success = false, message = _localizer["Error_ExportingJson"] });
+            }
+        }
+
+        /// <summary>
+        /// Import watchlist data from CSV or JSON file
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> ImportData(IFormFile file)
+        {
+            try
+            {
+                if (file == null || file.Length == 0)
+                {
+                    return Json(new { success = false, message = _localizer["Error_NoFileProvided"] });
+                }
+
+                using var reader = new StreamReader(file.OpenReadStream());
+                var content = await reader.ReadToEndAsync();
+                
+                ExportData exportData;
+                
+                // Determine file type based on extension or content
+                var isJsonFile = file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+                var isCsvFile = file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
+                
+                if (isCsvFile || (!isJsonFile && content.StartsWith("Ticker,") || content.Contains("Ticker,Price,Change")))
+                {
+                    // Parse CSV content
+                    exportData = ParseCsvContent(content);
+                }
+                else
+                {
+                    // Parse JSON content
+                    var deserializedData = JsonSerializer.Deserialize<ExportData>(content, new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    });
+
+                    if (deserializedData?.Watchlist == null)
+                    {
+                        return Json(new { success = false, message = _localizer["Error_InvalidJsonFormat"] });
+                    }
+                    
+                    exportData = deserializedData;
+                }
+
+                var userId = await GetUserIdAsync();
+                var sessionId = User.Identity?.IsAuthenticated == true ? null : GetSessionId();
+
+                // Import the data using our service
+                foreach (var item in exportData.Watchlist)
+                {
+                    try
+                    {
+                        await _userWatchlistService.AddToWatchlistAsync(item.Symbol, userId, sessionId);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Skip if already exists
+                        continue;
+                    }
+                }
+                
+                return Json(new { success = true, message = _localizer["Success_DataImported", exportData.Watchlist.Count] });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importing data");
+                return Json(new { success = false, message = _localizer["Error_ImportingData"] + ": " + ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Generate CSV content from watchlist
+        /// </summary>
+        private static string GenerateCsv(List<WatchlistItem> watchlist)
+        {
+            var lines = new List<string>
+            {
+                "Ticker,Price,Change,Percent,Recommendation,Analysis"
+            };
+
+            foreach (var item in watchlist.Where(w => w.StockData != null))
+            {
+                var data = item.StockData!;
+                lines.Add($"{data.Symbol},{data.Price},{data.Change},{data.PercentChange},{data.Recommendation ?? "N/A"},{data.AIAnalysis ?? "N/A"}");
+            }
+
+            return string.Join("\n", lines);
+        }
+
+        /// <summary>
+        /// Parse CSV content into ExportData
+        /// </summary>
+        private static ExportData ParseCsvContent(string csvContent)
+        {
+            var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            var watchlist = new List<WatchlistItem>();
+
+            // Skip header line
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i].Trim();
+                if (string.IsNullOrEmpty(line)) continue;
+
+                var parts = SplitCsvLine(line);
+                if (parts.Length >= 6)
+                {
+                    try
+                    {
+                        var symbol = parts[0].Trim();
+                        var price = decimal.Parse(parts[1].Trim());
+                        var change = decimal.Parse(parts[2].Trim());
+                        var percent = parts[3].Trim();
+                        var recommendation = parts[4].Trim();
+                        var analysis = parts[5].Trim();
+
+                        var stockData = new StockData
+                        {
+                            Symbol = symbol,
+                            Price = price,
+                            Change = change,
+                            PercentChange = percent,
+                            Recommendation = recommendation == "N/A" ? null : recommendation,
+                            AIAnalysis = analysis == "N/A" ? null : analysis,
+                            LastUpdated = DateTime.UtcNow,
+                            CompanyName = symbol
+                        };
+
+                        watchlist.Add(new WatchlistItem
+                        {
+                            Symbol = symbol,
+                            StockData = stockData,
+                            AddedDate = DateTime.UtcNow
+                        });
+                    }
+                    catch
+                    {
+                        // Skip invalid lines and continue
+                        continue;
+                    }
+                }
+            }
+
+            return new ExportData
+            {
+                Watchlist = watchlist,
+                Portfolio = new PortfolioSummary(),
+                ExportDate = DateTime.UtcNow,
+                Version = "1.0"
+            };
+        }
+
+        /// <summary>
+        /// Split CSV line respecting quoted fields
+        /// </summary>
+        private static string[] SplitCsvLine(string line)
+        {
+            var result = new List<string>();
+            var currentField = new System.Text.StringBuilder();
+            bool inQuotes = false;
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+
+                if (c == '"')
+                {
+                    inQuotes = !inQuotes;
+                }
+                else if (c == ',' && !inQuotes)
+                {
+                    result.Add(currentField.ToString());
+                    currentField.Clear();
+                }
+                else
+                {
+                    currentField.Append(c);
+                }
+            }
+
+            result.Add(currentField.ToString());
+            return result.ToArray();
         }
     }
 

@@ -145,11 +145,18 @@ namespace AiStockTradeApp.Services
                 ["Error_StockNotInWatchlist"] = "Stock not found in watchlist",
                 ["Error_SettingAlert"] = "Error setting price alert",
                 ["Error_LoadingWatchlistManagement"] = "Error loading watchlist management",
+                ["Error_FetchingChartData"] = "Error fetching chart data",
+                ["Error_ExportingCsv"] = "Error exporting CSV",
+                ["Error_ExportingJson"] = "Error exporting JSON",
+                ["Error_NoFileProvided"] = "No file provided",
+                ["Error_InvalidJsonFormat"] = "Invalid JSON file format",
+                ["Error_ImportingData"] = "Error importing data",
 
                 ["Success_StockAdded"] = "Added {0} to watchlist",
                 ["Success_StockRemoved"] = "Removed {0} from watchlist", 
                 ["Success_WatchlistCleared"] = "Watchlist cleared successfully",
-                ["Success_AlertSet"] = "Alert set: {0} {1} ${2}"
+                ["Success_AlertSet"] = "Alert set: {0} {1} ${2}",
+                ["Success_DataImported"] = "Data imported successfully: {0} stocks added"
             };
 
             // French translations
@@ -281,11 +288,18 @@ namespace AiStockTradeApp.Services
                 ["Error_StockNotInWatchlist"] = "Action non trouvée dans la liste de surveillance",
                 ["Error_SettingAlert"] = "Erreur lors de la configuration de l'alerte de prix",
                 ["Error_LoadingWatchlistManagement"] = "Erreur lors du chargement de la gestion de la liste de surveillance",
+                ["Error_FetchingChartData"] = "Erreur lors de la récupération des données de graphique",
+                ["Error_ExportingCsv"] = "Erreur lors de l'exportation CSV",
+                ["Error_ExportingJson"] = "Erreur lors de l'exportation JSON",
+                ["Error_NoFileProvided"] = "Aucun fichier fourni",
+                ["Error_InvalidJsonFormat"] = "Format de fichier JSON invalide",
+                ["Error_ImportingData"] = "Erreur lors de l'importation des données",
 
                 ["Success_StockAdded"] = "{0} ajouté à la liste de surveillance",
                 ["Success_StockRemoved"] = "{0} supprimé de la liste de surveillance",
                 ["Success_WatchlistCleared"] = "Liste de surveillance effacée avec succès",
-                ["Success_AlertSet"] = "Alerte configurée : {0} {1} ${2}"
+                ["Success_AlertSet"] = "Alerte configurée : {0} {1} ${2}",
+                ["Success_DataImported"] = "Données importées avec succès : {0} actions ajoutées"
             };
         }
 

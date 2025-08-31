@@ -74,6 +74,9 @@ namespace AiStockTradeApp.Services.Implementations
         {
             try
             {
+                _logger.LogInformation("AddToWatchlistAsync called for {Symbol}. UserId: {UserId}, SessionId: {SessionId}", 
+                    symbol, userId ?? "[null]", sessionId ?? "[null]");
+                    
                 if (!string.IsNullOrEmpty(userId))
                 {
                     // Add to user's persistent watchlist
