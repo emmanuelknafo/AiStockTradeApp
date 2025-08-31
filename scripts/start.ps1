@@ -242,6 +242,22 @@ function Start-LocalProcesses {
   if (-not (Test-Path $apiProj)) { throw "API project not found: $apiProj" }
   if (-not (Test-Path $uiProj))  { throw "UI project not found: $uiProj" }
 
+  # Clean shutdown of any existing dotnet processes to avoid file locks
+  Write-Host 'Performing clean shutdown of existing dotnet processes...' -ForegroundColor Yellow
+  try {
+    $dotnetProcesses = Get-Process -Name 'dotnet' -ErrorAction SilentlyContinue
+    if ($dotnetProcesses) {
+      Write-Host "Found $($dotnetProcesses.Count) dotnet process(es), terminating..." -ForegroundColor Yellow
+      & taskkill /f /im dotnet.exe | Out-Null
+      Start-Sleep -Seconds 2  # Wait for processes to fully terminate
+      Write-Host 'Existing dotnet processes terminated.' -ForegroundColor Green
+    } else {
+      Write-Host 'No existing dotnet processes found.' -ForegroundColor Green
+    }
+  } catch {
+    Write-Warning "Could not clean up existing dotnet processes: $($_.Exception.Message)"
+  }
+
   Enable-DevHttpsCert
 
   $cs = "Server=$SqlServer;Database=$SqlDatabase;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true"

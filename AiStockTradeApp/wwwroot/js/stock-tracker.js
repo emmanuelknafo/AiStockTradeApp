@@ -13,18 +13,24 @@ class StockTracker {
     }
 
     init() {
-        this.setupEventListeners();
-        this.initializeTheme();
-        this.initializeAutoRefresh();
-        this.initializeSearchSuggestions();
-        this.setupKeyboardShortcuts();
-        this.loadSettings();
-        
-        // Initialize charts after everything else is ready
-        setTimeout(() => {
-            console.log('Delayed chart initialization...');
-            this.initializeCharts();
-        }, 100);
+        try {
+            this.setupEventListeners();
+            this.initializeTheme();
+            this.initializeAutoRefresh();
+            this.initializeSearchSuggestions();
+            this.setupKeyboardShortcuts();
+            this.loadSettings();
+            
+            // Initialize charts after everything else is ready
+            setTimeout(() => {
+                console.log('Delayed chart initialization...');
+                this.initializeCharts();
+            }, 100);
+        } catch (error) {
+            console.error('Error during StockTracker initialization:', error);
+            // Continue without charts if there's an initialization error
+            this.showNotification('Application initialized with limited functionality', 'info');
+        }
     }
 
     setupEventListeners() {
@@ -623,40 +629,50 @@ class StockTracker {
 
     // Chart Management Methods
     initializeCharts() {
-        console.log('initializeCharts called - config.showCharts:', this.config.showCharts);
-        console.log('Current config:', this.config);
-        
-        if (!this.config.showCharts) {
-            console.log('Charts disabled in config');
-            return;
-        }
-        
-        // Check if Chart.js is available
-        if (typeof Chart === 'undefined') {
-            console.warn('Chart.js not loaded - charts will not be displayed');
-            return;
-        }
-        
-        console.log('Chart.js is available, looking for stock cards...');
-        
-        // Initialize charts for all existing stock cards
-        const stockCards = document.querySelectorAll('.stock-card');
-        console.log('Found', stockCards.length, 'stock cards');
-        
-        stockCards.forEach(card => {
-            const symbol = card.id.replace('card-', '');
-            const canvas = card.querySelector(`canvas[id="chart-${symbol}"]`);
-            console.log(`Card ${symbol}: canvas found =`, !!canvas, canvas);
+        try {
+            console.log('initializeCharts called - config.showCharts:', this.config.showCharts);
+            console.log('Current config:', this.config);
             
-            if (canvas && !this.charts.has(symbol)) {
-                console.log(`Creating chart for ${symbol}`);
-                this.createChart(symbol, canvas);
-            } else if (this.charts.has(symbol)) {
-                console.log(`Chart for ${symbol} already exists`);
-            } else if (!canvas) {
-                console.log(`No canvas found for ${symbol} - ShowCharts might be disabled or canvas not rendered`);
+            if (!this.config.showCharts) {
+                console.log('Charts disabled in config');
+                return;
             }
-        });
+            
+            // Check if Chart.js is available
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js not loaded - charts will not be displayed');
+                return;
+            }
+            
+            console.log('Chart.js is available, looking for stock cards...');
+            
+            // Initialize charts for all existing stock cards
+            const stockCards = document.querySelectorAll('.stock-card');
+            console.log('Found', stockCards.length, 'stock cards');
+            
+            stockCards.forEach(card => {
+                try {
+                    const symbol = card.id.replace('card-', '');
+                    const canvas = card.querySelector(`canvas[id="chart-${symbol}"]`);
+                    console.log(`Card ${symbol}: canvas found =`, !!canvas, canvas);
+                    
+                    if (canvas && !this.charts.has(symbol)) {
+                        console.log(`Creating chart for ${symbol}`);
+                        this.createChart(symbol, canvas);
+                    } else if (this.charts.has(symbol)) {
+                        console.log(`Chart for ${symbol} already exists`);
+                    } else if (!canvas) {
+                        console.log(`No canvas found for ${symbol} - ShowCharts might be disabled or canvas not rendered`);
+                    }
+                } catch (error) {
+                    console.error(`Error initializing chart for card:`, error);
+                    // Continue with other charts
+                }
+            });
+        } catch (error) {
+            console.error('Error in initializeCharts:', error);
+            // Charts failed to initialize, but app should continue working
+        }
     }
     
     // Method to manually trigger chart initialization (for debugging)

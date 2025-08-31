@@ -1,0 +1,785 @@
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<SharedResource> Localizer
+@using AiStockTradeApp.Entities.Models
+
+@{
+    ViewData["Title"] = "Manage Your Watchlist";
+    var userWatchlistItems = ViewBag.UserWatchlistItems as List<UserWatchlistItem> ?? new List<UserWatchlistItem>();
+    var userAlerts = ViewBag.UserAlerts as List<UserPriceAlert> ?? new List<UserPriceAlert>();
+}
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="mb-0">
+                    <i class="fas fa-star text-warning me-2"></i>
+                    Manage Your Watchlist
+                </h1>
+                <a href="@Url.Action("Dashboard", "UserStock")" class="btn btn-outline-primary">
+                    <i class="fas fa-arrow-left me-1"></i>
+                    Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(ViewBag.ErrorMessage as string))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            @ViewBag.ErrorMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <div class="row">
+        <!-- Watchlist Management -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list me-2"></i>
+                        Your Watchlist (@userWatchlistItems.Count items)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @if (userWatchlistItems.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Symbol</th>
+                                        <th>Alias</th>
+                                        <th>Added</th>
+                                        <th>Target Price</th>
+                                        <th>Alerts</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="watchlist-table-body">
+                                    @foreach (var item in userWatchlistItems)
+                                    {
+                                        <tr data-item-id="@item.Id">
+                                            <td>
+                                                <strong class="text-primary">@item.Symbol</strong>
+                                            </td>
+                                            <td>
+                                                <div class="alias-container">
+                                                    <span class="alias-display" onclick="editAlias(@item.Id, '@item.Symbol')">
+                                                        @(string.IsNullOrEmpty(item.Alias) ? "Click to add alias..." : item.Alias)
+                                                    </span>
+                                                    <input type="text" class="form-control form-control-sm alias-input d-none" 
+                                                           value="@item.Alias" 
+                                                           onblur="saveAlias(@item.Id, this.value)"
+                                                           onkeypress="handleAliasKeyPress(event, @item.Id, this.value)" />
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">
+                                                    @item.AddedAt.ToString("MMM dd, yyyy")
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <div class="target-price-container">
+                                                    <span class="target-price-display" onclick="editTargetPrice(@item.Id, '@item.Symbol')">
+                                                        @(item.TargetPrice.HasValue ? $"${item.TargetPrice.Value:F2}" : "Click to set...")
+                                                    </span>
+                                                    <input type="number" step="0.01" class="form-control form-control-sm target-price-input d-none" 
+                                                           value="@(item.TargetPrice?.ToString("F2"))"
+                                                           onblur="saveTargetPrice(@item.Id, this.value)"
+                                                           onkeypress="handleTargetPriceKeyPress(event, @item.Id, this.value)" />
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" 
+                                                           @(item.EnableAlerts ? "checked" : "")
+                                                           onchange="toggleAlerts(@item.Id, this.checked)">
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline-danger" 
+                                                        onclick="removeFromWatchlist('@item.Symbol', @item.Id)">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-5">
+                            <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">Your watchlist is empty</h5>
+                            <p class="text-muted">Start by adding some stocks to track their performance</p>
+                            <a href="@Url.Action("Dashboard", "UserStock")" class="btn btn-primary">
+                                <i class="fas fa-plus me-1"></i>
+                                Add Stocks
+                            </a>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Price Alerts -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bell me-2"></i>
+                        Active Alerts (@userAlerts.Count)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    @if (userAlerts.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var alert in userAlerts)
+                            {
+                                <div class="list-group-item border-0 px-0">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1 text-primary">@alert.Symbol</h6>
+                                            <p class="mb-1 small">
+                                                Alert when price is <strong>@alert.AlertType</strong> 
+                                                <strong class="text-success">$@alert.TargetValue.ToString("F2")</strong>
+                                            </p>
+                                            <small class="text-muted">
+                                                Created: @alert.CreatedAt.ToString("MMM dd, yyyy")
+                                            </small>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-danger ms-2" 
+                                                onclick="removeAlert('@alert.Symbol', @alert.TargetValue, @alert.Id)">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-4">
+                            <i class="fas fa-bell-slash fa-2x text-muted mb-3"></i>
+                            <p class="text-muted mb-0">No active alerts</p>
+                            <small class="text-muted">Set price alerts from your watchlist</small>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Watchlist Statistics -->
+            <div class="card shadow-sm mt-3">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Statistics
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="border-end">
+                                <h4 class="text-primary mb-0">@userWatchlistItems.Count</h4>
+                                <small class="text-muted">Stocks</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <h4 class="text-warning mb-0">@userAlerts.Count</h4>
+                            <small class="text-muted">Alerts</small>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row text-center">
+                        <div class="col-12">
+                            <small class="text-muted">
+                                With alerts: @userWatchlistItems.Count(w => w.EnableAlerts)
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading spinner overlay - Initially hidden by default -->
+<div id="loading-overlay" style="display: none;" class="d-none">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+// Ensure page is properly initialized
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('ManageWatchlist page loaded');
+    
+    // Force hide loading overlay with multiple methods
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.classList.add('d-none');
+        loadingOverlay.style.display = 'none';
+        console.log('Loading overlay forcefully hidden');
+        
+        // Double-check it's hidden
+        setTimeout(() => {
+            const computedStyle = window.getComputedStyle(loadingOverlay);
+            console.log('Loading overlay display after timeout:', computedStyle.display);
+            if (computedStyle.display !== 'none') {
+                console.warn('Loading overlay still visible! Forcing hide again...');
+                loadingOverlay.style.display = 'none !important';
+                loadingOverlay.remove(); // Nuclear option
+            }
+        }, 100);
+    } else {
+        console.log('Loading overlay element not found');
+    }
+    
+    // Check if user has watchlist items
+    const watchlistTableBody = document.getElementById('watchlist-table-body');
+    if (watchlistTableBody) {
+        console.log('User has watchlist items - table found');
+    } else {
+        console.log('User has empty watchlist - showing empty state');
+    }
+    
+    // Verify anti-forgery token is present
+    const antiForgeryToken = document.querySelector('[name="__RequestVerificationToken"]');
+    if (antiForgeryToken) {
+        console.log('Anti-forgery token found');
+    } else {
+        console.warn('Anti-forgery token missing - AJAX operations may fail');
+    }
+    
+    console.log('ManageWatchlist initialization complete');
+});
+
+    // Edit alias functionality
+    function editAlias(itemId, symbol) {
+        const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+        const display = row.querySelector('.alias-display');
+        const input = row.querySelector('.alias-input');
+        
+        display.classList.add('d-none');
+        input.classList.remove('d-none');
+        input.focus();
+        input.select();
+    }
+
+    function saveAlias(itemId, alias) {
+        const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+        const display = row.querySelector('.alias-display');
+        const input = row.querySelector('.alias-input');
+        
+        // Show loading
+        showLoading();
+        
+        fetch('@Url.Action("SetItemAlias", "UserStock")', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': document.querySelector('[name="__RequestVerificationToken"]')?.value || ''
+            },
+            body: JSON.stringify({ itemId: itemId, alias: alias })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                display.textContent = alias || 'Click to add alias...';
+                showSuccess('Alias updated successfully');
+            } else {
+                showError(data.message || 'Error updating alias');
+            }
+        })
+        .catch(error => {
+            showError('Error updating alias');
+            console.error('Error:', error);
+        })
+        .finally(() => {
+            hideLoading();
+            display.classList.remove('d-none');
+            input.classList.add('d-none');
+        });
+    }
+
+    function handleAliasKeyPress(event, itemId, value) {
+        if (event.key === 'Enter') {
+            event.target.blur();
+        } else if (event.key === 'Escape') {
+            const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+            const display = row.querySelector('.alias-display');
+            const input = row.querySelector('.alias-input');
+            
+            display.classList.remove('d-none');
+            input.classList.add('d-none');
+        }
+    }
+
+    // Edit target price functionality
+    function editTargetPrice(itemId, symbol) {
+        const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+        const display = row.querySelector('.target-price-display');
+        const input = row.querySelector('.target-price-input');
+        
+        display.classList.add('d-none');
+        input.classList.remove('d-none');
+        input.focus();
+        input.select();
+    }
+
+    function saveTargetPrice(itemId, targetPrice) {
+        const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+        const display = row.querySelector('.target-price-display');
+        const input = row.querySelector('.target-price-input');
+        
+        const price = parseFloat(targetPrice) || null;
+        
+        // Show loading
+        showLoading();
+        
+        fetch('@Url.Action("SetItemTargetPrice", "UserStock")', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': document.querySelector('[name="__RequestVerificationToken"]')?.value || ''
+            },
+            body: JSON.stringify({ itemId: itemId, targetPrice: price })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                display.textContent = price ? `$${price.toFixed(2)}` : 'Click to set...';
+                showSuccess('Target price updated successfully');
+            } else {
+                showError(data.message || 'Error updating target price');
+            }
+        })
+        .catch(error => {
+            showError('Error updating target price');
+            console.error('Error:', error);
+        })
+        .finally(() => {
+            hideLoading();
+            display.classList.remove('d-none');
+            input.classList.add('d-none');
+        });
+    }
+
+    function handleTargetPriceKeyPress(event, itemId, value) {
+        if (event.key === 'Enter') {
+            event.target.blur();
+        } else if (event.key === 'Escape') {
+            const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+            const display = row.querySelector('.target-price-display');
+            const input = row.querySelector('.target-price-input');
+            
+            display.classList.remove('d-none');
+            input.classList.add('d-none');
+        }
+    }
+
+    // Remove from watchlist
+    function removeFromWatchlist(symbol, itemId) {
+        if (!confirm(`Are you sure you want to remove ${symbol} from your watchlist?`)) {
+            return;
+        }
+        
+        showLoading();
+        
+        fetch('@Url.Action("RemoveStock", "UserStock")', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': document.querySelector('[name="__RequestVerificationToken"]')?.value || ''
+            },
+            body: JSON.stringify(symbol)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove the row from the table
+                const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+                if (row) {
+                    row.remove();
+                }
+                showSuccess(data.message);
+                
+                // Refresh page if no items left
+                if (document.querySelectorAll('#watchlist-table-body tr').length === 0) {
+                    location.reload();
+                }
+            } else {
+                showError(data.message || 'Error removing stock');
+            }
+        })
+        .catch(error => {
+            showError('Error removing stock');
+            console.error('Error:', error);
+        })
+        .finally(() => {
+            hideLoading();
+        });
+    }
+
+    // Toggle alerts
+    function toggleAlerts(itemId, enabled) {
+        // This would require a new endpoint to update the EnableAlerts property
+        console.log(`Toggle alerts for item ${itemId}: ${enabled}`);
+        // TODO: Implement toggle alerts API call
+    }
+
+    // Remove alert
+    function removeAlert(symbol, targetPrice, alertId) {
+        if (!confirm(`Are you sure you want to remove the alert for ${symbol}?`)) {
+            return;
+        }
+        
+        showLoading();
+        
+        fetch('@Url.Action("RemoveAlert", "UserStock")', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': document.querySelector('[name="__RequestVerificationToken"]')?.value || ''
+            },
+            body: JSON.stringify({ symbol: symbol, targetPrice: targetPrice })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showSuccess('Alert removed successfully');
+                // Refresh page to update alert list
+                location.reload();
+            } else {
+                showError(data.message || 'Error removing alert');
+            }
+        })
+        .catch(error => {
+            showError('Error removing alert');
+            console.error('Error:', error);
+        })
+        .finally(() => {
+            hideLoading();
+        });
+    }
+
+    // Utility functions
+    function showLoading() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.classList.remove('d-none');
+            overlay.style.display = 'flex';
+            console.log('Loading overlay shown');
+        }
+    }
+
+    function hideLoading() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.classList.add('d-none');
+            overlay.style.display = 'none';
+            console.log('Loading overlay hidden');
+        }
+    }
+
+    function showSuccess(message) {
+        // Create and show success toast/alert
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+        alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        alert.innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alert);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (alert.parentNode) {
+                alert.parentNode.removeChild(alert);
+            }
+        }, 5000);
+    }
+
+    function showError(message) {
+        // Create and show error toast/alert
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+        alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        alert.innerHTML = `
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alert);
+        
+        // Auto-remove after 8 seconds for errors
+        setTimeout(() => {
+            if (alert.parentNode) {
+                alert.parentNode.removeChild(alert);
+            }
+        }, 8000);
+    }
+</script>
+}
+
+<style>
+    #loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9998;
+    }
+
+    #loading-overlay.d-none {
+        display: none !important;
+    }
+
+    .alias-display, .target-price-display {
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: background-color 0.2s;
+    }
+
+    .alias-display:hover, .target-price-display:hover {
+        background-color: #f8f9fa;
+    }
+
+    .alias-display:empty::before {
+        content: "Click to add alias...";
+        color: #6c757d;
+        font-style: italic;
+    }
+
+    .table th {
+        border-top: none;
+        font-weight: 600;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .card {
+        border: none;
+        border-radius: 12px;
+    }
+
+    .card-header {
+        border-radius: 12px 12px 0 0 !important;
+        border: none;
+    }
+
+    .btn {
+        border-radius: 8px;
+    }
+
+    .form-control {
+        border-radius: 6px;
+    }
+
+    .list-group-item:last-child {
+        border-bottom: none;
+    }
+</style>
+
+<script>
+// JavaScript functions for ManageWatchlist view
+function editAlias(itemId, symbol) {
+    const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+    const display = row.querySelector('.alias-display');
+    const input = row.querySelector('.alias-input');
+    
+    display.classList.add('d-none');
+    input.classList.remove('d-none');
+    input.focus();
+    input.select();
+}
+
+function saveAlias(itemId, value) {
+    // Make AJAX call to save alias
+    fetch(`/UserStock/UpdateAlias`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+        },
+        body: JSON.stringify({ itemId: itemId, alias: value })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+            const display = row.querySelector('.alias-display');
+            const input = row.querySelector('.alias-input');
+            
+            display.textContent = value || 'Click to add alias...';
+            display.classList.remove('d-none');
+            input.classList.add('d-none');
+        } else {
+            alert('Failed to save alias: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error saving alias:', error);
+        alert('Error saving alias');
+    });
+}
+
+function handleAliasKeyPress(event, itemId, value) {
+    if (event.key === 'Enter') {
+        event.target.blur();
+    } else if (event.key === 'Escape') {
+        const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+        const display = row.querySelector('.alias-display');
+        const input = row.querySelector('.alias-input');
+        
+        display.classList.remove('d-none');
+        input.classList.add('d-none');
+    }
+}
+
+function editTargetPrice(itemId, symbol) {
+    const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+    const display = row.querySelector('.target-price-display');
+    const input = row.querySelector('.target-price-input');
+    
+    display.classList.add('d-none');
+    input.classList.remove('d-none');
+    input.focus();
+    input.select();
+}
+
+function saveTargetPrice(itemId, value) {
+    // Make AJAX call to save target price
+    fetch(`/UserStock/UpdateTargetPrice`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+        },
+        body: JSON.stringify({ itemId: itemId, targetPrice: value })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+            const display = row.querySelector('.target-price-display');
+            const input = row.querySelector('.target-price-input');
+            
+            display.textContent = value ? `$${parseFloat(value).toFixed(2)}` : 'Click to set...';
+            display.classList.remove('d-none');
+            input.classList.add('d-none');
+        } else {
+            alert('Failed to save target price: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error saving target price:', error);
+        alert('Error saving target price');
+    });
+}
+
+function handleTargetPriceKeyPress(event, itemId, value) {
+    if (event.key === 'Enter') {
+        event.target.blur();
+    } else if (event.key === 'Escape') {
+        const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+        const display = row.querySelector('.target-price-display');
+        const input = row.querySelector('.target-price-input');
+        
+        display.classList.remove('d-none');
+        input.classList.add('d-none');
+    }
+}
+
+function toggleAlerts(itemId, enabled) {
+    // Make AJAX call to toggle alerts
+    fetch(`/UserStock/ToggleAlerts`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+        },
+        body: JSON.stringify({ itemId: itemId, enabled: enabled })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Failed to toggle alerts: ' + data.message);
+            // Revert the checkbox
+            const checkbox = document.querySelector(`tr[data-item-id="${itemId}"] input[type="checkbox"]`);
+            checkbox.checked = !enabled;
+        }
+    })
+    .catch(error => {
+        console.error('Error toggling alerts:', error);
+        alert('Error toggling alerts');
+        // Revert the checkbox
+        const checkbox = document.querySelector(`tr[data-item-id="${itemId}"] input[type="checkbox"]`);
+        checkbox.checked = !enabled;
+    });
+}
+
+function removeFromWatchlist(itemId, symbol) {
+    if (confirm(`Are you sure you want to remove ${symbol} from your watchlist?`)) {
+        fetch(`/UserStock/RemoveFromWatchlist`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+            },
+            body: JSON.stringify({ itemId: itemId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove the row from the table
+                const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+                if (row) {
+                    row.remove();
+                }
+                
+                // Update the count in the header
+                const tbody = document.getElementById('watchlist-table-body');
+                if (tbody) {
+                    const count = tbody.querySelectorAll('tr').length;
+                    const header = document.querySelector('.card-header h5');
+                    if (header) {
+                        header.innerHTML = `<i class="fas fa-list me-2"></i>Your Watchlist (${count} items)`;
+                    }
+                    
+                    // If no items left, reload the page to show the empty state
+                    if (count === 0) {
+                        window.location.reload();
+                    }
+                } else {
+                    // No table body exists, just reload the page
+                    window.location.reload();
+                }
+            } else {
+                alert('Failed to remove stock: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error removing stock:', error);
+            alert('Error removing stock');
+        });
+    }
+}
+</script>

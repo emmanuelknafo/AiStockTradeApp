@@ -1,0 +1,158 @@
+@model DashboardViewModel
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<SharedResource> Localizer
+@{
+    ViewData["Title"] = Localizer["Header_Title"];
+}
+
+@Html.AntiForgeryToken()
+
+<div class="container">
+    <header class="app-header">
+        <h1>@Localizer["Header_Title"]</h1>
+        <div class="header-controls">
+            <button id="theme-toggle" class="control-btn">🌙</button>
+            <button id="auto-refresh-toggle" class="control-btn">⏸️</button>
+            <button id="alerts-toggle" class="control-btn">🔔</button>
+            <button id="settings-toggle" class="control-btn">⚙️</button>
+        </div>
+    </header>
+
+    <!-- API Status -->
+    <div id="api-status" class="api-status">
+        @Localizer["Api_Status"]
+    </div>
+
+    <div class="search-bar">
+        <div class="search-container">
+            <input type="text" id="ticker-input" placeholder="@Localizer["Search_Placeholder"]" autocomplete="off" />
+            <div id="search-suggestions" class="search-suggestions"></div>
+        </div>
+    <button id="add-button">@Localizer["Btn_AddStock"]</button>
+    <button id="clear-all" class="danger-btn">@Localizer["Btn_ClearAll"]</button>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel" class="settings-panel hidden">
+    <h3>@Localizer["Settings_Title"]</h3>
+        <div class="setting-group">
+            <label>
+                <input type="checkbox" id="auto-refresh-checkbox" checked="@Model.Settings.AutoRefresh" /> @Localizer["Settings_AutoRefresh"] 
+                <select id="refresh-interval">
+                    <option value="10000" selected="@(Model.Settings.RefreshInterval == 10000)">@Localizer["Interval_10s"]</option>
+                    <option value="30000" selected="@(Model.Settings.RefreshInterval == 30000)">@Localizer["Interval_30s"]</option>
+                    <option value="60000" selected="@(Model.Settings.RefreshInterval == 60000)">@Localizer["Interval_1m"]</option>
+                    <option value="300000" selected="@(Model.Settings.RefreshInterval == 300000)">@Localizer["Interval_5m"]</option>
+                </select>
+            </label>
+        </div>
+        <div class="setting-group">
+            <label>
+                <input type="checkbox" id="sound-notifications" checked="@Model.Settings.SoundNotifications" /> @Localizer["Settings_Sound"]
+            </label>
+        </div>
+        <div class="setting-group">
+            <label>
+                <input type="checkbox" id="show-charts" checked="@Model.Settings.ShowCharts" /> @Localizer["Settings_ShowCharts"]
+            </label>
+        </div>
+    </div>
+
+    <!-- Watchlist -->
+    <div id="watchlist" class="watchlist">
+        @foreach (var item in Model.Watchlist)
+        {
+            <div class="stock-card" id="card-@item.Symbol">
+                <div class="card-header">
+                    <h2>@item.Symbol</h2>
+                    <button class="remove-button" data-ticker="@item.Symbol" title="Remove @item.Symbol">&times;</button>
+                </div>
+                <div class="card-body">
+                    @if (item.StockData != null)
+                    {
+                        <p class="price">@Localizer["Stock_Price"]: <span>$@item.StockData.Price.ToString("F2")</span></p>
+                        <p class="change @item.StockData.ChangeClass">@Localizer["Stock_Change"]: <span>@item.StockData.ChangePrefix$@Math.Abs(item.StockData.Change).ToString("F2")</span></p>
+                        <p class="percent @item.StockData.ChangeClass">@Localizer["Stock_Percent"]: <span>@item.StockData.PercentChange</span></p>
+                        @if (Model.Settings.ShowCharts)
+                        {
+                            <div class="mini-chart">
+                                <canvas id="chart-@item.Symbol" width="250" height="60"></canvas>
+                            </div>
+                        }
+                        <div class="ai-analysis"><strong>@Localizer["Stock_Analysis"]:</strong> @(item.StockData.AIAnalysis ?? Localizer["Loading"].Value)</div>
+                        <div class="ai-recommend"><strong>@Localizer["Stock_Recommendation"]:</strong> @(item.StockData.Recommendation ?? Localizer["Loading"].Value) - @(item.StockData.RecommendationReason ?? "")</div>
+                    }
+                    else
+                    {
+                        <p class="price">@Localizer["Stock_Price"]: <span>@Localizer["Loading"]</span></p>
+                        <p class="change">@Localizer["Stock_Change"]: <span>@Localizer["Loading"]</span></p>
+                        <p class="percent">@Localizer["Stock_Percent"]: <span>@Localizer["Loading"]</span></p>
+                        <div class="ai-analysis"><strong>@Localizer["Stock_Analysis"]:</strong> <em>@Localizer["Loading"]</em></div>
+                        <div class="ai-recommend"><strong>@Localizer["Stock_Recommendation"]:</strong> <em>@Localizer["Loading"]</em></div>
+                    }
+                </div>
+                @if (Model.Alerts.Any(a => a.Symbol == item.Symbol))
+                {
+                    <div class="alert-indicator" title="@Model.Alerts.Count(a => a.Symbol == item.Symbol) alert(s) set">🔔</div>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- Portfolio Summary and Export -->
+    <div id="portfolio-summary" class="portfolio-summary">
+    <h2>@Localizer["Portfolio_Summary"]</h2>
+        <div class="portfolio-stats">
+            <div class="stat-item">
+        <span class="stat-label">@Localizer["Portfolio_TotalValue"]:</span>
+                <span class="stat-value">$<span id="total-value">@Model.Portfolio.TotalValue.ToString("F2")</span></span>
+            </div>
+            <div class="stat-item">
+        <span class="stat-label">@Localizer["Portfolio_TodaysChange"]:</span>
+                <span class="stat-value @Model.Portfolio.ChangeClass" id="total-change">
+                    @Model.Portfolio.ChangePrefix$@Math.Abs(Model.Portfolio.TotalChange).ToString("F2") (@Model.Portfolio.TotalChangePercent.ToString("F2")%)
+                </span>
+            </div>
+            <div class="stat-item">
+        <span class="stat-label">@Localizer["Portfolio_Stocks"]:</span>
+                <span class="stat-value" id="stock-count">@Model.Portfolio.StockCount</span>
+            </div>
+        </div>
+        <div class="portfolio-actions">
+        <a href="@Url.Action("ExportCsv", "UserStock")" id="export-csv">@Localizer["Export_CSV"]</a>
+        <a href="@Url.Action("ExportJson", "UserStock")" id="export-json">@Localizer["Export_JSON"]</a>
+        <button id="import-data">@Localizer["Import_Data"]</button>
+            <input type="file" id="import-file" accept=".json,.csv" style="display: none;">
+        </div>
+    </div>
+
+    <!-- Price Alerts Panel -->
+    <div id="alerts-panel" class="alerts-panel hidden">
+    <h3>@Localizer["Alerts_Title"]</h3>
+        <div id="alerts-list">
+            @foreach (var alert in Model.Alerts)
+            {
+                <div class="alert-item">
+                    <strong>@alert.Symbol</strong> @alert.AlertType $@alert.TargetPrice
+                    <small>(@alert.CreatedDate.ToString("MM/dd/yyyy"))</small>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Notification Container -->
+<div id="notification-container"></div>
+
+@section Scripts {
+    <script>
+        // Global configuration
+        window.stockTrackerConfig = {
+            refreshInterval: @Model.Settings.RefreshInterval,
+            autoRefresh: @Model.Settings.AutoRefresh.ToString().ToLower(),
+            soundNotifications: @Model.Settings.SoundNotifications.ToString().ToLower(),
+            showCharts: @Model.Settings.ShowCharts.ToString().ToLower(),
+            theme: '@Model.Settings.Theme'
+        };
+    </script>
+}

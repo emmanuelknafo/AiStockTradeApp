@@ -33,6 +33,12 @@
   <data name="App_Title" xml:space="preserve"><value>AI Stock Tracker</value></data>
   <data name="Nav_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
   <data name="Nav_ListedStocks" xml:space="preserve"><value>Listed Stocks</value></data>
+  <data name="Nav_ManageWatchlist" xml:space="preserve"><value>Manage Watchlist</value></data>
+  <data name="Nav_Login" xml:space="preserve"><value>Login</value></data>
+  <data name="Nav_Register" xml:space="preserve"><value>Register</value></data>
+  <data name="Nav_Logout" xml:space="preserve"><value>Logout</value></data>
+  <data name="Nav_Profile" xml:space="preserve"><value>Profile</value></data>
+  <data name="Nav_Welcome" xml:space="preserve"><value>Welcome</value></data>
   <data name="Header_Title" xml:space="preserve"><value>AI-Powered Stock Tracker</value></data>
   <data name="Api_Status" xml:space="preserve"><value>Status: Using multiple APIs for real-time data</value></data>
   <data name="Search_Placeholder" xml:space="preserve"><value>Enter ticker symbol (e.g., AAPL)</value></data>
@@ -89,6 +95,9 @@
   <data name="Of" xml:space="preserve"><value>of</value></data>
   <data name="No_Historical_Data" xml:space="preserve"><value>No historical data</value></data>
   <data name="Error_Loading_History" xml:space="preserve"><value>Error loading history</value></data>
+  <data name="Error_LoadingWatchlistManagement" xml:space="preserve"><value>Error loading watchlist management page</value></data>
+  <data name="Error_StockNotFound" xml:space="preserve"><value>Stock not found</value></data>
+  <data name="Success_StockAdded" xml:space="preserve"><value>Stock {0} added successfully</value></data>
   <data name="Version_Label" xml:space="preserve"><value>Version:</value></data>
   <!-- Additional new resources -->
   <data name="Sector" xml:space="preserve"><value>Sector</value></data>

@@ -14,7 +14,15 @@
 <body>
     <main role="main">
         <div style="padding:8px 16px; border-bottom:1px solid #eee; margin-bottom:12px; display:flex; gap:12px; align-items:center;">
-            <a href="@Url.Action("Dashboard","Stock")" style="margin-right:12px;">@Localizer["Nav_Dashboard"]</a>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <a href="@Url.Action("Dashboard","UserStock")" style="margin-right:12px;">@Localizer["Nav_Dashboard"]</a>
+                <a href="@Url.Action("ManageWatchlist","UserStock")">@Localizer["Nav_ManageWatchlist"]</a>
+            }
+            else
+            {
+                <a href="@Url.Action("Dashboard","Stock")" style="margin-right:12px;">@Localizer["Nav_Dashboard"]</a>
+            }
             <a href="@Url.Action("Index","ListedStocks")">@Localizer["Nav_ListedStocks"]</a>
             <div style="margin-left:auto; display:flex; gap:12px; align-items:center;">
                 @if (User.Identity?.IsAuthenticated == true)
@@ -61,7 +69,37 @@
         @await Html.PartialAsync("_FooterVersion")
     </footer>
 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery-validation-unobtrusive@3.2.12/dist/jquery.validate.unobtrusive.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Global error handler to filter extension errors -->
+    <script>
+        // Filter out common extension-related errors that don't affect the application
+        window.addEventListener('error', function(e) {
+            // Check if it's an extension-related error
+            if (e.message && e.message.includes('Extension')) {
+                console.log('Filtered extension error:', e.message);
+                return true; // Prevent default error handling
+            }
+        });
+        
+        // Console error filtering for runtime.lastError
+        const originalError = console.error;
+        console.error = function(...args) {
+            const message = args.join(' ');
+            if (message.includes('runtime.lastError') || 
+                message.includes('message channel closed') ||
+                message.includes('Extension')) {
+                // Log as info instead of error for extension-related issues
+                console.info('Extension message (filtered):', ...args);
+                return;
+            }
+            originalError.apply(console, args);
+        };
+    </script>
+    
     <script src="~/js/stock-tracker.js" asp-append-version="true"></script>
 
     @await RenderSectionAsync("Scripts", required: false)

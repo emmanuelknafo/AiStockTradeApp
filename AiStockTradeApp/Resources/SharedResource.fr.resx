@@ -25,6 +25,12 @@
   <data name="App_Title" xml:space="preserve"><value>Suivi d'actions IA</value></data>
   <data name="Nav_Dashboard" xml:space="preserve"><value>Tableau de bord</value></data>
   <data name="Nav_ListedStocks" xml:space="preserve"><value>Actions cotées</value></data>
+  <data name="Nav_ManageWatchlist" xml:space="preserve"><value>Gérer la liste de suivi</value></data>
+  <data name="Nav_Login" xml:space="preserve"><value>Connexion</value></data>
+  <data name="Nav_Register" xml:space="preserve"><value>S'inscrire</value></data>
+  <data name="Nav_Logout" xml:space="preserve"><value>Déconnexion</value></data>
+  <data name="Nav_Profile" xml:space="preserve"><value>Profil</value></data>
+  <data name="Nav_Welcome" xml:space="preserve"><value>Bienvenue</value></data>
   <data name="Header_Title" xml:space="preserve"><value>Suivi d'actions piloté par l'IA</value></data>
   <data name="Api_Status" xml:space="preserve"><value>Statut : Utilisation de plusieurs API pour des données en temps réel</value></data>
   <data name="Search_Placeholder" xml:space="preserve"><value>Entrez le symbole (ex. : AAPL)</value></data>
@@ -81,6 +87,9 @@
   <data name="Of" xml:space="preserve"><value>sur</value></data>
   <data name="No_Historical_Data" xml:space="preserve"><value>Aucune donnée historique</value></data>
   <data name="Error_Loading_History" xml:space="preserve"><value>Erreur de chargement de l'historique</value></data>
+  <data name="Error_LoadingWatchlistManagement" xml:space="preserve"><value>Erreur de chargement de la page de gestion de la liste de suivi</value></data>
+  <data name="Error_StockNotFound" xml:space="preserve"><value>Action non trouvée</value></data>
+  <data name="Success_StockAdded" xml:space="preserve"><value>Action {0} ajoutée avec succès</value></data>
   <data name="Version_Label" xml:space="preserve"><value>Version :</value></data>
   <!-- Additional new resources -->
   <data name="Sector" xml:space="preserve"><value>Secteur</value></data>
