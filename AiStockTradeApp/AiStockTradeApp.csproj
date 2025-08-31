@@ -10,7 +10,7 @@
   <!-- GitVersion will supply Version / AssemblyVersion / FileVersion / InformationalVersion at build time -->
   <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   <DockerComposeProjectPath>..\docker-compose.dcproj</DockerComposeProjectPath>
-  <ApplicationInsightsResourceId>/subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/microsoft.insights/components/appi-aistock-dev-002</ApplicationInsightsResourceId>
+  <ApplicationInsightsResourceId>/subscriptions/64c3d212-40ed-4c6d-a825-6adfbdf25dad/resourceGroups/rg-aistock-dev-002/providers/microsoft.insights/components/appi-ui-aistock-dev-002</ApplicationInsightsResourceId>
   </PropertyGroup>
 
   <ItemGroup>
