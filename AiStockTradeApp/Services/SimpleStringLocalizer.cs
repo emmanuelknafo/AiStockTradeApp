@@ -87,6 +87,7 @@ namespace AiStockTradeApp.Services
                 ["Nav_Login"] = "Login",
                 ["Nav_Logout"] = "Logout",
                 ["Nav_Register"] = "Register",
+                ["Nav_ManageWatchlist"] = "Manage Watchlist",
 
                 ["Account_Login_Title"] = "Login",
                 ["Account_Register_Title"] = "Create Account",
@@ -130,7 +131,32 @@ namespace AiStockTradeApp.Services
 
                 ["Account_AccessDenied_Message"] = "You don't have permission to access this resource",
                 ["Account_AccessDenied_Description"] = "Please login with an account that has the required permissions.",
-                ["Account_AccessDenied_BackHome"] = "Back to Home"
+                ["Account_AccessDenied_BackHome"] = "Back to Home",
+
+                // User watchlist error and success messages
+                ["Error_InvalidSymbol"] = "Invalid stock symbol",
+                ["Error_StockNotFound"] = "Stock not found",
+                ["Error_AddingStock"] = "Error adding stock to watchlist",
+                ["Error_RemovingStock"] = "Error removing stock from watchlist",
+                ["Error_ClearingWatchlist"] = "Error clearing watchlist",
+                ["Error_LoadingWatchlist"] = "Error loading watchlist",
+                ["Error_LoadingDashboard"] = "Error loading dashboard",
+                ["Error_InvalidAlert"] = "Invalid alert request",
+                ["Error_StockNotInWatchlist"] = "Stock not found in watchlist",
+                ["Error_SettingAlert"] = "Error setting price alert",
+                ["Error_LoadingWatchlistManagement"] = "Error loading watchlist management",
+                ["Error_FetchingChartData"] = "Error fetching chart data",
+                ["Error_ExportingCsv"] = "Error exporting CSV",
+                ["Error_ExportingJson"] = "Error exporting JSON",
+                ["Error_NoFileProvided"] = "No file provided",
+                ["Error_InvalidJsonFormat"] = "Invalid JSON file format",
+                ["Error_ImportingData"] = "Error importing data",
+
+                ["Success_StockAdded"] = "Added {0} to watchlist",
+                ["Success_StockRemoved"] = "Removed {0} from watchlist", 
+                ["Success_WatchlistCleared"] = "Watchlist cleared successfully",
+                ["Success_AlertSet"] = "Alert set: {0} {1} ${2}",
+                ["Success_DataImported"] = "Data imported successfully: {0} stocks added"
             };
 
             // French translations
@@ -204,6 +230,7 @@ namespace AiStockTradeApp.Services
                 ["Nav_Login"] = "Connexion",
                 ["Nav_Logout"] = "Déconnexion",
                 ["Nav_Register"] = "S'inscrire",
+                ["Nav_ManageWatchlist"] = "Gérer la liste de surveillance",
 
                 ["Account_Login_Title"] = "Connexion",
                 ["Account_Register_Title"] = "Créer un compte",
@@ -247,7 +274,32 @@ namespace AiStockTradeApp.Services
 
                 ["Account_AccessDenied_Message"] = "Vous n'avez pas l'autorisation d'accéder à cette ressource",
                 ["Account_AccessDenied_Description"] = "Veuillez vous connecter avec un compte ayant les permissions requises.",
-                ["Account_AccessDenied_BackHome"] = "Retour à l'accueil"
+                ["Account_AccessDenied_BackHome"] = "Retour à l'accueil",
+
+                // User watchlist error and success messages (French)
+                ["Error_InvalidSymbol"] = "Symbole d'action invalide",
+                ["Error_StockNotFound"] = "Action non trouvée",
+                ["Error_AddingStock"] = "Erreur lors de l'ajout de l'action à la liste de surveillance",
+                ["Error_RemovingStock"] = "Erreur lors de la suppression de l'action de la liste de surveillance",
+                ["Error_ClearingWatchlist"] = "Erreur lors de l'effacement de la liste de surveillance",
+                ["Error_LoadingWatchlist"] = "Erreur lors du chargement de la liste de surveillance",
+                ["Error_LoadingDashboard"] = "Erreur lors du chargement du tableau de bord",
+                ["Error_InvalidAlert"] = "Demande d'alerte invalide",
+                ["Error_StockNotInWatchlist"] = "Action non trouvée dans la liste de surveillance",
+                ["Error_SettingAlert"] = "Erreur lors de la configuration de l'alerte de prix",
+                ["Error_LoadingWatchlistManagement"] = "Erreur lors du chargement de la gestion de la liste de surveillance",
+                ["Error_FetchingChartData"] = "Erreur lors de la récupération des données de graphique",
+                ["Error_ExportingCsv"] = "Erreur lors de l'exportation CSV",
+                ["Error_ExportingJson"] = "Erreur lors de l'exportation JSON",
+                ["Error_NoFileProvided"] = "Aucun fichier fourni",
+                ["Error_InvalidJsonFormat"] = "Format de fichier JSON invalide",
+                ["Error_ImportingData"] = "Erreur lors de l'importation des données",
+
+                ["Success_StockAdded"] = "{0} ajouté à la liste de surveillance",
+                ["Success_StockRemoved"] = "{0} supprimé de la liste de surveillance",
+                ["Success_WatchlistCleared"] = "Liste de surveillance effacée avec succès",
+                ["Success_AlertSet"] = "Alerte configurée : {0} {1} ${2}",
+                ["Success_DataImported"] = "Données importées avec succès : {0} actions ajoutées"
             };
         }
 

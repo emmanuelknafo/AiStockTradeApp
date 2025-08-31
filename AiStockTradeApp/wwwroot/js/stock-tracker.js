@@ -13,18 +13,24 @@ class StockTracker {
     }
 
     init() {
-        this.setupEventListeners();
-        this.initializeTheme();
-        this.initializeAutoRefresh();
-        this.initializeSearchSuggestions();
-        this.setupKeyboardShortcuts();
-        this.loadSettings();
-        
-        // Initialize charts after everything else is ready
-        setTimeout(() => {
-            console.log('Delayed chart initialization...');
-            this.initializeCharts();
-        }, 100);
+        try {
+            this.setupEventListeners();
+            this.initializeTheme();
+            this.initializeAutoRefresh();
+            this.initializeSearchSuggestions();
+            this.setupKeyboardShortcuts();
+            this.loadSettings();
+            
+            // Initialize charts after everything else is ready
+            setTimeout(() => {
+                console.log('Delayed chart initialization...');
+                this.initializeCharts();
+            }, 100);
+        } catch (error) {
+            console.error('Error during StockTracker initialization:', error);
+            // Continue without charts if there's an initialization error
+            this.showNotification('Application initialized with limited functionality', 'info');
+        }
     }
 
     setupEventListeners() {
@@ -112,7 +118,8 @@ class StockTracker {
         }
         
         try {
-            const response = await fetch('/Stock/AddStock', {
+            const controller = this.config.controller || 'Stock';
+            const response = await fetch(`/${controller}/AddStock`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -121,20 +128,26 @@ class StockTracker {
                 body: JSON.stringify({ symbol: symbol })
             });
             
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+            }
+            
             const result = await response.json();
             
             if (result.success) {
-                this.showNotification(result.message, 'success');
+                this.showNotification(result.message || `${symbol} added successfully!`, 'success');
                 input.value = '';
                 this.hideSuggestions();
                 // Reload page to show new stock
                 setTimeout(() => window.location.reload(), 1000);
             } else {
-                this.showNotification(result.message, 'error');
+                const errorMessage = typeof result.message === 'string' ? result.message : 'Error adding stock to watchlist';
+                this.showNotification(errorMessage, 'error');
             }
         } catch (error) {
             console.error('Error adding stock:', error);
-            this.showNotification('Error adding stock', 'error');
+            const errorMessage = error.message || 'Error adding stock to watchlist';
+            this.showNotification(errorMessage, 'error');
         }
     }
 
@@ -142,17 +155,22 @@ class StockTracker {
         if (!symbol) return;
         
         try {
-            const response = await fetch(`/Stock/RemoveStock?symbol=${encodeURIComponent(symbol)}`, {
+            const controller = this.config.controller || 'Stock';
+            const response = await fetch(`/${controller}/RemoveStock?symbol=${encodeURIComponent(symbol)}`, {
                 method: 'POST',
                 headers: {
                     'RequestVerificationToken': this.getAntiForgeryToken()
                 }
             });
             
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+            }
+            
             const result = await response.json();
             
             if (result.success) {
-                this.showNotification(result.message, 'success');
+                this.showNotification(result.message || `${symbol} removed successfully!`, 'success');
                 // Remove card from DOM and destroy chart
                 const card = document.getElementById(`card-${symbol}`);
                 if (card) {
@@ -161,11 +179,13 @@ class StockTracker {
                 }
                 this.updatePortfolioDisplay();
             } else {
-                this.showNotification(result.message, 'error');
+                const errorMessage = typeof result.message === 'string' ? result.message : 'Error removing stock from watchlist';
+                this.showNotification(errorMessage, 'error');
             }
         } catch (error) {
             console.error('Error removing stock:', error);
-            this.showNotification('Error removing stock', 'error');
+            const errorMessage = error.message || 'Error removing stock from watchlist';
+            this.showNotification(errorMessage, 'error');
         }
     }
 
@@ -175,27 +195,34 @@ class StockTracker {
         }
         
         try {
-            const response = await fetch('/Stock/ClearWatchlist', {
+            const controller = this.config.controller || 'Stock';
+            const response = await fetch(`/${controller}/ClearWatchlist`, {
                 method: 'POST',
                 headers: {
                     'RequestVerificationToken': this.getAntiForgeryToken()
                 }
             });
             
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+            }
+            
             const result = await response.json();
             
             if (result.success) {
-                this.showNotification(result.message, 'info');
+                this.showNotification(result.message || 'Watchlist cleared successfully!', 'info');
                 // Destroy all charts before reload
                 this.destroyAllCharts();
                 // Reload page to clear watchlist
                 setTimeout(() => window.location.reload(), 1000);
             } else {
-                this.showNotification(result.message, 'error');
+                const errorMessage = typeof result.message === 'string' ? result.message : 'Error clearing watchlist';
+                this.showNotification(errorMessage, 'error');
             }
         } catch (error) {
             console.error('Error clearing watchlist:', error);
-            this.showNotification('Error clearing watchlist', 'error');
+            const errorMessage = error.message || 'Error clearing watchlist';
+            this.showNotification(errorMessage, 'error');
         }
     }
 
@@ -268,7 +295,14 @@ class StockTracker {
 
     async refreshAllStocks() {
         try {
-            const response = await fetch('/Stock/RefreshAll');
+            const controller = this.config.controller || 'Stock';
+            const endpoint = controller === 'UserStock' ? 'GetWatchlist' : 'RefreshAll';
+            const response = await fetch(`/${controller}/${endpoint}`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+            }
+            
             const result = await response.json();
             
             if (result.success) {
@@ -280,9 +314,15 @@ class StockTracker {
                 }
             } else {
                 console.error('Error refreshing stocks:', result.message);
+                // Show the error message to the user if it exists
+                const errorMessage = typeof result.message === 'string' ? result.message : 'Error refreshing stocks';
+                this.showNotification(errorMessage, 'error');
             }
         } catch (error) {
             console.error('Error refreshing stocks:', error);
+            // Handle the case where the error is an object and needs to be stringified
+            const errorMessage = error.message || 'Unknown error occurred';
+            this.showNotification(`Error refreshing stocks: ${errorMessage}`, 'error');
         }
     }
 
@@ -294,7 +334,8 @@ class StockTracker {
             const value = e.target.value.trim();
             if (value.length > 0) {
                 try {
-                    const response = await fetch(`/Stock/GetSuggestions?query=${encodeURIComponent(value)}`);
+                    const controller = this.config.controller || 'Stock';
+                    const response = await fetch(`/${controller}/GetSuggestions?query=${encodeURIComponent(value)}`);
                     const suggestions = await response.json();
                     
                     if (suggestions.length > 0) {
@@ -406,7 +447,8 @@ class StockTracker {
 
     async setAlert(symbol, targetPrice) {
         try {
-            const response = await fetch('/Stock/SetAlert', {
+            const controller = this.config.controller || 'Stock';
+            const response = await fetch(`/${controller}/SetAlert`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -449,7 +491,8 @@ class StockTracker {
             const formData = new FormData();
             formData.append('file', file);
             
-            const response = await fetch('/Stock/ImportData', {
+            const controller = this.config.controller || 'Stock';
+            const response = await fetch(`/${controller}/ImportData`, {
                 method: 'POST',
                 headers: {
                     'RequestVerificationToken': this.getAntiForgeryToken()
@@ -623,40 +666,50 @@ class StockTracker {
 
     // Chart Management Methods
     initializeCharts() {
-        console.log('initializeCharts called - config.showCharts:', this.config.showCharts);
-        console.log('Current config:', this.config);
-        
-        if (!this.config.showCharts) {
-            console.log('Charts disabled in config');
-            return;
-        }
-        
-        // Check if Chart.js is available
-        if (typeof Chart === 'undefined') {
-            console.warn('Chart.js not loaded - charts will not be displayed');
-            return;
-        }
-        
-        console.log('Chart.js is available, looking for stock cards...');
-        
-        // Initialize charts for all existing stock cards
-        const stockCards = document.querySelectorAll('.stock-card');
-        console.log('Found', stockCards.length, 'stock cards');
-        
-        stockCards.forEach(card => {
-            const symbol = card.id.replace('card-', '');
-            const canvas = card.querySelector(`canvas[id="chart-${symbol}"]`);
-            console.log(`Card ${symbol}: canvas found =`, !!canvas, canvas);
+        try {
+            console.log('initializeCharts called - config.showCharts:', this.config.showCharts);
+            console.log('Current config:', this.config);
             
-            if (canvas && !this.charts.has(symbol)) {
-                console.log(`Creating chart for ${symbol}`);
-                this.createChart(symbol, canvas);
-            } else if (this.charts.has(symbol)) {
-                console.log(`Chart for ${symbol} already exists`);
-            } else if (!canvas) {
-                console.log(`No canvas found for ${symbol} - ShowCharts might be disabled or canvas not rendered`);
+            if (!this.config.showCharts) {
+                console.log('Charts disabled in config');
+                return;
             }
-        });
+            
+            // Check if Chart.js is available
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js not loaded - charts will not be displayed');
+                return;
+            }
+            
+            console.log('Chart.js is available, looking for stock cards...');
+            
+            // Initialize charts for all existing stock cards
+            const stockCards = document.querySelectorAll('.stock-card');
+            console.log('Found', stockCards.length, 'stock cards');
+            
+            stockCards.forEach(card => {
+                try {
+                    const symbol = card.id.replace('card-', '');
+                    const canvas = card.querySelector(`canvas[id="chart-${symbol}"]`);
+                    console.log(`Card ${symbol}: canvas found =`, !!canvas, canvas);
+                    
+                    if (canvas && !this.charts.has(symbol)) {
+                        console.log(`Creating chart for ${symbol}`);
+                        this.createChart(symbol, canvas);
+                    } else if (this.charts.has(symbol)) {
+                        console.log(`Chart for ${symbol} already exists`);
+                    } else if (!canvas) {
+                        console.log(`No canvas found for ${symbol} - ShowCharts might be disabled or canvas not rendered`);
+                    }
+                } catch (error) {
+                    console.error(`Error initializing chart for card:`, error);
+                    // Continue with other charts
+                }
+            });
+        } catch (error) {
+            console.error('Error in initializeCharts:', error);
+            // Charts failed to initialize, but app should continue working
+        }
     }
     
     // Method to manually trigger chart initialization (for debugging)
@@ -765,7 +818,8 @@ class StockTracker {
     async fetchChartData(symbol, days = 30) {
         try {
             console.log(`Fetching chart data for ${symbol}...`);
-            const response = await fetch(`/Stock/GetChartData?symbol=${encodeURIComponent(symbol)}&days=${days}`);
+            const controller = this.config.controller || 'Stock';
+            const response = await fetch(`/${controller}/GetChartData?symbol=${encodeURIComponent(symbol)}&days=${days}`);
             const result = await response.json();
             
             console.log(`Chart data response for ${symbol}:`, result);

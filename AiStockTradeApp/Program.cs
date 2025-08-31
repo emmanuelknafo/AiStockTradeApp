@@ -172,7 +172,13 @@ namespace AiStockTradeApp
 
             // Register other services used by UI
             builder.Services.AddScoped<IAIAnalysisService, AIAnalysisService>();
+            
+            // Register the new user-aware watchlist service that automatically saves for logged-in users
+            builder.Services.AddScoped<IUserWatchlistService, UserWatchlistService>();
+            
+            // Keep the old session-based service for backward compatibility
             builder.Services.AddSingleton<IWatchlistService, WatchlistService>();
+            
             builder.Services.AddScoped<IAuthenticationDiagnosticsService, AuthenticationDiagnosticsService>();
 
             // Note: Removed DbContext/Repository/CacheCleanupService from UI. API owns data/caching.
@@ -241,6 +247,9 @@ namespace AiStockTradeApp
             app.UseAuthorization();
 
             app.UseSession();
+
+            // Add watchlist migration middleware after authentication but before routing
+            app.UseWatchlistMigration();
 
             app.MapStaticAssets();
 

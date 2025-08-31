@@ -731,4 +731,10 @@ When working with this codebase:
 - Test external API integrations with mock responses
 - Validate localization with culture switching
 
+### Development Workflow Guidelines
+- **Always use the start script** - When starting the application, use `.\scripts\start.ps1 -Mode Local` instead of `dotnet run`. The start script properly initializes all dependencies including the API and UI projects
+- **Build error resolution** - When modifying code and building, always resolve all compilation errors and warnings before proceeding. Use `dotnet build` to check for issues and address them systematically
+- **Proper application startup** - The start script handles clean shutdown of existing processes, package restoration, solution building, and launches both API and UI components with correct port configurations
+- **Dependency management** - The start script ensures all project dependencies are properly restored and built in the correct order before launching services
+
 This solution represents a modern, scalable, and maintainable approach to building web applications with .NET, emphasizing clean architecture, comprehensive testing, and production-ready deployment practices.
