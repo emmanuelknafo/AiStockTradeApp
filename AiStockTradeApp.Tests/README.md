@@ -7,17 +7,33 @@ This directory contains comprehensive unit and integration tests for the AI Stoc
 ```
 AiStockTradeApp.Tests/
 ├── Controllers/
-│   ├── StockControllerTests.cs    # Tests for StockController endpoints
-│   └── HomeControllerTests.cs     # Tests for HomeController
+│   ├── AccountControllerTests.cs      # Tests for AccountController endpoints
+│   ├── HomeControllerTests.cs         # Tests for HomeController and dashboard
+│   ├── ListedStocksControllerTests.cs # Tests for listed stocks management
+│   ├── StockControllerTests.cs        # Tests for StockController endpoints
+│   └── VersionControllerTests.cs      # Tests for version information API
 ├── Services/
-│   ├── StockDataServiceTests.cs   # Tests for external API integration
-│   ├── AIAnalysisServiceTests.cs  # Tests for AI analysis generation
-│   └── WatchlistServiceTests.cs   # Tests for watchlist management
+│   ├── AIAnalysisServiceTests.cs      # Tests for AI analysis generation
+│   ├── ApiStockDataServiceClientTests.cs # Tests for API client communication
+│   ├── CacheCleanupServiceTests.cs    # Tests for cache cleanup background service
+│   ├── HistoricalPriceServiceTests.cs # Tests for historical data management
+│   ├── ListedStockServiceTests.cs     # Tests for listed stocks service
+│   ├── LoggingExtensionsTests.cs      # Tests for logging utilities
+│   ├── ServiceLoggingIntegrationTests.cs # Integration tests for service logging
+│   ├── StockDataRepositoryTests.cs    # Tests for data repository layer
+│   ├── StockDataServiceTests.cs       # Tests for external API integration
+│   ├── TestUserSeedingServiceTests.cs # Tests for test user data seeding
+│   └── WatchlistServiceTests.cs       # Tests for watchlist management
 ├── Models/
-│   ├── StockDataTests.cs          # Tests for StockData model
-│   └── ViewModelsTests.cs         # Tests for view models
-└── Integration/
-    └── WebApplicationTests.cs     # End-to-end integration tests
+│   └── (Model validation and entity tests)
+├── Integration/
+│   └── (End-to-end integration tests)
+├── Api/
+│   └── (API endpoint tests)
+├── Helpers/
+│   └── (Test helper classes and utilities)
+└── Examples/
+    └── (Example test implementations and documentation)
 ```
 
 ## Running Tests

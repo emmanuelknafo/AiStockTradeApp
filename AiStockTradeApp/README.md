@@ -49,6 +49,26 @@ This application combines traditional stock market data with artificial intellig
 ```
 AiStockTradeApp/
 ├── Controllers/
+│   ├── AccountController.cs        # User authentication and account management
+│   ├── DiagnosticsController.cs    # System diagnostics and health checks
+│   ├── HomeController.cs           # Dashboard and main pages
+│   ├── ListedStocksController.cs   # Listed stocks and company information
+│   ├── StockController.cs          # Stock data and watchlist operations
+│   ├── UserStockController.cs      # User-specific stock management
+│   └── VersionController.cs        # Application version information
+├── Views/                          # Razor view templates
+│   ├── Home/                      # Dashboard views
+│   ├── Stock/                     # Stock-related views
+│   ├── Account/                   # Authentication views
+│   └── Shared/                    # Shared layouts and partials
+├── wwwroot/                       # Static assets (CSS, JS, images)
+├── Services/
+│   └── SimpleStringLocalizer.cs   # Custom localization service
+├── ViewModels/                    # Data transfer objects for views
+├── Middleware/                    # Custom middleware components
+└── Resources/                     # Localization resource files
+```
+├── Controllers/
 │   ├── StockController.cs       # Main stock operations
 │   ├── HomeController.cs        # Dashboard and redirects
 │   ├── AccountController.cs     # User account management

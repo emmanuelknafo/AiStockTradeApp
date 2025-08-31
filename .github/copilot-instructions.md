@@ -32,13 +32,13 @@ AiStockTradeApp/                    # Root solution folder
 
 | Project | Purpose | Key Components | Dependencies |
 |---------|---------|----------------|--------------|
-| **AiStockTradeApp** | Web UI, MVC controllers, Razor views, API client | Controllers, Views, wwwroot, ApiStockDataServiceClient | Services (API client only) |
+| **AiStockTradeApp** | Web UI, MVC controllers, Razor views, API client | Controllers, Views, wwwroot, ApiStockDataServiceClient, Authentication | Services (API client only) |
 | **AiStockTradeApp.Api** | REST API (Minimal API), background services, data access | Minimal API endpoints, background job processing, ImportJobProcessor | Services, DataAccess |
-| **AiStockTradeApp.Entities** | Domain models, view models | Stock data, portfolio models, historical prices, listed stocks | None (pure models) |
-| **AiStockTradeApp.DataAccess** | Database access, EF Core | DbContext, repositories, migrations | Entities |
-| **AiStockTradeApp.Services** | Business logic, external APIs, API client | Stock services, AI analysis, API client, historical data services | DataAccess, Entities |
-| **AiStockTradeApp.Tests** | Unit testing | Service tests, controller tests | All projects |
-| **AiStockTradeApp.UITests** | End-to-end testing | Playwright page objects | Web UI |
+| **AiStockTradeApp.Entities** | Domain models, view models | Stock data, portfolio models, historical prices, listed stocks, user models | None (pure models) |
+| **AiStockTradeApp.DataAccess** | Database access, EF Core | DbContext, repositories, migrations, Identity tables | Entities |
+| **AiStockTradeApp.Services** | Business logic, external APIs, API client | Stock services, AI analysis, API client, historical data services, user services | DataAccess, Entities |
+| **AiStockTradeApp.Tests** | Unit testing | Service tests, controller tests, authentication tests | All projects |
+| **AiStockTradeApp.UITests** | End-to-end testing | Playwright page objects, authentication flows | Web UI |
 | **AiStockTradeApp.Cli** | Command line tools | Data migration, historical data download/import | Services |
 
 ## 🛠️ Technology Stack
@@ -244,12 +244,16 @@ builder.Services.AddHttpClient<ApiStockDataServiceClient>((sp, http) =>
 builder.Services.AddScoped<IStockDataService, ApiStockDataServiceClient>();
 builder.Services.AddScoped<IAIAnalysisService, AIAnalysisService>();
 builder.Services.AddSingleton<IWatchlistService, WatchlistService>();
+builder.Services.AddScoped<IUserWatchlistService, UserWatchlistService>();
 
 // API Project service registration would include:
 // builder.Services.AddScoped<IStockDataService, StockDataService>();
 // builder.Services.AddScoped<IHistoricalPriceService, HistoricalPriceService>();
 // builder.Services.AddScoped<IListedStockService, ListedStockService>();
+// builder.Services.AddScoped<IUserWatchlistService, UserWatchlistService>();
 // builder.Services.AddScoped<IStockDataRepository, StockDataRepository>();
+// builder.Services.AddScoped<IHistoricalPriceRepository, HistoricalPriceRepository>();
+// builder.Services.AddScoped<IListedStockRepository, ListedStockRepository>();
 
 // API endpoints are defined using Minimal API pattern in Program.cs:
 // app.MapGet("/api/stocks/quote", async (string symbol, IStockDataService svc) => { ... });
@@ -317,13 +321,14 @@ public class StockDataRepository : IStockDataRepository
 ## 📊 Database Schema
 
 ### Core Entities
+- **ApplicationUser** - User identity and authentication (extends IdentityUser)
 - **StockData** - Stock information, prices, analysis
 - **HistoricalPrice** - Historical stock price data points
 - **ListedStock** - Listed companies and stock metadata
-- **WatchlistItem** - User watchlist entries
-- **PriceAlert** - User-defined price alerts
-- **ApplicationUser** - User authentication and profile data
-- **UserPreferences** - User settings and preferences
+- **UserWatchlistItem** - User-specific persistent watchlist entries
+- **UserPriceAlert** - User-defined price alerts and notifications
+- **UserPortfolioItem** - User portfolio holdings and positions
+- **UserPreferences** - User settings and localization preferences
 
 ### Entity Relationships
 ```csharp
@@ -356,6 +361,27 @@ public class ListedStock
     public string Exchange { get; set; }
     public string Sector { get; set; }
     public string Industry { get; set; }
+}
+
+public class ApplicationUser : IdentityUser
+{
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? LastLoginAt { get; set; }
+    public string PreferredCulture { get; set; } = "en";
+    public bool EnablePriceAlerts { get; set; } = true;
+    public string FullName => $"{FirstName} {LastName}".Trim();
+}
+
+public class UserWatchlistItem
+{
+    public int Id { get; set; }
+    public string UserId { get; set; }
+    public string Symbol { get; set; }
+    public string? UserAlias { get; set; }
+    public DateTime AddedAt { get; set; }
+    public int SortOrder { get; set; }
 }
 
 public class WatchlistItem
@@ -426,14 +452,30 @@ public class StockDashboardPage
 # Run all unit tests
 dotnet test AiStockTradeApp.Tests
 
-# Run UI tests
+# Run UI tests (with auto-start capability)
 dotnet test AiStockTradeApp.UITests
 
-# Run specific test
-dotnet test --filter "TestName"
+# Run specific test categories
+dotnet test --filter "Category=Unit"
+dotnet test --filter "Category=Integration"
+
+# Run specific controller tests
+dotnet test --filter "FullyQualifiedName~AccountControllerTests"
+dotnet test --filter "FullyQualifiedName~StockControllerTests"
 
 # Run with coverage
 dotnet test --collect:"XPlat Code Coverage"
+
+# Run tests in parallel
+dotnet test --parallel
+
+# UI tests with in-memory database (faster execution)
+$env:USE_INMEMORY_DB = "true"
+dotnet test AiStockTradeApp.UITests
+
+# UI tests without auto-start (manual app startup)
+$env:DISABLE_UI_TEST_AUTOSTART = "true"
+dotnet test AiStockTradeApp.UITests
 ```
 
 ## 🚀 Deployment & Infrastructure
@@ -478,7 +520,8 @@ RUN dotnet restore
 ## 🛡️ Security Considerations
 
 ### Authentication & Authorization
-- **Session-based state** - No authentication currently implemented
+- **ASP.NET Core Identity** - User authentication and account management implemented
+- **Session-based watchlists** - Anonymous users with persistent user watchlists for authenticated users
 - **CSRF protection** - Anti-forgery tokens in forms
 - **Input validation** - Data annotations and model validation
 - **SQL injection prevention** - Entity Framework parameterized queries
@@ -733,8 +776,11 @@ When working with this codebase:
 
 ### Development Workflow Guidelines
 - **Always use the start script** - When starting the application, use `.\scripts\start.ps1 -Mode Local` instead of `dotnet run`. The start script properly initializes all dependencies including the API and UI projects
+- **Build from root folder** - When running `dotnet build` from the root folder, always specify the solution file: `dotnet build AiStockTradeApp.sln`. This ensures all projects in the solution are built correctly and dependencies are resolved properly
 - **Build error resolution** - When modifying code and building, always resolve all compilation errors and warnings before proceeding. Use `dotnet build` to check for issues and address them systematically
 - **Proper application startup** - The start script handles clean shutdown of existing processes, package restoration, solution building, and launches both API and UI components with correct port configurations
 - **Dependency management** - The start script ensures all project dependencies are properly restored and built in the correct order before launching services
+- **README maintenance** - Each project subfolder contains a README.md file that must be continuously kept up to date to reflect the current folder/project contents, including new features, architectural changes, and dependencies
+- **Documentation synchronization** - After making significant changes to the codebase, always review and update the copilot-instructions.md file to ensure all guidelines, patterns, and architectural decisions remain accurate and current
 
 This solution represents a modern, scalable, and maintainable approach to building web applications with .NET, emphasizing clean architecture, comprehensive testing, and production-ready deployment practices.
