@@ -35,6 +35,12 @@ builder.Configuration
 // Configure all logs to go to stderr (stdout is used for the MCP protocol messages in STDIO mode).
 builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 
+// Add health checks for HTTP mode
+if (useStreamableHttp)
+{
+    builder.Services.AddHealthChecks();
+}
+
 // Register HTTP client for API calls
 builder.Services.AddHttpClient<StockTradingTools>();
 
@@ -61,6 +67,11 @@ if (useStreamableHttp)
     var webApp = (builder as WebApplicationBuilder)!.Build();
     // Comment out HTTPS redirection for testing
     // webApp.UseHttpsRedirection();
+    
+    // Map health endpoint
+    webApp.MapHealthChecks("/health");
+    
+    // Map MCP endpoint
     webApp.MapMcp("/mcp");
 
     app = webApp;
@@ -86,6 +97,7 @@ logger.LogInformation("Available tools: StockTradingTools, RandomNumberTools");
 if (useStreamableHttp)
 {
     logger.LogInformation("HTTP MCP Server running at: http://localhost:5000/mcp");
+    logger.LogInformation("Health endpoint available at: http://localhost:5000/health");
     logger.LogInformation("Test with: curl -X POST http://localhost:5000/mcp -H \"Accept: application/json, text/event-stream\" -H \"Content-Type: application/json\" -d '{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}}'");
 }
 
