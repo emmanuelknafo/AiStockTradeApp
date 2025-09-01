@@ -1,44 +1,44 @@
-# Use the official .NET 9 runtime as the base image
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-preview AS base
-WORKDIR /app
-EXPOSE 5000
-EXPOSE 443
+# syntax=docker/dockerfile:1
 
-# Use the .NET 9 SDK for building
-FROM mcr.microsoft.com/dotnet/sdk:9.0-preview AS build
-WORKDIR /src
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS build
 
-# Copy project files and restore dependencies
-COPY ["AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj", "AiStockTradeApp.McpServer/"]
-COPY ["AiStockTradeApp.Entities/AiStockTradeApp.Entities.csproj", "AiStockTradeApp.Entities/"]
+# Copy project files and shared dependencies
+COPY ["AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj", "/source/AiStockTradeApp.McpServer/"]
+COPY ["AiStockTradeApp.Entities/AiStockTradeApp.Entities.csproj", "/source/AiStockTradeApp.Entities/"]
 
-RUN dotnet restore "AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj"
+WORKDIR /source/AiStockTradeApp.McpServer
+
+# Restore dependencies
+RUN dotnet restore "AiStockTradeApp.McpServer.csproj"
 
 # Copy source code
-COPY . .
+COPY . /source/
 
-# Build the application
-WORKDIR "/src/AiStockTradeApp.McpServer"
-RUN dotnet build "AiStockTradeApp.McpServer.csproj" -c Release -o /app/build
+# Build and publish with architecture-specific runtime
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      "amd64") RID="linux-musl-x64" ;; \
+      "arm64") RID="linux-musl-arm64" ;; \
+      *) RID="linux-musl-x64" ;; \
+    esac && \
+    dotnet publish -c Release -o /app -r $RID --self-contained false
 
-# Publish the application
-FROM build AS publish
-RUN dotnet publish "AiStockTradeApp.McpServer.csproj" -c Release -o /app/publish /p:UseAppHost=false
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-alpine AS final
 
-# Create the final runtime image
-FROM base AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+
+# Copy published application
+COPY --from=build /app .
 
 # Set environment variables
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:5000
 ENV STOCK_API_BASE_URL=https://app-aistock-dev-002.azurewebsites.net
 
-# Create a non-root user
-RUN addgroup --system --gid 1001 mcpserver && \
-    adduser --system --uid 1001 --ingroup mcpserver mcpserver
+# Expose port
+EXPOSE 5000
 
-USER mcpserver
+# Use non-root user (Alpine sets $APP_UID automatically)
+USER $APP_UID
 
 ENTRYPOINT ["dotnet", "AiStockTradeApp.McpServer.dll"]
