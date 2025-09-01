@@ -22,6 +22,14 @@ To test this MCP server from source code (locally) without using a built MCP ser
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "stock_api_base_url",
+      "description": "Base URL for the Stock Trading API (e.g., http://localhost:5000)",
+      "password": false
+    }
+  ],
   "servers": {
     "AiStockTradeApp.McpServer": {
       "type": "stdio",
@@ -30,7 +38,10 @@ To test this MCP server from source code (locally) without using a built MCP ser
         "run",
         "--project",
         "<PATH TO PROJECT DIRECTORY>"
-      ]
+      ],
+      "env": {
+        "STOCK_API_BASE_URL": "${input:stock_api_base_url}"
+      }
     }
   }
 }
@@ -38,7 +49,18 @@ To test this MCP server from source code (locally) without using a built MCP ser
 
 ## Testing the MCP Server
 
-Once configured, you can ask Copilot Chat for a random number, for example, `Give me 3 random numbers`. It should prompt you to use the `get_random_number` tool on the `AiStockTradeApp.McpServer` MCP server and show you the results.
+Once configured, you can test both the sample tools and stock trading functionality:
+
+**Sample Tools:**
+- Ask for random numbers: `Give me 3 random numbers`
+
+**Stock Trading Tools:**
+- Get stock quotes: `Get the current stock quote for Apple (AAPL)`
+- Historical data: `Show me 30 days of historical data for Microsoft`
+- Search symbols: `Search for Tesla stock symbol`
+- System status: `Check the stock trading system status`
+
+The MCP server should prompt you to use the appropriate tools and show you the results. Make sure your Stock Trading API is running and accessible at the configured URL.
 
 ## Publishing to NuGet.org
 

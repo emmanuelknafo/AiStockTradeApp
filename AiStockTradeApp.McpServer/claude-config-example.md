@@ -6,6 +6,14 @@ Add this configuration to your Claude Desktop `claude_desktop_config.json` file:
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "stock_api_base_url",
+      "description": "Base URL for the Stock Trading API (e.g., http://localhost:5000)",
+      "password": false
+    }
+  ],
   "mcpServers": {
     "aistocktrade": {
       "command": "dotnet",
@@ -15,7 +23,7 @@ Add this configuration to your Claude Desktop `claude_desktop_config.json` file:
         "C:\\src\\GitHub\\emmanuelknafo\\AiStockTradeApp\\AiStockTradeApp.McpServer"
       ],
       "env": {
-        "STOCK_API_BASE_URL": "http://localhost:5000"
+        "STOCK_API_BASE_URL": "${input:stock_api_base_url}"
       }
     }
   }
@@ -24,16 +32,24 @@ Add this configuration to your Claude Desktop `claude_desktop_config.json` file:
 
 ## For Published NuGet Package
 
-Once published to NuGet.org, use this configuration:
+Once published to NuGet.org, use this configuration with proper input handling:
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "stock_api_base_url",
+      "description": "Base URL for the Stock Trading API (e.g., http://localhost:5000 or https://your-api.azurewebsites.net)",
+      "password": false
+    }
+  ],
   "mcpServers": {
     "aistocktrade": {
       "command": "dnx",
       "args": ["--", "emmanuelknafo.AiStockTradeMcpServer"],
       "env": {
-        "STOCK_API_BASE_URL": "http://localhost:5000"
+        "STOCK_API_BASE_URL": "${input:stock_api_base_url}"
       }
     }
   }
@@ -44,12 +60,20 @@ Once published to NuGet.org, use this configuration:
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "stock_api_base_url",
+      "description": "Base URL for the Stock Trading API",
+      "password": false
+    }
+  ],
   "mcpServers": {
     "aistocktrade": {
       "command": "dnx",
       "args": ["--", "emmanuelknafo.AiStockTradeMcpServer"],
       "env": {
-        "STOCK_API_BASE_URL": "https://your-api.azurewebsites.net"
+        "STOCK_API_BASE_URL": "${input:stock_api_base_url}"
       }
     }
   }

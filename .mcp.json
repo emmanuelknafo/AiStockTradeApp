@@ -6,17 +6,7 @@
       "description": "Azure DevOps organization name  (e.g. \u0027contoso\u0027)"
     }
   ],
-  "servers": {
-    "randomMcpServer": {
-      "type": "stdio",
-      "command": "dotnet",
-        "args": [
-            "run",
-            "--project",
-            "AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj"
-        ],
-      "env": {}
-    },
+  "servers": {    
     "ado": {
       "type": "stdio",
       "command": "npx",
@@ -26,7 +16,7 @@
         "${input:ado_org}"
       ]
     },
-    "SampleMcpServer": {
+    "StockTrading": {
       "type": "stdio",
       "command": "dotnet",
       "args": [

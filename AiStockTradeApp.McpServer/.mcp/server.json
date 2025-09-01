@@ -10,7 +10,14 @@
       "environment_variables": [
         {
           "name": "STOCK_API_BASE_URL",
-          "description": "Base URL for the Stock Trading API (default: http://localhost:5000)"
+          "value": "{stock_api_base_url}",
+          "variables": {
+            "stock_api_base_url": {
+              "description": "Base URL for the Stock Trading API (e.g., http://localhost:5000 or https://your-api.azurewebsites.net)",
+              "is_required": true,
+              "is_secret": false
+            }
+          }
         }
       ]
     }
