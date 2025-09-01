@@ -1,21 +1,25 @@
 {
-  "$schema": "https://modelcontextprotocol.io/schemas/draft/2025-07-09/server.json",
-  "description": "<your description here>",
-  "name": "io.github.<your GitHub username here>/<your repo name>",
+  "description": "MCP Server for AI-powered stock trading operations. Provides tools for stock quotes, historical data, analysis, and trading operations through a comprehensive API.",
+  "name": "io.github.emmanuelknafo/AiStockTradeApp",
   "packages": [
     {
       "registry_name": "nuget",
-      "name": "<your package ID here>",
-      "version": "0.1.0-beta",
+      "name": "emmanuelknafo.AiStockTradeMcpServer",
+      "version": "1.0.0-beta",
       "package_arguments": [],
-      "environment_variables": []
+      "environment_variables": [
+        {
+          "name": "STOCK_API_BASE_URL",
+          "description": "Base URL for the Stock Trading API (default: http://localhost:5000)"
+        }
+      ]
     }
   ],
   "repository": {
-    "url": "https://github.com/<your GitHub username here>/<your repo name>",
+    "url": "https://github.com/emmanuelknafo/AiStockTradeApp",
     "source": "github"
   },
   "version_detail": {
-    "version": "0.1.0-beta"
+    "version": "1.0.0-beta"
   }
 }
