@@ -21,6 +21,10 @@ param containerImage string
 
 @description('API container image name and tag')
 param containerImageApi string = 'aistocktradeapp-api:latest'
+
+@description('MCP server container image name and tag')
+param containerImageMcp string = 'aistocktradeapp-mcp:latest'
+
 @description('Optional application semantic version (injected into APP_VERSION setting)')
 param appVersion string = ''
 
@@ -89,10 +93,12 @@ var resourceNamePrefix = '${appName}-${environment}'
 var appServicePlanName = 'asp-${resourceNamePrefix}-${instanceNumber}'
 var webAppName = 'app-${resourceNamePrefix}-${instanceNumber}'
 var webApiName = 'api-${resourceNamePrefix}-${instanceNumber}'
+var webMcpName = 'mcp-${resourceNamePrefix}-${instanceNumber}'
 var containerRegistryResourceName = 'cr${toLower(replace(containerRegistryName, '-', ''))}${toLower(environment)}${instanceNumber}${uniqueString(resourceGroup().id)}'
 var keyVaultName = 'kv-${resourceNamePrefix}-${instanceNumber}'
 var applicationInsightsUiName = 'appi-ui-${resourceNamePrefix}-${instanceNumber}'
 var applicationInsightsApiName = 'appi-api-${resourceNamePrefix}-${instanceNumber}'
+var applicationInsightsMcpName = 'appi-mcp-${resourceNamePrefix}-${instanceNumber}'
 var logAnalyticsWorkspaceName = 'log-${resourceNamePrefix}-${instanceNumber}'
 var sqlServerName = 'sql-${resourceNamePrefix}-${instanceNumber}'
 var sqlDatabaseName = 'sqldb-${resourceNamePrefix}-${instanceNumber}'
@@ -140,6 +146,17 @@ resource applicationInsightsUI 'Microsoft.Insights/components@2020-02-02' = {
 // Application Insights for API
 resource applicationInsightsAPI 'Microsoft.Insights/components@2020-02-02' = {
 	name: applicationInsightsApiName
+	location: location
+	kind: 'web'
+	properties: {
+		Application_Type: 'web'
+		WorkspaceResourceId: logAnalyticsWorkspace.id
+	}
+}
+
+// Application Insights for MCP Server
+resource applicationInsightsMCP 'Microsoft.Insights/components@2020-02-02' = {
+	name: applicationInsightsMcpName
 	location: location
 	kind: 'web'
 	properties: {
@@ -511,6 +528,108 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
   }
 }
 
+// MCP Server Web App
+resource webMcp 'Microsoft.Web/sites@2024-11-01' = {
+  name: webMcpName
+  location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    serverFarmId: appServicePlan.id
+    ...(requireVNetIntegration && manageNetworking
+      ? {
+          virtualNetworkSubnetId: resourceId(
+            'Microsoft.Network/virtualNetworks/subnets',
+            vnetName,
+            appIntegrationSubnetName
+          )
+        }
+      : {})
+    siteConfig: {
+      linuxFxVersion: deployContainerRegistry
+        ? 'DOCKER|${containerRegistry!.properties.loginServer}/${containerImageMcp}'
+        : 'DOCKER|${containerImageMcp}'
+      alwaysOn: true
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+      http20Enabled: true
+      appSettings: [
+        {
+          name: 'WEBSITES_ENABLE_APP_SERVICE_STORAGE'
+          value: 'false'
+        }
+        {
+          name: 'WEBSITES_CONTAINER_START_TIME_LIMIT'
+          value: '600'
+        }
+        {
+          name: 'WEBSITES_PORT'
+          value: '8080'
+        }
+        {
+          name: 'ASPNETCORE_URLS'
+          value: 'http://0.0.0.0:8080'
+        }
+        {
+          name: 'WEBSITE_HEALTHCHECK_MAXPINGFAILURES'
+          value: '20'
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: applicationInsightsMCP.properties.ConnectionString
+        }
+        {
+          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
+          value: applicationInsightsMCP.properties.InstrumentationKey
+        }
+        {
+          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
+          value: '~3'
+        }
+        {
+          name: 'XDT_MicrosoftApplicationInsights_Mode'
+          value: 'Recommended'
+        }
+        {
+          name: 'ASPNETCORE_ENVIRONMENT'
+          value: environment == 'prod' ? 'Production' : 'Development'
+        }
+        {
+          name: 'AlphaVantage__ApiKey'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
+        }
+        {
+          name: 'TwelveData__ApiKey'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
+        }
+        {
+          name: 'ConnectionStrings__DefaultConnection'
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=SqlConnectionString)'
+        }
+        {
+          name: 'APP_VERSION'
+          value: empty(appVersion) ? '' : appVersion
+        }
+        // Configure MCP server with stock API endpoint
+        {
+          name: 'StockApi__BaseUrl'
+          value: 'https://${webApi.properties.defaultHostName}'
+        }
+      ]
+      connectionStrings: [
+        {
+          name: 'DefaultConnection'
+          connectionString: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+          type: 'SQLAzure'
+        }
+  ]
+  healthCheckPath: '/health'
+    }
+    httpsOnly: true
+  }
+}
+
 // Networking (only when private SQL requested)
 resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = if (requireVNetIntegration && manageNetworking) {
   name: vnetName
@@ -688,6 +807,20 @@ resource keyVaultAccessPolicyApi 'Microsoft.Authorization/roleAssignments@2022-0
   }
 }
 
+// Grant Key Vault access to MCP Web App
+resource keyVaultAccessPolicyMcp 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: keyVault
+  name: guid(keyVault.id, webMcp.id, 'Key Vault Secrets User')
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '4633458b-17de-408a-b874-0445c86b69e6'
+    )
+    principalId: webMcp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // NOTE: When enableAzureAdOnlyAuth is true, after deployment you need to manually:
 // 1. Connect to the SQL database as the Azure AD admin
 // 2. Run: CREATE USER [app-aistock-{environment}-{instanceNumber}] FROM EXTERNAL PROVIDER
@@ -702,6 +835,9 @@ output webAppPrincipalId string = webApp.identity.principalId
 output webApiName string = webApi.name
 output webApiUrl string = 'https://${webApi.properties.defaultHostName}'
 output webApiPrincipalId string = webApi.identity.principalId
+output webMcpName string = webMcp.name
+output webMcpUrl string = 'https://${webMcp.properties.defaultHostName}'
+output webMcpPrincipalId string = webMcp.identity.principalId
 output sqlServerName string = sqlServerName
 output sqlServerFqdn string = sqlServerFqdnValue
 output sqlDatabaseName string = sqlDatabaseName
@@ -712,8 +848,10 @@ output containerRegistryLoginServer string = deployContainerRegistry
 output keyVaultName string = keyVault.name
 output applicationInsightsUiName string = applicationInsightsUI.name
 output applicationInsightsApiName string = applicationInsightsAPI.name
+output applicationInsightsMcpName string = applicationInsightsMCP.name
 output applicationInsightsUiConnectionString string = applicationInsightsUI.properties.ConnectionString
 output applicationInsightsApiConnectionString string = applicationInsightsAPI.properties.ConnectionString
+output applicationInsightsMcpConnectionString string = applicationInsightsMCP.properties.ConnectionString
 output vnetName string = (requireVNetIntegration && manageNetworking) ? vnetName : 'not-deployed'
 output privateSqlEnabled bool = enablePrivateSql
 
