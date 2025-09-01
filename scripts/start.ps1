@@ -192,6 +192,22 @@ function Invoke-DockerCleanUpAndUp {
     throw "Compose file not found at $composeFile"
   }
 
+  # Ensure any local dotnet processes are terminated to avoid file/port locks or file contention
+  Write-Host 'Performing clean shutdown of existing dotnet processes on host to avoid conflicts with Docker...' -ForegroundColor Yellow
+  try {
+    $dotnetProcesses = Get-Process -Name 'dotnet' -ErrorAction SilentlyContinue
+    if ($dotnetProcesses) {
+      Write-Host "Found $($dotnetProcesses.Count) dotnet process(es), terminating them to avoid conflicts..." -ForegroundColor Yellow
+      & taskkill /f /im dotnet.exe | Out-Null
+      Start-Sleep -Seconds 2
+      Write-Host 'Existing dotnet processes terminated.' -ForegroundColor Green
+    } else {
+      Write-Host 'No existing dotnet processes found.' -ForegroundColor Green
+    }
+  } catch {
+    Write-Warning "Could not clean up existing dotnet processes: $($_.Exception.Message)"
+  }
+
   Write-Host 'Stopping containers and removing images, networks, and volumes...' -ForegroundColor Cyan
   & docker compose -f $composeFile down --rmi all --volumes --remove-orphans | Write-Host
 
