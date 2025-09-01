@@ -7,25 +7,27 @@ This .NET class library contains service implementations, background services, a
 ```
 AiStockTradeApp.Services/
 ├── Interfaces/
-│   ├── IAIAnalysisService.cs          # AI analysis service contract
-│   ├── IHistoricalPriceService.cs     # Historical data service contract
-│   ├── IListedStockService.cs         # Listed stocks service contract
-│   ├── IStockDataService.cs           # Stock data service contract
-│   ├── ITestUserSeedingService.cs     # Test user seeding contract
-│   └── IWatchlistService.cs           # Watchlist management contract
+│   ├── IAIAnalysisService.cs           # AI analysis service contract
+│   ├── IHistoricalPriceService.cs      # Historical data service contract
+│   ├── IListedStockService.cs          # Listed stocks service contract
+│   ├── IStockDataService.cs            # Stock data service contract
+│   ├── ITestUserSeedingService.cs      # Test user seeding contract
+│   ├── IUserWatchlistService.cs        # User-specific watchlist management
+│   └── IWatchlistService.cs            # Session-based watchlist management
 ├── Implementations/
-│   ├── AIAnalysisService.cs           # AI-powered stock analysis
-│   ├── ApiStockDataServiceClient.cs   # HTTP client for API communication
+│   ├── AIAnalysisService.cs            # AI-powered stock analysis
+│   ├── ApiStockDataServiceClient.cs    # HTTP client for API communication
 │   ├── AuthenticationDiagnosticsService.cs # Authentication diagnostics
-│   ├── HistoricalDataFetcher.cs       # External historical data fetching
-│   ├── HistoricalPriceService.cs      # Historical price management
-│   ├── ListedStockService.cs          # Listed stocks data management
-│   ├── StockDataService.cs            # Primary stock data service
-│   ├── TestUserSeedingService.cs      # Test user data seeding
-│   └── WatchlistService.cs            # Watchlist management implementation
+│   ├── HistoricalDataFetcher.cs        # External historical data fetching
+│   ├── HistoricalPriceService.cs       # Historical price management
+│   ├── ListedStockService.cs           # Listed stocks data management
+│   ├── StockDataService.cs             # Primary stock data service
+│   ├── TestUserSeedingService.cs       # Test user data seeding
+│   ├── UserWatchlistService.cs         # User-based watchlist management
+│   └── WatchlistService.cs             # Session-based watchlist implementation
 ├── BackgroundServices/
 │   └── (Background workers for timed refresh, cache maintenance, etc.)
-└── LoggingExtensions.cs               # Logging utility extensions
+└── LoggingExtensions.cs                # Logging utility extensions
 ```
 
 ## Service Overview

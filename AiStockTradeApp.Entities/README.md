@@ -7,19 +7,18 @@ This .NET class library contains domain models and view models used across the A
 ```
 AiStockTradeApp.Entities/
 ├── Models/
-│   ├── CachedStockData.cs          # Cache storage entity
-│   ├── HistoricalPrice.cs          # Historical price data entity
-│   ├── PriceAlert.cs               # Price alert configuration entity
-│   ├── StockData.cs                # Primary stock data entity
-│   ├── User.cs                     # User entity for authentication
-│   └── WatchlistItem.cs            # Watchlist tracking entity
+│   ├── ApplicationUser.cs         # User identity and authentication entity
+│   ├── HistoricalPrice.cs         # Historical price data entity
+│   ├── ListedStock.cs             # Listed company and stock metadata
+│   ├── StockData.cs               # Primary stock data entity
+│   └── UserPreferences.cs         # User settings and preferences
 ├── ViewModels/
-│   ├── ChartDataPoint.cs           # Chart visualization data
-│   ├── DashboardViewModel.cs       # Dashboard display model
-│   ├── ErrorViewModel.cs           # Error page model
-│   ├── StockAnalysisViewModel.cs   # AI analysis display model
-│   ├── StockSearchViewModel.cs     # Stock search results model
-│   └── StockViewModel.cs           # Stock display model
+│   ├── ChartDataPoint.cs          # Chart visualization data
+│   ├── DashboardViewModel.cs      # Dashboard display model
+│   ├── ErrorViewModel.cs          # Error page model
+│   ├── StockAnalysisViewModel.cs  # AI analysis display model
+│   ├── StockSearchViewModel.cs    # Stock search results model
+│   └── StockViewModel.cs          # Stock display model
 └── AiStockTradeApp.Entities.csproj
 ```
 

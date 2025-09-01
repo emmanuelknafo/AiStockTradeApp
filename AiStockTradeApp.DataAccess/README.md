@@ -12,13 +12,13 @@ AiStockTradeApp.DataAccess/
 ├── Migrations/
 │   └── (EF Core migrations for schema versioning)
 ├── Interfaces/
-│   ├── IStockDataRepository.cs     # Stock data repository interface
 │   ├── IHistoricalPriceRepository.cs # Historical price repository interface
-│   └── (Other repository interfaces)
+│   ├── IListedStockRepository.cs   # Listed stock repository interface
+│   └── IStockDataRepository.cs     # Stock data repository interface
 ├── Repositories/
-│   ├── StockDataRepository.cs      # Stock data repository implementation
 │   ├── HistoricalPriceRepository.cs # Historical price repository implementation
-│   └── (Other repository implementations)
+│   ├── ListedStockRepository.cs    # Listed stock repository implementation
+│   └── StockDataRepository.cs      # Stock data repository implementation
 ├── DesignTime/
 │   └── StockDataContextFactory.cs # Design-time factory for migrations
 └── AiStockTradeApp.DataAccess.csproj
@@ -30,10 +30,13 @@ AiStockTradeApp.DataAccess/
 
 The data access layer manages the following core entities:
 
+- **ApplicationUser** - User identity and authentication (extends IdentityUser)
 - **StockData** - Current stock information and real-time data
 - **HistoricalPrice** - Historical stock price data points
-- **WatchlistItem** - User watchlist entries
-- **CachedStockData** - Performance optimization cache entries
+- **ListedStock** - Listed companies and stock metadata
+- **UserWatchlistItem** - User-specific watchlist entries
+- **UserPriceAlert** - User-defined price alerts and notifications
+- **UserPortfolioItem** - User portfolio holdings and positions
 
 ### Entity Relationships
 
