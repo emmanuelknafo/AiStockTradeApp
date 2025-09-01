@@ -2,38 +2,91 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Builder;
+using ModelContextProtocol.AspNetCore;
+using System.Collections;
 
-var builder = Host.CreateApplicationBuilder(args);
+// Check if HTTP transport should be used via command line arguments or environment variable
+static bool UseStreamableHttp(IDictionary env, string[] args)
+{
+    var useHttp = env.Contains("UseHttp") &&
+                  bool.TryParse(env["UseHttp"]?.ToString()?.ToLowerInvariant(), out var result) && result;
+    if (args.Length == 0)
+    {
+        return useHttp;
+    }
+
+    useHttp = args.Contains("--http", StringComparer.InvariantCultureIgnoreCase);
+    return useHttp;
+}
+
+var useStreamableHttp = UseStreamableHttp(Environment.GetEnvironmentVariables(), args);
+
+// Create builder based on transport type
+IHostApplicationBuilder builder = useStreamableHttp
+                                ? WebApplication.CreateBuilder(args)
+                                : Host.CreateApplicationBuilder(args);
 
 // Add configuration from appsettings.json and environment variables
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: true)
     .AddEnvironmentVariables();
 
-// Configure all logs to go to stderr (stdout is used for the MCP protocol messages).
+// Configure all logs to go to stderr (stdout is used for the MCP protocol messages in STDIO mode).
 builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 
 // Register HTTP client for API calls
 builder.Services.AddHttpClient<StockTradingTools>();
 
-// Add the MCP services: the transport to use (stdio) and the tools to register.
-builder.Services
+// Add the MCP services with conditional transport selection
+var mcpServerBuilder = builder.Services
     .AddMcpServer()
-    .WithStdioServerTransport()
     .WithTools<StockTradingTools>()
     .WithTools<RandomNumberTools>(); // Keep the sample tool for reference
 
-var host = builder.Build();
+// Select transport based on the mode
+if (useStreamableHttp)
+{
+    mcpServerBuilder.WithHttpTransport(o => o.Stateless = true);
+}
+else
+{
+    mcpServerBuilder.WithStdioServerTransport();
+}
+
+// Build and configure the application
+IHost app;
+if (useStreamableHttp)
+{
+    var webApp = (builder as WebApplicationBuilder)!.Build();
+    // Comment out HTTPS redirection for testing
+    // webApp.UseHttpsRedirection();
+    webApp.MapMcp("/mcp");
+
+    app = webApp;
+}
+else
+{
+    var consoleApp = (builder as HostApplicationBuilder)!.Build();
+    app = consoleApp;
+}
 
 // Log startup information
-var logger = host.Services.GetRequiredService<ILogger<Program>>();
-var configuration = host.Services.GetRequiredService<IConfiguration>();
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+var configuration = app.Services.GetRequiredService<IConfiguration>();
 var apiBaseUrl = configuration["STOCK_API_BASE_URL"] ?? 
                 Environment.GetEnvironmentVariable("STOCK_API_BASE_URL") ?? 
-                "http://localhost:5000";
+                "https://app-aistock-dev-002.azurewebsites.net";
 
 logger.LogInformation("Starting AI Stock Trade MCP Server");
+logger.LogInformation("Transport Mode: {TransportMode}", useStreamableHttp ? "HTTP" : "STDIO");
 logger.LogInformation("API Base URL: {ApiBaseUrl}", apiBaseUrl);
 logger.LogInformation("Available tools: StockTradingTools, RandomNumberTools");
 
-await host.RunAsync();
+if (useStreamableHttp)
+{
+    logger.LogInformation("HTTP MCP Server running at: http://localhost:5000/mcp");
+    logger.LogInformation("Test with: curl -X POST http://localhost:5000/mcp -H \"Accept: application/json, text/event-stream\" -H \"Content-Type: application/json\" -d '{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}}'");
+}
+
+await app.RunAsync();
