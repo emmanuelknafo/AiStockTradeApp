@@ -236,6 +236,13 @@ function Invoke-DockerCleanUpAndUp {
     Write-Host "API Endpoint:   http://localhost:8082" -ForegroundColor Cyan
     Write-Host "MCP Server:     http://localhost:5000/mcp" -ForegroundColor Cyan
   }
+
+  # Run a smoke test against the MCP server to validate it's responding to JSON-RPC requests
+  if (Test-McpEndpoint -Url 'http://localhost:5000/mcp' -TimeoutSec 60 -PollIntervalSec 2) {
+    Write-Host 'MCP server smoke test: PASSED' -ForegroundColor Green
+  } else {
+    Write-Warning 'MCP server smoke test: FAILED (endpoint did not respond as expected)'
+  }
 }
 
 function Enable-DevHttpsCert {
@@ -368,6 +375,60 @@ function Start-LocalProcesses {
     Write-Host "MCP Server:     http://localhost:5000/mcp" -ForegroundColor Cyan
     Write-Host "`n💡 Tip: Keep the PowerShell windows open to maintain the services running." -ForegroundColor Yellow
   }
+
+  # Run a smoke test against the MCP server to validate it's responding to JSON-RPC requests
+  if (Test-McpEndpoint -Url 'http://localhost:5000/mcp' -TimeoutSec 60 -PollIntervalSec 2) {
+    Write-Host 'MCP server smoke test: PASSED' -ForegroundColor Green
+  } else {
+    Write-Warning 'MCP server smoke test: FAILED (endpoint did not respond as expected)'
+  }
+}
+
+
+function Test-McpEndpoint {
+  param(
+    [string]$Url = 'http://localhost:5000/mcp',
+    [int]$TimeoutSec = 60,
+    [int]$PollIntervalSec = 2
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSec)
+  $payload = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+  Write-Host "Running MCP smoke test against: $Url (timeout: ${TimeoutSec}s)" -ForegroundColor Cyan
+
+  while ((Get-Date) -lt $deadline) {
+    try {
+  # Send request and read raw content so we can handle either plain JSON or SSE-style responses
+  $headers = @{ 'Accept' = 'application/json, text/event-stream' }
+  $wr = Invoke-WebRequest -Uri $Url -Method Post -ContentType 'application/json' -Body $payload -Headers $headers -TimeoutSec 10 -ErrorAction Stop
+      $content = $wr.Content
+
+      # SSE responses often prefix JSON with 'data: ' lines. Try to extract JSON after the last 'data:' if present.
+      $json = $null
+      if ($content -match '(?s)data:\s*(\{.*\})') {
+        $json = $matches[1]
+      } else {
+        # No SSE prefix, assume entire body is JSON
+        $json = $content
+      }
+
+      try {
+        $obj = ConvertFrom-Json $json -ErrorAction Stop
+        $respJson = $obj | ConvertTo-Json -Depth 5
+        Write-Host "MCP response:\n$respJson" -ForegroundColor Green
+        return $true
+      } catch {
+        # Couldn't parse JSON yet; fallthrough to retry
+        Write-Host "Received non-JSON response while probing MCP endpoint, will retry..." -ForegroundColor DarkYellow
+      }
+    } catch {
+      # Swallow and retry until timeout
+      Start-Sleep -Seconds $PollIntervalSec
+    }
+  }
+
+  return $false
 }
 
 switch ($Mode) {
