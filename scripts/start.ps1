@@ -68,7 +68,7 @@ USAGE:
 
 MODES:
     Docker  - Clean rebuild containers and start via docker-compose
-    Local   - Start API and UI in separate PowerShell windows with local SQL Server
+    Local   - Start API, UI, and MCP Server in separate PowerShell windows with local SQL Server
 
 EXAMPLES:
     # Quick start with containers (recommended for most development)
@@ -90,14 +90,15 @@ DOCKER MODE:
     - Performs complete cleanup (removes containers, images, volumes)
     - Rebuilds all images from scratch (no cache)
     - Starts services and waits for SQL Server to be healthy
-    - Services available at: UI (http://localhost:8080), API (http://localhost:8082)
+    - Services available at: UI (http://localhost:8080), API (http://localhost:8082), MCP Server (http://localhost:5000)
     - Automatically opens browser windows to both UI and API
 
 LOCAL MODE:
-    - Builds solution and starts API/UI in separate PowerShell windows
+    - Builds solution and starts API/UI/MCP Server in separate PowerShell windows
     - Uses local SQL Server instance (default: "." for default instance)
     - API available at: https://localhost:7032 (HTTP: 5256)
     - UI available at: https://localhost:7043 (HTTP: 5259)
+    - MCP Server available at: http://localhost:5000/mcp (HTTP mode for testing)
     - Requires SQL Server to be running and accessible
     - Automatically opens browser windows to both UI and API
 
@@ -129,6 +130,7 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | ForEach-Object { $_.Pa
 $composeFile = Join-Path $repoRoot 'docker-compose.yml'
 $apiProj = Join-Path $repoRoot 'AiStockTradeApp.Api/AiStockTradeApp.Api.csproj'
 $uiProj  = Join-Path $repoRoot 'AiStockTradeApp/AiStockTradeApp.csproj'
+$mcpProj = Join-Path $repoRoot 'AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj'
 
 function Test-CommandExists {
   param([Parameter(Mandatory)][string]$Name)
@@ -139,6 +141,7 @@ function Open-BrowserWindows {
   param(
     [string]$UiUrl,
     [string]$ApiUrl,
+    [string]$McpUrl = "",
     [string]$Mode
   )
   
@@ -156,9 +159,19 @@ function Open-BrowserWindows {
     Write-Host "Opening API at: $ApiUrl" -ForegroundColor Green
     Start-Process $ApiUrl
     
+    # Open MCP Server if URL provided (for local mode)
+    if ($McpUrl) {
+      Start-Sleep -Seconds 2
+      Write-Host "Opening MCP Server at: $McpUrl" -ForegroundColor Green  
+      Start-Process $McpUrl
+    }
+    
     Write-Host "`n🎉 Browser windows opened successfully!" -ForegroundColor Green
     Write-Host "UI Application: $UiUrl" -ForegroundColor Cyan
     Write-Host "API Endpoint:   $ApiUrl" -ForegroundColor Cyan
+    if ($McpUrl) {
+      Write-Host "MCP Server:     $McpUrl" -ForegroundColor Cyan
+    }
     
     if ($Mode -eq 'Local') {
       Write-Host "`n💡 Tip: Keep the PowerShell windows open to maintain the services running." -ForegroundColor Yellow
@@ -216,11 +229,12 @@ function Invoke-DockerCleanUpAndUp {
   
   # Open browser windows for Docker mode
   if (-not $NoBrowser) {
-    Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8082" -Mode "Docker"
+    Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8082" -McpUrl "http://localhost:5000/mcp" -Mode "Docker"
   } else {
     Write-Host "`n✅ Services started successfully!" -ForegroundColor Green
     Write-Host "UI Application: http://localhost:8080" -ForegroundColor Cyan
     Write-Host "API Endpoint:   http://localhost:8082" -ForegroundColor Cyan
+    Write-Host "MCP Server:     http://localhost:5000/mcp" -ForegroundColor Cyan
   }
 }
 
@@ -241,6 +255,7 @@ function Start-LocalProcesses {
   }
   if (-not (Test-Path $apiProj)) { throw "API project not found: $apiProj" }
   if (-not (Test-Path $uiProj))  { throw "UI project not found: $uiProj" }
+  if (-not (Test-Path $mcpProj)) { throw "MCP Server project not found: $mcpProj" }
 
   # Clean shutdown of any existing dotnet processes to avoid file locks
   Write-Host 'Performing clean shutdown of existing dotnet processes...' -ForegroundColor Yellow
@@ -320,7 +335,16 @@ function Start-LocalProcesses {
   Write-Host 'Launching UI in a new PowerShell window...' -ForegroundColor Cyan
   Start-Process -FilePath 'pwsh' -ArgumentList $uiArgs -WorkingDirectory $repoRoot -Environment $uiEnv | Out-Null
 
-  Write-Host 'Local processes started. API (7032/5256), UI (7043/5259) per launchSettings.' -ForegroundColor Green
+  # Launch MCP Server in HTTP mode
+  $mcpEnv = @{
+    'ASPNETCORE_ENVIRONMENT' = 'Development';
+    'STOCK_API_BASE_URL' = 'https://localhost:7032'
+  }
+  $mcpArgs = @('-NoExit','-Command',"dotnet run --no-build --project `"$mcpProj`" -- --http")
+  Write-Host 'Launching MCP Server in HTTP mode in a new PowerShell window...' -ForegroundColor Cyan
+  Start-Process -FilePath 'pwsh' -ArgumentList $mcpArgs -WorkingDirectory $repoRoot -Environment $mcpEnv | Out-Null
+
+  Write-Host 'Local processes started. API (7032/5256), UI (7043/5259), MCP Server (5000/mcp) per launchSettings.' -ForegroundColor Green
   
   # Wait a moment for UI to start before opening browsers
   if (-not $NoBrowser) {
@@ -332,7 +356,7 @@ function Start-LocalProcesses {
     $apiUrl = if ($ApiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7032" } else { "http://localhost:5256" }
     
     # Open browser windows for Local mode
-    Open-BrowserWindows -UiUrl $uiUrl -ApiUrl $apiUrl -Mode "Local"
+    Open-BrowserWindows -UiUrl $uiUrl -ApiUrl $apiUrl -McpUrl "http://localhost:5000/mcp" -Mode "Local"
   } else {
     # Determine URLs based on profile settings for display
     $uiUrl = if ($UiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7043" } else { "http://localhost:5259" }
@@ -341,6 +365,7 @@ function Start-LocalProcesses {
     Write-Host "`n✅ Services started successfully!" -ForegroundColor Green
     Write-Host "UI Application: $uiUrl" -ForegroundColor Cyan
     Write-Host "API Endpoint:   $apiUrl" -ForegroundColor Cyan
+    Write-Host "MCP Server:     http://localhost:5000/mcp" -ForegroundColor Cyan
     Write-Host "`n💡 Tip: Keep the PowerShell windows open to maintain the services running." -ForegroundColor Yellow
   }
 }

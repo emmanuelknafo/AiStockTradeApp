@@ -41,6 +41,25 @@ services:
           - AiStockTradeAppApi
           - aistocktradeappapi
 
+  aistockmcpserver:
+    image: ${DOCKER_REGISTRY-}aistocktradeapp-mcp:latest
+    build:
+      context: .
+      dockerfile: AiStockTradeApp.McpServer/Dockerfile
+    ports:
+      - "5000:5000" # MCP Server available on http://localhost:5000/mcp
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: "http://+:5000"
+      ASPNETCORE_HTTP_PORTS: "5000"
+      STOCK_API_BASE_URL: "http://aistocktradeappapi:8080"
+    depends_on:
+      AiStockTradeAppApi:
+        condition: service_started
+    networks:
+      - app-network
+    command: ["dotnet", "AiStockTradeApp.McpServer.dll", "--http"]
+
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:

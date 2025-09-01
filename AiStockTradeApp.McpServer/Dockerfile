@@ -1,7 +1,7 @@
 # Use the official .NET 9 runtime as the base image
 FROM mcr.microsoft.com/dotnet/aspnet:9.0-preview AS base
 WORKDIR /app
-EXPOSE 80
+EXPOSE 5000
 EXPOSE 443
 
 # Use the .NET 9 SDK for building
@@ -32,7 +32,8 @@ COPY --from=publish /app/publish .
 
 # Set environment variables
 ENV ASPNETCORE_ENVIRONMENT=Production
-ENV STOCK_API_BASE_URL=http://localhost:5000
+ENV ASPNETCORE_URLS=http://+:5000
+ENV STOCK_API_BASE_URL=https://app-aistock-dev-002.azurewebsites.net
 
 # Create a non-root user
 RUN addgroup --system --gid 1001 mcpserver && \
