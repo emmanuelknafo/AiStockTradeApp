@@ -70,7 +70,9 @@ if (useStreamableHttp && builder is WebApplicationBuilder webBuilder)
 
     if (!string.IsNullOrEmpty(portEnv) && int.TryParse(portEnv, out var port))
     {
-        webBuilder.WebHost.UseUrls($"http://*:{port}");
+        // Configure Kestrel/host to bind to the platform-provided port via configuration so this compiles in CI hosts
+        webBuilder.Configuration["ASPNETCORE_URLS"] = $"http://*:{port}";
+        Environment.SetEnvironmentVariable("ASPNETCORE_URLS", $"http://*:{port}");
     }
     else
     {
@@ -78,7 +80,8 @@ if (useStreamableHttp && builder is WebApplicationBuilder webBuilder)
         var urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
         if (!string.IsNullOrEmpty(urls))
         {
-            webBuilder.WebHost.UseUrls(urls);
+            webBuilder.Configuration["ASPNETCORE_URLS"] = urls;
+            Environment.SetEnvironmentVariable("ASPNETCORE_URLS", urls);
         }
     }
 }
