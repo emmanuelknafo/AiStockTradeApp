@@ -33,7 +33,8 @@ jobs:
       with:
         # Fetch full history for proper versioning
         fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
+        # Use PAT token for creating pull requests
+        token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -189,7 +190,9 @@ jobs:
     - name: Commit version changes
       if: steps.auto-increment.outputs.auto_incremented == 'true'
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Use PAT token for creating pull requests, fallback to GITHUB_TOKEN
+        GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
       run: |
         # Configure git
         git config --local user.email "action@github.com"
@@ -214,26 +217,41 @@ jobs:
           # Push branch and create pull request
           git push origin "$BRANCH_NAME"
           
-          # Create pull request using GitHub CLI
-          gh pr create \
-            --title "Auto-increment MCP Server version to ${{ steps.auto-increment.outputs.version }}" \
-            --body "Automated version increment detected changes in MCP Server:
+          # Try to create pull request using GitHub CLI with PAT token
+          if [ -n "${{ secrets.GH_PAT }}" ]; then
+            echo "Creating pull request using PAT token..."
+            gh pr create \
+              --title "Auto-increment MCP Server version to ${{ steps.auto-increment.outputs.version }}" \
+              --body "Automated version increment detected changes in MCP Server:
+              
+              - **Change Type**: ${{ steps.changes.outputs.change_type }}
+              - **Increment Type**: ${{ steps.changes.outputs.increment_type }}
+              - **New Version**: ${{ steps.auto-increment.outputs.version }}
+              
+              This PR was automatically created by the CI/CD pipeline.
+              
+              Files modified:
+              - AiStockTradeApp.McpServer.csproj
+              - .mcp/server-nuget.json
+              - .mcp/server.json (if exists)" \
+              --head "$BRANCH_NAME" \
+              --base main
             
-            - **Change Type**: ${{ steps.changes.outputs.change_type }}
-            - **Increment Type**: ${{ steps.changes.outputs.increment_type }}
-            - **New Version**: ${{ steps.auto-increment.outputs.version }}
-            
-            This PR was automatically created by the CI/CD pipeline.
-            
-            Files modified:
-            - AiStockTradeApp.McpServer.csproj
-            - .mcp/server-nuget.json
-            - .mcp/server.json (if exists)" \
-            --head "$BRANCH_NAME" \
-            --base main
-          
-          echo "Version update pull request created for branch: $BRANCH_NAME"
-          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "✅ Pull request created successfully!"
+            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️  GH_PAT secret not configured. Cannot create pull request automatically."
+            echo "📝 Branch created: $BRANCH_NAME"
+            echo "🔗 Manual PR creation required at: https://github.com/${{ github.repository }}/pull/new/$BRANCH_NAME"
+            echo ""
+            echo "To enable automatic PR creation, add a GitHub Personal Access Token as a secret named 'GH_PAT' with the following permissions:"
+            echo "- Contents: Read and Write"
+            echo "- Pull requests: Write" 
+            echo "- Metadata: Read"
+            echo ""
+            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "manual_pr_required=true" >> $GITHUB_OUTPUT
+          fi
         fi
 
     - name: Use auto-incremented version
