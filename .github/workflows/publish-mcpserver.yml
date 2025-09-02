@@ -1,0 +1,186 @@
+name: Publish MCP Server to NuGet
+
+# Trigger on pushes to main branch when non-.md files in MCP Server project are modified
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'AiStockTradeApp.McpServer/**'
+      - '!AiStockTradeApp.McpServer/**/*.md'
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+env:
+  # Project path
+  PROJECT_PATH: 'AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj'
+  # Configuration
+  BUILD_CONFIGURATION: 'Release'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        # Fetch full history for proper versioning
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.x'
+        dotnet-quality: 'preview'
+
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+
+    - name: Build project
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
+
+    - name: Run tests (if any exist)
+      run: |
+        if [ -d "AiStockTradeApp.Tests" ]; then
+          dotnet test AiStockTradeApp.Tests --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --verbosity normal
+        else
+          echo "No tests found, skipping test step"
+        fi
+
+    - name: Check for version changes
+      id: version-check
+      run: |
+        # Extract version from csproj file
+        VERSION=$(grep -oP '<PackageVersion>\K[^<]*' ${{ env.PROJECT_PATH }})
+        echo "Current version: $VERSION"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        
+        # Check if this version already exists on NuGet.org
+        PACKAGE_ID=$(grep -oP '<PackageId>\K[^<]*' ${{ env.PROJECT_PATH }})
+        echo "Package ID: $PACKAGE_ID"
+        echo "package_id=$PACKAGE_ID" >> $GITHUB_OUTPUT
+        
+        # Check if version exists on NuGet (this will fail if version doesn't exist, which is what we want)
+        if curl -f -s "https://api.nuget.org/v3-flatcontainer/$PACKAGE_ID/$VERSION/$PACKAGE_ID.$VERSION.nupkg" > /dev/null; then
+          echo "Version $VERSION already exists on NuGet.org"
+          echo "should_publish=false" >> $GITHUB_OUTPUT
+        else
+          echo "Version $VERSION does not exist on NuGet.org, proceeding with publish"
+          echo "should_publish=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Pack project
+      if: steps.version-check.outputs.should_publish == 'true'
+      run: dotnet pack ${{ env.PROJECT_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --output ./nupkg
+
+    - name: Validate package contents
+      if: steps.version-check.outputs.should_publish == 'true'
+      run: |
+        echo "Checking package contents..."
+        PACKAGE_FILE=$(find ./nupkg -name "*.nupkg" | head -1)
+        if [ -z "$PACKAGE_FILE" ]; then
+          echo "No package file found!"
+          exit 1
+        fi
+        
+        echo "Package file: $PACKAGE_FILE"
+        
+        # Check if .mcp/server.json is included in the package
+        if unzip -l "$PACKAGE_FILE" | grep -q ".mcp/server.json"; then
+          echo "✅ .mcp/server.json found in package"
+        else
+          echo "❌ .mcp/server.json not found in package"
+          exit 1
+        fi
+        
+        # Check if README.md is included
+        if unzip -l "$PACKAGE_FILE" | grep -q "README.md"; then
+          echo "✅ README.md found in package"
+        else
+          echo "❌ README.md not found in package"
+          exit 1
+        fi
+        
+        echo "Package validation completed successfully"
+
+    - name: Publish to NuGet.org
+      if: steps.version-check.outputs.should_publish == 'true'
+      run: |
+        dotnet nuget push ./nupkg/*.nupkg \
+          --api-key ${{ secrets.NUGET_API_KEY }} \
+          --source https://api.nuget.org/v3/index.json \
+          --skip-duplicate
+
+    - name: Create GitHub release
+      if: steps.version-check.outputs.should_publish == 'true'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: mcpserver-v${{ steps.version-check.outputs.version }}
+        release_name: MCP Server v${{ steps.version-check.outputs.version }}
+        body: |
+          🚀 **AI Stock Trade MCP Server v${{ steps.version-check.outputs.version }}**
+          
+          Published to NuGet.org as `${{ steps.version-check.outputs.package_id }}`
+          
+          ### Installation
+          
+          Configure in your MCP client (VS Code or Visual Studio):
+          
+          ```json
+          {
+            "servers": {
+              "${{ steps.version-check.outputs.package_id }}": {
+                "type": "stdio",
+                "command": "dnx",
+                "args": [
+                  "${{ steps.version-check.outputs.package_id }}",
+                  "--version",
+                  "${{ steps.version-check.outputs.version }}",
+                  "--yes"
+                ],
+                "env": {
+                  "STOCK_API_BASE_URL": "https://your-api-url.com"
+                }
+              }
+            }
+          }
+          ```
+          
+          ### What's Included
+          - 🔌 MCP Server with stock trading tools
+          - 📊 Real-time stock quotes
+          - 📈 Historical data access
+          - 🔍 Stock symbol search
+          - 🏢 Company details lookup
+          - ❤️ System health monitoring
+          
+          View on NuGet.org: https://www.nuget.org/packages/${{ steps.version-check.outputs.package_id }}/${{ steps.version-check.outputs.version }}
+        draft: false
+        prerelease: ${{ contains(steps.version-check.outputs.version, 'beta') || contains(steps.version-check.outputs.version, 'alpha') || contains(steps.version-check.outputs.version, 'preview') }}
+
+    - name: Add summary
+      if: steps.version-check.outputs.should_publish == 'true'
+      run: |
+        echo "## 🎉 MCP Server Published Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Package:** \`${{ steps.version-check.outputs.package_id }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Version:** \`${{ steps.version-check.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**NuGet URL:** https://www.nuget.org/packages/${{ steps.version-check.outputs.package_id }}/${{ steps.version-check.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Usage" >> $GITHUB_STEP_SUMMARY
+        echo "Configure in your MCP client to start using the stock trading tools!" >> $GITHUB_STEP_SUMMARY
+
+    - name: Skip publish summary
+      if: steps.version-check.outputs.should_publish == 'false'
+      run: |
+        echo "## ⏭️ Publish Skipped" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Version \`${{ steps.version-check.outputs.version }}\` already exists on NuGet.org" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "To publish a new version:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Update the \`<PackageVersion>\` in the .csproj file" >> $GITHUB_STEP_SUMMARY
+        echo "2. Update the version in \`.mcp/server.json\`" >> $GITHUB_STEP_SUMMARY
+        echo "3. Commit and push the changes" >> $GITHUB_STEP_SUMMARY
