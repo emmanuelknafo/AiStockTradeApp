@@ -236,6 +236,10 @@ jobs:
           USE_INMEMORY_DB: "true"
           ASPNETCORE_ENVIRONMENT: "Development"
           APP_VERSION: ${{ steps.gitversion.outputs.fullSemVer }}
+          # Enable mock data fallback in CI/CD environment to handle API credit exhaustion
+          StockData__EnableMockFallback: "true"
+          StockData__MaxApiRetries: "2"
+          StockData__ApiTimeoutSeconds: "10"
 
       - name: Collect test result files (TRX)
         if: always()
@@ -424,6 +428,10 @@ jobs:
           PLAYWRIGHT_API_BASE_URL: "http://localhost:5256"
           StockApi__BaseUrl: "http://localhost:5256"
           StockApi__HttpBaseUrl: "http://localhost:5256"
+          # Enable mock data fallback for UI tests to handle API credit exhaustion
+          StockData__EnableMockFallback: "true"
+          StockData__MaxApiRetries: "2"
+          StockData__ApiTimeoutSeconds: "10"
 
       - name: Wait for application to be ready
         run: |

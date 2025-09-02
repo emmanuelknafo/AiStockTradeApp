@@ -295,6 +295,10 @@ stages:
               USE_INMEMORY_DB: "true"
               ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTest;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
               VSTEST_RESULTS_DIRECTORY: "$(Agent.TempDirectory)"
+              # Enable mock data fallback in CI/CD environment to handle API credit exhaustion
+              StockData__EnableMockFallback: "true"
+              StockData__MaxApiRetries: "2"
+              StockData__ApiTimeoutSeconds: "10"
 
           - task: Bash@3
             displayName: "Diagnostics: List TestResults artifacts"
@@ -582,6 +586,10 @@ stages:
               PLAYWRIGHT_API_BASE_URL: "http://localhost:5256"
               StockApi__BaseUrl: "http://localhost:5256"
               StockApi__HttpBaseUrl: "http://localhost:5256"
+              # Enable mock data fallback for UI tests to handle API credit exhaustion
+              StockData__EnableMockFallback: "true"
+              StockData__MaxApiRetries: "2"
+              StockData__ApiTimeoutSeconds: "10"
 
           - script: |
               # Start API in background
@@ -616,6 +624,10 @@ stages:
               ASPNETCORE_ENVIRONMENT: "Development"
               ASPNETCORE_URLS: "http://localhost:5256"
               USE_INMEMORY_DB: "true"
+              # Enable mock data fallback for API to handle external API credit exhaustion
+              StockData__EnableMockFallback: "true"
+              StockData__MaxApiRetries: "2"
+              StockData__ApiTimeoutSeconds: "10"
 
           - script: |
               echo "Waiting for application to start..."
