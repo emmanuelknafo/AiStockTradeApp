@@ -83,14 +83,20 @@ stages:
               script: |
                 # Check if there are changes in the MCP Server project since last build tag
                 try {
-                    # Find the last tag for MCP Server releases
-                    $lastTag = git describe --tags --abbrev=0 --match="mcpserver-v*" 2>$null
+                    # Find the last tag for Azure DevOps releases (use ado- prefix for separation)
+                    $lastTag = git describe --tags --abbrev=0 --match="ado-mcpserver-v*" 2>$null
+                    
+                    # Fallback to generic mcpserver tags if no ado-specific tags found
+                    if (-not $lastTag) {
+                        $lastTag = git describe --tags --abbrev=0 --match="mcpserver-v*" 2>$null
+                    }
                     
                     if (-not $lastTag) {
                         Write-Host "No previous release found, treating as first release"
                         Write-Host "##vso[task.setvariable variable=HasChanges]true"
                         Write-Host "##vso[task.setvariable variable=ChangeType]initial"
                         Write-Host "##vso[task.setvariable variable=IncrementType]patch"
+                        Write-Host "DEBUG: Variables set - HasChanges=true, ChangeType=initial, IncrementType=patch"
                     } else {
                         Write-Host "Last release tag: $lastTag"
                         
@@ -110,21 +116,25 @@ stages:
                             if ($hasCodeChanges) {
                                 Write-Host "Code changes detected - will increment minor version"
                                 Write-Host "##vso[task.setvariable variable=IncrementType]minor"
+                                $incrementTypeValue = "minor"
                             } elseif ($hasConfigChanges) {
                                 Write-Host "Configuration changes detected - will increment patch version"
                                 Write-Host "##vso[task.setvariable variable=IncrementType]patch"
+                                $incrementTypeValue = "patch"
                             } else {
                                 Write-Host "Documentation/other changes detected - will increment patch version"
                                 Write-Host "##vso[task.setvariable variable=IncrementType]patch"
+                                $incrementTypeValue = "patch"
                             }
                             
                             # Debug: Confirm variables are set
-                            Write-Host "DEBUG: Variables set - HasChanges=true, ChangeType=update, IncrementType=$(if ($hasCodeChanges) { 'minor' } elseif ($hasConfigChanges) { 'patch' } else { 'patch' })"
+                            Write-Host "DEBUG: Variables set - HasChanges=true, ChangeType=update, IncrementType=$incrementTypeValue"
                         } else {
                             Write-Host "No changes detected in MCP Server since ${lastTag}"
                             Write-Host "##vso[task.setvariable variable=HasChanges]false"
                             Write-Host "##vso[task.setvariable variable=ChangeType]none"
-                            Write-Host "DEBUG: Variables set - HasChanges=false, ChangeType=none"
+                            Write-Host "##vso[task.setvariable variable=IncrementType]none"
+                            Write-Host "DEBUG: Variables set - HasChanges=false, ChangeType=none, IncrementType=none"
                         }
                     }
                 } catch {
@@ -429,13 +439,13 @@ stages:
                 $version = "$(FinalVersion)"
                 $packageId = "$(PackageId)"
                 
-                # Add build tag
-                Write-Host "##vso[build.addbuildtag]mcpserver-v$version"
+                # Add build tag with Azure DevOps specific prefix
+                Write-Host "##vso[build.addbuildtag]ado-mcpserver-v$version"
                 Write-Host "##vso[build.addbuildtag]published"
                 
-                # Create Git tag
-                git tag "mcpserver-v$version"
-                git push origin "mcpserver-v$version"
+                # Create Azure DevOps-specific Git tag to separate from GitHub releases
+                git tag "ado-mcpserver-v$version"
+                git push origin "ado-mcpserver-v$version"
                 
                 # Add to build summary
                 $artifactsFeedUrl = "https://dev.azure.com/$(AZURE_DEVOPS_ORGANIZATION)/$(AZURE_DEVOPS_PROJECT)/_artifacts/feed/$(AZURE_DEVOPS_FEED_NAME)/NuGet/$packageId/overview/$version"
