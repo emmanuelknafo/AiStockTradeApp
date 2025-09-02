@@ -55,8 +55,8 @@ jobs:
         VERSION=$(grep -oP '<PackageVersion>\K[^<]*' ${{ env.PROJECT_PATH }})
         echo "Current version: $VERSION"
         
-        # Check if this version already exists on NuGet.org
-        PACKAGE_ID=$(grep -oP '<PackageId>\K[^<]*' ${{ env.PROJECT_PATH }})
+        # For GitHub Actions publishing to NuGet.org, use the known package ID
+        PACKAGE_ID="devopsabcs.AiStockTradeMcpServer"
         echo "Package ID: $PACKAGE_ID"
         echo "package_id=$PACKAGE_ID" >> $GITHUB_OUTPUT
         
@@ -106,8 +106,13 @@ jobs:
           # Update csproj file
           sed -i "s|<PackageVersion>$CURRENT_VERSION</PackageVersion>|<PackageVersion>$NEW_VERSION</PackageVersion>|" ${{ env.PROJECT_PATH }}
           
-          # Update .mcp/server.json
-          sed -i "s|\"version\": \"$CURRENT_VERSION\"|\"version\": \"$NEW_VERSION\"|" AiStockTradeApp.McpServer/.mcp/server.json
+          # Update .mcp/server-nuget.json (the source for NuGet packages)
+          sed -i "s|\"version\": \"$CURRENT_VERSION\"|\"version\": \"$NEW_VERSION\"|" AiStockTradeApp.McpServer/.mcp/server-nuget.json
+          
+          # Also update the main server.json if it exists
+          if [ -f "AiStockTradeApp.McpServer/.mcp/server.json" ]; then
+            sed -i "s|\"version\": \"$CURRENT_VERSION\"|\"version\": \"$NEW_VERSION\"|" AiStockTradeApp.McpServer/.mcp/server.json
+          fi
           
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "should_publish=true" >> $GITHUB_OUTPUT
@@ -116,7 +121,10 @@ jobs:
           # Commit the version change
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add ${{ env.PROJECT_PATH }} AiStockTradeApp.McpServer/.mcp/server.json
+          git add ${{ env.PROJECT_PATH }} AiStockTradeApp.McpServer/.mcp/server-nuget.json
+          if [ -f "AiStockTradeApp.McpServer/.mcp/server.json" ]; then
+            git add AiStockTradeApp.McpServer/.mcp/server.json
+          fi
           git commit -m "Auto-increment version to $NEW_VERSION [skip ci]" || echo "No changes to commit"
           git push || echo "No changes to push"
         else
