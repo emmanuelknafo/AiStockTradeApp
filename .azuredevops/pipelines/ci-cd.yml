@@ -28,6 +28,7 @@ trigger:
       - ".azuredevops/pipelines/alt-config.yml"
       - ".azuredevops/pipelines/infrastructure.yml"
       - ".azuredevops/pipelines/generate-changelog.yml"
+      - ".azuredevops/pipelines/publish-mcpserver.yml"
       - "load-tests/**"
       - "infrastructure/**"
 
@@ -58,6 +59,7 @@ pr:
       - ".azuredevops/pipelines/alt-config.yml"
       - ".azuredevops/pipelines/infrastructure.yml"
       - ".azuredevops/pipelines/generate-changelog.yml"
+      - ".azuredevops/pipelines/publish-mcpserver.yml"
       - "load-tests/**"
       - "infrastructure/**"
 
