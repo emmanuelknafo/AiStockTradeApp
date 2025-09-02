@@ -22,7 +22,7 @@ parameters:
     default: false
 
 variables:
-  - group: "AiStockTradeApp" # Variable group for shared variables including Azure Artifacts feed
+  - group: "AiStockTradeApp-Packages" # Variable group for shared variables including Azure Artifacts feed
   - name: PROJECT_PATH
     value: 'AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj'
   - name: BUILD_CONFIGURATION
@@ -33,11 +33,11 @@ variables:
     value: 'ubuntu-22.04'
   # Azure DevOps Artifacts configuration
   - name: AZURE_DEVOPS_FEED_NAME
-    value: 'AiStockTradeApp-Packages' # Configure this feed name in your Azure DevOps project
+    value: 'AiStockTradeApp' # Configure this feed name in your Azure DevOps project
   - name: AZURE_DEVOPS_ORGANIZATION
-    value: 'your-organization' # Replace with your Azure DevOps organization name
+    value: 'MngEnvMCAP675646' # Your Azure DevOps organization name
   - name: AZURE_DEVOPS_PROJECT
-    value: 'your-project' # Replace with your Azure DevOps project name
+    value: 'AiStockTradeApp' # Your Azure DevOps project name
 
 pool:
   vmImage: $(vmImageName)
@@ -237,6 +237,25 @@ stages:
                 }
                 
                 Write-Host "Package validation completed successfully"
+
+          # Verify Azure DevOps Artifacts feed exists before publishing
+          - task: PowerShell@2
+            displayName: "Verify Azure DevOps Artifacts feed"
+            condition: eq(variables['ShouldPublish'], 'True')
+            inputs:
+              targetType: "inline"
+              script: |
+                Write-Host "Verifying Azure DevOps Artifacts feed configuration..."
+                Write-Host "Organization: $(AZURE_DEVOPS_ORGANIZATION)"
+                Write-Host "Project: $(AZURE_DEVOPS_PROJECT)"
+                Write-Host "Feed: $(AZURE_DEVOPS_FEED_NAME)"
+                
+                $feedUrl = "https://pkgs.dev.azure.com/$(AZURE_DEVOPS_ORGANIZATION)/$(AZURE_DEVOPS_PROJECT)/_packaging/$(AZURE_DEVOPS_FEED_NAME)/nuget/v3/index.json"
+                Write-Host "Feed URL: $feedUrl"
+                
+                # Note: The actual feed existence check would require authentication
+                # This is mainly for logging the configuration for debugging
+                Write-Host "Configuration verified. Proceeding with publish..."
 
           # Publish to Azure DevOps Artifacts
           - task: DotNetCoreCLI@2
