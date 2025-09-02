@@ -20,6 +20,9 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required for creating releases
+      packages: write  # Required for publishing packages
     
     steps:
     - name: Checkout repository
@@ -110,52 +113,50 @@ jobs:
 
     - name: Create GitHub release
       if: steps.version-check.outputs.should_publish == 'true'
-      uses: actions/create-release@v1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: mcpserver-v${{ steps.version-check.outputs.version }}
-        release_name: MCP Server v${{ steps.version-check.outputs.version }}
-        body: |
-          🚀 **AI Stock Trade MCP Server v${{ steps.version-check.outputs.version }}**
-          
-          Published to NuGet.org as `${{ steps.version-check.outputs.package_id }}`
-          
-          ### Installation
-          
-          Configure in your MCP client (VS Code or Visual Studio):
-          
-          ```json
-          {
-            "servers": {
-              "${{ steps.version-check.outputs.package_id }}": {
-                "type": "stdio",
-                "command": "dnx",
-                "args": [
-                  "${{ steps.version-check.outputs.package_id }}",
-                  "--version",
-                  "${{ steps.version-check.outputs.version }}",
-                  "--yes"
-                ],
-                "env": {
-                  "STOCK_API_BASE_URL": "https://your-api-url.com"
-                }
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Create release with GitHub CLI
+        gh release create "mcpserver-v${{ steps.version-check.outputs.version }}" \
+          --title "MCP Server v${{ steps.version-check.outputs.version }}" \
+          --notes "🚀 **AI Stock Trade MCP Server v${{ steps.version-check.outputs.version }}**
+
+        Published to NuGet.org as \`${{ steps.version-check.outputs.package_id }}\`
+
+        ### Installation
+
+        Configure in your MCP client (VS Code or Visual Studio):
+
+        \`\`\`json
+        {
+          \"servers\": {
+            \"${{ steps.version-check.outputs.package_id }}\": {
+              \"type\": \"stdio\",
+              \"command\": \"dnx\",
+              \"args\": [
+                \"${{ steps.version-check.outputs.package_id }}\",
+                \"--version\",
+                \"${{ steps.version-check.outputs.version }}\",
+                \"--yes\"
+              ],
+              \"env\": {
+                \"STOCK_API_BASE_URL\": \"https://your-api-url.com\"
               }
             }
           }
-          ```
-          
-          ### What's Included
-          - 🔌 MCP Server with stock trading tools
-          - 📊 Real-time stock quotes
-          - 📈 Historical data access
-          - 🔍 Stock symbol search
-          - 🏢 Company details lookup
-          - ❤️ System health monitoring
-          
-          View on NuGet.org: https://www.nuget.org/packages/${{ steps.version-check.outputs.package_id }}/${{ steps.version-check.outputs.version }}
-        draft: false
-        prerelease: ${{ contains(steps.version-check.outputs.version, 'beta') || contains(steps.version-check.outputs.version, 'alpha') || contains(steps.version-check.outputs.version, 'preview') }}
+        }
+        \`\`\`
+
+        ### What's Included
+        - 🔌 MCP Server with stock trading tools
+        - 📊 Real-time stock quotes
+        - 📈 Historical data access
+        - 🔍 Stock symbol search
+        - 🏢 Company details lookup
+        - ❤️ System health monitoring
+
+        View on NuGet.org: https://www.nuget.org/packages/${{ steps.version-check.outputs.package_id }}/${{ steps.version-check.outputs.version }}" \
+          ${{ contains(steps.version-check.outputs.version, 'beta') || contains(steps.version-check.outputs.version, 'alpha') || contains(steps.version-check.outputs.version, 'preview') && '--prerelease' || '' }}
 
     - name: Add summary
       if: steps.version-check.outputs.should_publish == 'true'
