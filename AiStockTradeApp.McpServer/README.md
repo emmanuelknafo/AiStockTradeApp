@@ -18,6 +18,10 @@ This MCP server enables external AI assistants (Claude, ChatGPT, or other MCP-co
 - **GetRandomListedStock** - Get a random listed stock for discovery and exploration of new investment opportunities
 - **GetSystemStatus** - Check API system health and availability
 
+### Utility Tools
+- **GetRandomNumber** - Generate a single random number within a specified range
+- **GetRandomNumberList** - Generate a list of random numbers with customizable count, range, and uniqueness options
+
 ### Configuration Requirements
 
 The MCP server requires the Stock Trading API to be running and accessible. Configure the API base URL through:

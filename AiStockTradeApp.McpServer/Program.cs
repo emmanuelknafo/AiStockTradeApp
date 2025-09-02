@@ -135,7 +135,7 @@ logger.LogInformation("Transport Mode: {TransportMode} {AutoDetected}",
      Environment.GetEnvironmentVariable("WEBSITES_PORT") != null ||
      Environment.GetEnvironmentVariable("PORT") != null) ? "(Auto-detected Azure environment)" : "");
 logger.LogInformation("API Base URL: {ApiBaseUrl}", apiBaseUrl);
-logger.LogInformation("Available tools: StockTradingTools (GetStockQuote, GetHistoricalData, SearchStockSymbols, GetStockDetails, GetListedStocks, GetRandomListedStock, GetDetailedHistoricalPrices, GetSystemStatus), RandomNumberTools");
+logger.LogInformation("Available tools: StockTradingTools (GetStockQuote, GetHistoricalData, SearchStockSymbols, GetStockDetails, GetListedStocks, GetRandomListedStock, GetDetailedHistoricalPrices, GetSystemStatus), RandomNumberTools (GetRandomNumber, GetRandomNumberList)");
 
 if (useStreamableHttp)
 {

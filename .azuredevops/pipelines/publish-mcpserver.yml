@@ -75,7 +75,62 @@ stages:
               projects: "$(PROJECT_PATH)"
               arguments: "--configuration $(BUILD_CONFIGURATION) --no-restore -p:PublishTarget=AzureDevOps"
 
-          # Version checking and auto-increment logic
+          # Change detection and auto-increment logic
+          - task: PowerShell@2
+            displayName: "Check for MCP Server changes since last release"
+            inputs:
+              targetType: "inline"
+              script: |
+                # Check if there are changes in the MCP Server project since last build tag
+                try {
+                    # Find the last tag for MCP Server releases
+                    $lastTag = git describe --tags --abbrev=0 --match="mcpserver-v*" 2>$null
+                    
+                    if (-not $lastTag) {
+                        Write-Host "No previous release found, treating as first release"
+                        Write-Host "##vso[task.setvariable variable=HasChanges]true"
+                        Write-Host "##vso[task.setvariable variable=ChangeType]initial"
+                        Write-Host "##vso[task.setvariable variable=IncrementType]patch"
+                    } else {
+                        Write-Host "Last release tag: $lastTag"
+                        
+                        # Check for changes in MCP Server directory since last tag
+                        $changes = git diff --name-only $lastTag HEAD -- AiStockTradeApp.McpServer/
+                        
+                        if ($changes) {
+                            Write-Host "Changes detected in MCP Server since $lastTag:"
+                            $changes | ForEach-Object { Write-Host "  $_" }
+                            Write-Host "##vso[task.setvariable variable=HasChanges]true"
+                            Write-Host "##vso[task.setvariable variable=ChangeType]update"
+                            
+                            # Determine change severity based on file types
+                            $hasCodeChanges = $changes | Where-Object { $_ -match '\.cs$' }
+                            $hasConfigChanges = $changes | Where-Object { $_ -match '\.(csproj|json)$' }
+                            
+                            if ($hasCodeChanges) {
+                                Write-Host "Code changes detected - will increment minor version"
+                                Write-Host "##vso[task.setvariable variable=IncrementType]minor"
+                            } elseif ($hasConfigChanges) {
+                                Write-Host "Configuration changes detected - will increment patch version"
+                                Write-Host "##vso[task.setvariable variable=IncrementType]patch"
+                            } else {
+                                Write-Host "Documentation/other changes detected - will increment patch version"
+                                Write-Host "##vso[task.setvariable variable=IncrementType]patch"
+                            }
+                        } else {
+                            Write-Host "No changes detected in MCP Server since $lastTag"
+                            Write-Host "##vso[task.setvariable variable=HasChanges]false"
+                            Write-Host "##vso[task.setvariable variable=ChangeType]none"
+                        }
+                    }
+                } catch {
+                    Write-Host "Error checking for changes: $($_.Exception.Message)"
+                    Write-Host "Treating as changed to be safe"
+                    Write-Host "##vso[task.setvariable variable=HasChanges]true"
+                    Write-Host "##vso[task.setvariable variable=ChangeType]update"
+                    Write-Host "##vso[task.setvariable variable=IncrementType]patch"
+                }
+
           - task: PowerShell@2
             displayName: "Check for version changes and auto-increment"
             inputs:
@@ -101,89 +156,83 @@ stages:
                 Write-Host "##vso[task.setvariable variable=PackageId]$packageId"
                 Write-Host "##vso[task.setvariable variable=CurrentVersion]$currentVersion"
                 
-                # Check if version exists in Azure DevOps Artifacts
-                # Note: This requires Azure CLI or REST API call to check existing packages
-                $shouldPublish = $true
+                # Check if we should publish based on changes
+                $hasChanges = $env:HasChanges -eq 'true'
+                $changeType = $env:ChangeType
+                $incrementType = $env:IncrementType
+                
+                Write-Host "Has changes: $hasChanges"
+                Write-Host "Change type: $changeType"
+                Write-Host "Increment type: $incrementType"
+                
+                $shouldPublish = $false
                 $autoIncremented = $false
                 $newVersion = $currentVersion
                 
-                try {
-                    # Try to get package info from Azure DevOps feed
-                    # This is a simplified check - in practice, you might want to use Azure DevOps REST API
-                    Write-Host "Checking if version $currentVersion exists in Azure DevOps Artifacts feed..."
+                # Skip publishing if no changes detected (unless forced)
+                if (-not $hasChanges -and '${{ parameters.forcePublish }}' -ne 'True') {
+                    Write-Host "No changes detected in MCP Server - skipping publish"
+                    $shouldPublish = $false
+                } else {
+                    Write-Host "Changes detected or force publish enabled - proceeding"
                     
-                    # For force publish parameter
-                    if ('${{ parameters.forcePublish }}' -eq 'True') {
-                        Write-Host "Force publish enabled - will publish regardless of existing version"
-                        $shouldPublish = $true
-                    } else {
-                        # In a real scenario, you'd check against Azure DevOps Artifacts API
-                        # For now, we'll assume the version doesn't exist and proceed
-                        Write-Host "Version check not implemented - proceeding with publish"
-                        $shouldPublish = $true
-                    }
-                    
-                } catch {
-                    Write-Host "Could not check existing versions, proceeding with publish: $($_.Exception.Message)"
-                    $shouldPublish = $true
-                }
-                
-                # Auto-increment version if needed (only if not force publishing)
-                if (-not $shouldPublish -and '${{ parameters.forcePublish }}' -ne 'True') {
-                    Write-Host "Auto-incrementing version from $currentVersion"
-                    
-                    # Parse version parts (supports formats like 1.0.0-beta, 1.0.0-beta.1, etc.)
-                    if ($currentVersion -match '^(\d+)\.(\d+)\.(\d+)(-[a-zA-Z]+)?(\.\d+)?$') {
-                        $major = [int]$Matches[1]
-                        $minor = [int]$Matches[2]
-                        $patch = [int]$Matches[3]
-                        $prerelease = $Matches[4]
-                        $build = $Matches[5]
+                    # Auto-increment version based on change type
+                    if ($hasChanges -and $changeType -ne 'none') {
+                        Write-Host "Auto-incrementing version from $currentVersion (increment type: $incrementType)"
                         
-                        # Increment based on version type
-                        if ($build) {
-                            # Has build number (e.g., 1.0.0-beta.1), increment build
-                            $buildNum = [int]$build.Substring(1)
-                            $newBuildNum = $buildNum + 1
-                            $newVersion = "$major.$minor.$patch$prerelease.$newBuildNum"
-                        } elseif ($prerelease) {
-                            # Has prerelease but no build (e.g., 1.0.0-beta), add .1
-                            $newVersion = "$major.$minor.$patch$prerelease.1"
+                        # Parse version parts (supports formats like 1.0.0-beta, 1.0.0-beta.1, etc.)
+                        if ($currentVersion -match '^(\d+)\.(\d+)\.(\d+)(-[a-zA-Z]+)?(\.\d+)?$') {
+                            $major = [int]$Matches[1]
+                            $minor = [int]$Matches[2]
+                            $patch = [int]$Matches[3]
+                            $prerelease = $Matches[4]
+                            $build = $Matches[5]
+                            
+                            # Increment based on change type and current version format
+                            if ($build) {
+                                # Has build number (e.g., 1.0.0-beta.1), increment build
+                                $buildNum = [int]$build.Substring(1)
+                                $newBuildNum = $buildNum + 1
+                                $newVersion = "$major.$minor.$patch$prerelease.$newBuildNum"
+                            } elseif ($prerelease) {
+                                # Has prerelease but no build (e.g., 1.0.0-beta), add .1
+                                $newVersion = "$major.$minor.$patch$prerelease.1"
+                            } else {
+                                # Release version - increment based on change type
+                                if ($incrementType -eq 'minor') {
+                                    $newMinor = $minor + 1
+                                    $newVersion = "$major.$newMinor.0"
+                                } else {
+                                    # Default to patch increment
+                                    $newPatch = $patch + 1
+                                    $newVersion = "$major.$minor.$newPatch"
+                                }
+                            }
+                            
+                            Write-Host "New version: $newVersion"
+                            
+                            # Update csproj file
+                            $updatedContent = $csprojContent -replace '<PackageVersion>[^<]+</PackageVersion>', "<PackageVersion>$newVersion</PackageVersion>"
+                            Set-Content -Path "$(PROJECT_PATH)" -Value $updatedContent
+                            
+                            # Update .mcp/server-azuredevops.json (the source for Azure DevOps packages)
+                            $mcpServerAzureJson = "AiStockTradeApp.McpServer/.mcp/server-azuredevops.json"
+                            if (Test-Path $mcpServerAzureJson) {
+                                $jsonContent = Get-Content $mcpServerAzureJson -Raw
+                                $updatedJsonContent = $jsonContent -replace '"version": "[^"]*"', """version"": ""$newVersion"""
+                                Set-Content -Path $mcpServerAzureJson -Value $updatedJsonContent
+                                Write-Host "Updated $mcpServerAzureJson"
+                            }
+                            
+                            # Also update the main server.json if it exists
+                            $mcpServerJson = "AiStockTradeApp.McpServer/.mcp/server.json"
                         } else {
-                            # Release version (e.g., 1.0.0), increment patch
-                            $newPatch = $patch + 1
-                            $newVersion = "$major.$minor.$newPatch"
+                            Write-Host "##vso[task.logissue type=error]Could not parse version format: $currentVersion"
+                            exit 1
                         }
-                        
-                        Write-Host "New version: $newVersion"
-                        
-                        # Update csproj file
-                        $updatedContent = $csprojContent -replace '<PackageVersion>[^<]+</PackageVersion>', "<PackageVersion>$newVersion</PackageVersion>"
-                        Set-Content -Path "$(PROJECT_PATH)" -Value $updatedContent
-                        
-                        # Update .mcp/server.json if it exists
-                        $mcpServerJson = "AiStockTradeApp.McpServer/.mcp/server.json"
-                        if (Test-Path $mcpServerJson) {
-                            $mcpContent = Get-Content $mcpServerJson -Raw | ConvertFrom-Json
-                            $mcpContent.version = $newVersion
-                            $mcpContent | ConvertTo-Json -Depth 10 | Set-Content $mcpServerJson
-                            Write-Host "Updated .mcp/server.json with version $newVersion"
-                        }
-                        
-                        $autoIncremented = $true
-                        $shouldPublish = $true
-                        
-                        # Commit the version change
-                        git config --local user.email "azure-pipelines@microsoft.com"
-                        git config --local user.name "Azure Pipelines"
-                        git add "$(PROJECT_PATH)"
-                        if (Test-Path $mcpServerJson) { git add $mcpServerJson }
-                        git commit -m "Auto-increment version to $newVersion [skip ci]"
-                        git push
-                        
                     } else {
-                        Write-Host "##vso[task.logissue type=error]Could not parse version format: $currentVersion"
-                        exit 1
+                        Write-Host "Using current version: $currentVersion"
+                        $shouldPublish = $true
                     }
                 }
                 

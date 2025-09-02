@@ -48,6 +48,46 @@ jobs:
     # The MCP Server project focuses on packaging and distribution
     # Unit tests are handled in separate CI workflows
 
+    - name: Check for MCP Server changes
+      id: changes
+      run: |
+        # Check if there are changes in the MCP Server project since last release
+        LAST_TAG=$(git describe --tags --abbrev=0 --match="mcpserver-v*" 2>/dev/null || echo "")
+        
+        if [ -z "$LAST_TAG" ]; then
+          echo "No previous release found, treating as first release"
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "change_type=initial" >> $GITHUB_OUTPUT
+        else
+          echo "Last release tag: $LAST_TAG"
+          
+          # Check for changes in MCP Server directory since last tag
+          CHANGES=$(git diff --name-only $LAST_TAG HEAD -- AiStockTradeApp.McpServer/ || echo "changes")
+          
+          if [ -n "$CHANGES" ]; then
+            echo "Changes detected in MCP Server since $LAST_TAG:"
+            echo "$CHANGES"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "change_type=update" >> $GITHUB_OUTPUT
+            
+            # Determine change severity based on file types
+            if echo "$CHANGES" | grep -q "\.cs$"; then
+              echo "Code changes detected - incrementing minor version"
+              echo "increment_type=minor" >> $GITHUB_OUTPUT
+            elif echo "$CHANGES" | grep -q -E "\.(csproj|json)$"; then
+              echo "Configuration changes detected - incrementing patch version"
+              echo "increment_type=patch" >> $GITHUB_OUTPUT
+            else
+              echo "Documentation/other changes detected - incrementing patch version"
+              echo "increment_type=patch" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No changes detected in MCP Server since $LAST_TAG"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "change_type=none" >> $GITHUB_OUTPUT
+          fi
+        fi
+
     - name: Check for version changes
       id: version-check
       run: |
@@ -72,70 +112,103 @@ jobs:
         
         echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-    - name: Auto-increment version if needed
+    - name: Auto-increment version based on changes
       id: auto-increment
-      if: steps.version-check.outputs.should_publish == 'false'
+      if: steps.changes.outputs.has_changes == 'true' && (steps.version-check.outputs.should_publish == 'false' || steps.changes.outputs.change_type == 'initial')
       run: |
-        CURRENT_VERSION="${{ steps.version-check.outputs.existing_version }}"
-        echo "Auto-incrementing version from $CURRENT_VERSION"
+        CURRENT_VERSION="${{ steps.version-check.outputs.version }}"
+        INCREMENT_TYPE="${{ steps.changes.outputs.increment_type }}"
+        CHANGE_TYPE="${{ steps.changes.outputs.change_type }}"
         
-        # Parse version parts (supports formats like 1.0.0-beta, 1.0.0-beta.1, etc.)
-        if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-zA-Z]+)?(\.[0-9]+)?$ ]]; then
-          MAJOR=${BASH_REMATCH[1]}
-          MINOR=${BASH_REMATCH[2]}
-          PATCH=${BASH_REMATCH[3]}
-          PRERELEASE=${BASH_REMATCH[4]}
-          BUILD=${BASH_REMATCH[5]}
-          
-          # Increment based on version type
-          if [[ -n "$BUILD" ]]; then
-            # Has build number (e.g., 1.0.0-beta.1), increment build
-            NEW_BUILD=$((${BUILD#.} + 1))
-            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}${PRERELEASE}.${NEW_BUILD}"
-          elif [[ -n "$PRERELEASE" ]]; then
-            # Has prerelease but no build (e.g., 1.0.0-beta), add .1
-            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}${PRERELEASE}.1"
-          else
-            # Release version (e.g., 1.0.0), increment patch
-            NEW_PATCH=$((PATCH + 1))
-            NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
-          fi
-          
-          echo "New version: $NEW_VERSION"
-          
-          # Update csproj file
-          sed -i "s|<PackageVersion>$CURRENT_VERSION</PackageVersion>|<PackageVersion>$NEW_VERSION</PackageVersion>|" ${{ env.PROJECT_PATH }}
-          
-          # Update .mcp/server-nuget.json (the source for NuGet packages)
-          sed -i "s|\"version\": \"$CURRENT_VERSION\"|\"version\": \"$NEW_VERSION\"|" AiStockTradeApp.McpServer/.mcp/server-nuget.json
-          
-          # Also update the main server.json if it exists
-          if [ -f "AiStockTradeApp.McpServer/.mcp/server.json" ]; then
-            sed -i "s|\"version\": \"$CURRENT_VERSION\"|\"version\": \"$NEW_VERSION\"|" AiStockTradeApp.McpServer/.mcp/server.json
-          fi
-          
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "should_publish=true" >> $GITHUB_OUTPUT
-          echo "auto_incremented=true" >> $GITHUB_OUTPUT
-          
-          # Commit the version change
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add ${{ env.PROJECT_PATH }} AiStockTradeApp.McpServer/.mcp/server-nuget.json
-          if [ -f "AiStockTradeApp.McpServer/.mcp/server.json" ]; then
-            git add AiStockTradeApp.McpServer/.mcp/server.json
-          fi
-          git commit -m "Auto-increment version to $NEW_VERSION [skip ci]" || echo "No changes to commit"
-          git push || echo "No changes to push"
+        if [ "$CHANGE_TYPE" == "initial" ]; then
+          echo "Initial release, using current version: $CURRENT_VERSION"
+          NEW_VERSION="$CURRENT_VERSION"
         else
-          echo "Could not parse version format: $CURRENT_VERSION"
-          exit 1
+          echo "Auto-incrementing version from $CURRENT_VERSION (increment type: $INCREMENT_TYPE)"
+          
+          # Parse version parts (supports formats like 1.0.0-beta, 1.0.0-beta.1, etc.)
+          if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-zA-Z]+)?(\.[0-9]+)?$ ]]; then
+            MAJOR=${BASH_REMATCH[1]}
+            MINOR=${BASH_REMATCH[2]}
+            PATCH=${BASH_REMATCH[3]}
+            PRERELEASE=${BASH_REMATCH[4]}
+            BUILD=${BASH_REMATCH[5]}
+            
+            # Increment based on change type and current version format
+            if [[ -n "$BUILD" ]]; then
+              # Has build number (e.g., 1.0.0-beta.1), increment build
+              NEW_BUILD=$((${BUILD#.} + 1))
+              NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}${PRERELEASE}.${NEW_BUILD}"
+            elif [[ -n "$PRERELEASE" ]]; then
+              # Has prerelease but no build (e.g., 1.0.0-beta), add .1
+              NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}${PRERELEASE}.1"
+            else
+              # Release version - increment based on change type
+              if [ "$INCREMENT_TYPE" == "minor" ]; then
+                NEW_MINOR=$((MINOR + 1))
+                NEW_VERSION="${MAJOR}.${NEW_MINOR}.0"
+              else
+                # Default to patch increment
+                NEW_PATCH=$((PATCH + 1))
+                NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+              fi
+            fi
+          else
+            echo "Could not parse version format, falling back to basic increment"
+            NEW_VERSION="${CURRENT_VERSION}.1"
+          fi
+        fi
+        
+        echo "New version: $NEW_VERSION"
+        
+        # Update csproj file
+        sed -i "s|<PackageVersion>$CURRENT_VERSION</PackageVersion>|<PackageVersion>$NEW_VERSION</PackageVersion>|" ${{ env.PROJECT_PATH }}
+        
+        # Update .mcp/server-nuget.json (the source for NuGet packages)
+        sed -i "s|\"version\": \"$CURRENT_VERSION\"|\"version\": \"$NEW_VERSION\"|" AiStockTradeApp.McpServer/.mcp/server-nuget.json
+        
+        # Also update the main server.json if it exists
+        if [ -f "AiStockTradeApp.McpServer/.mcp/server.json" ]; then
+          sed -i "s|\"version\": \"$CURRENT_VERSION\"|\"version\": \"$NEW_VERSION\"|" AiStockTradeApp.McpServer/.mcp/server.json
+        fi
+        
+        echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "should_publish=true" >> $GITHUB_OUTPUT
+        echo "auto_incremented=true" >> $GITHUB_OUTPUT
+
+    - name: Commit version changes
+      if: steps.auto-increment.outputs.auto_incremented == 'true'
+      run: |
+        # Configure git
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Add modified files
+        git add ${{ env.PROJECT_PATH }} AiStockTradeApp.McpServer/.mcp/server-nuget.json
+        if [ -f "AiStockTradeApp.McpServer/.mcp/server.json" ]; then
+          git add AiStockTradeApp.McpServer/.mcp/server.json
+        fi
+        
+        # Commit and push changes
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Auto-increment MCP Server version to ${{ steps.auto-increment.outputs.version }} [skip ci]"
+          git push
+          echo "Version changes committed and pushed"
         fi
 
     - name: Use auto-incremented version
       id: final-version
       run: |
-        if [[ "${{ steps.auto-increment.outputs.auto_incremented }}" == "true" ]]; then
+        # If no changes detected, skip publishing unless forced
+        if [[ "${{ steps.changes.outputs.has_changes }}" == "false" ]]; then
+          echo "No changes detected in MCP Server - skipping publish"
+          echo "should_publish=false" >> $GITHUB_OUTPUT
+          echo "version=${{ steps.version-check.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "package_id=${{ steps.version-check.outputs.package_id }}" >> $GITHUB_OUTPUT
+          echo "skip_reason=no_changes" >> $GITHUB_OUTPUT
+        elif [[ "${{ steps.auto-increment.outputs.auto_incremented }}" == "true" ]]; then
           echo "version=${{ steps.auto-increment.outputs.version }}" >> $GITHUB_OUTPUT
           echo "should_publish=${{ steps.auto-increment.outputs.should_publish }}" >> $GITHUB_OUTPUT
           echo "package_id=${{ steps.version-check.outputs.package_id }}" >> $GITHUB_OUTPUT
