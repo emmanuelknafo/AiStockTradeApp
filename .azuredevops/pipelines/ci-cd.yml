@@ -1262,6 +1262,20 @@ stages:
                 echo "##vso[task.setvariable variable=containerImage;isOutput=true]${DEPLOY_IMAGE}"
 
           - task: Bash@3
+            displayName: "Extract and set API container image for deployment"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -e
+                echo "=== SETTING API DEPLOYMENT IMAGE ==="
+                DEPLOY_IMAGE_API="$(deployTagAPI)"
+                echo "API deployment image: '${DEPLOY_IMAGE_API}'"
+                if [ -z "${DEPLOY_IMAGE_API}" ]; then echo "ERROR: API DEPLOY_IMAGE empty"; exit 1; fi
+                mkdir -p $(Pipeline.Workspace)/build-outputs
+                echo "${DEPLOY_IMAGE_API}" > $(Pipeline.Workspace)/build-outputs/container-image-api.txt
+                echo "##vso[task.setvariable variable=containerImageApi;isOutput=true]${DEPLOY_IMAGE_API}"
+
+          - task: Bash@3
             displayName: "Extract and set MCP container image for deployment"
             inputs:
               targetType: "inline"
@@ -1464,6 +1478,39 @@ stages:
                         --container-registry-password "${REGISTRY_PASSWORD}"
 
                 - task: AzureCLI@2
+                  displayName: "Update API Web App Container"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      WEBAPP_NAME="api-aistock-dev-$(instanceNum)"
+                      RG_NAME="rg-aistock-dev-$(instanceNum)"
+
+                      # Get registry information from the same resource group
+                      REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+                      REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+                      REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+                      echo "API Container Image: $(containerImageApi)"
+                      echo "API Web App Name: ${WEBAPP_NAME}"
+                      echo "Resource Group: ${RG_NAME}"
+                      echo "Registry Name: ${REGISTRY_NAME}"
+
+                      if [ -z "$(containerImageApi)" ]; then
+                        echo "ERROR: API container image is empty!"
+                        exit 1
+                      fi
+
+                      az webapp config container set \
+                        --name "${WEBAPP_NAME}" \
+                        --resource-group "${RG_NAME}" \
+                        --container-image-name "$(containerImageApi)" \
+                        --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+                        --container-registry-user "${REGISTRY_USERNAME}" \
+                        --container-registry-password "${REGISTRY_PASSWORD}"
+
+                - task: AzureCLI@2
                   displayName: "Update MCP Web App Container"
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
@@ -1528,6 +1575,34 @@ stages:
                         sleep 30
                       done
                       echo "❌ UI Health check failed (Dev)"; exit 1
+
+                - task: AzureCLI@2
+                  displayName: "Run API Health Check"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      WEBAPP_NAME="api-aistock-dev-$(instanceNum)"
+                      RG_NAME="rg-aistock-dev-$(instanceNum)"
+                      HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+                      BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
+                      echo "🏥 Starting API health check (Dev API)..."
+                      echo "Base URL: ${BASE_URL}"
+                      echo "Health URL: ${HEALTH_URL}"
+                      echo "Waiting for API deployment to be ready..."
+                      sleep 60
+                      for i in {1..10}; do
+                        echo "API Health check attempt $i/10..."
+                        HTTP_CODE=$(curl -s -o /tmp/health_api_dev.txt -w "%{http_code}" "${HEALTH_URL}")
+                        RESPONSE_BODY=$(cat /tmp/health_api_dev.txt 2>/dev/null || echo "No response body")
+                        echo "HTTP Status: ${HTTP_CODE}"; echo "Response: ${RESPONSE_BODY}"
+                        if [ "${HTTP_CODE}" = "200" ]; then
+                          echo "✅ API Health check passed!"; exit 0
+                        fi
+                        sleep 30
+                      done
+                      echo "❌ API Health check failed"; exit 1
 
                 - task: AzureCLI@2
                   displayName: "Run MCP Health Check"
@@ -1611,6 +1686,21 @@ stages:
                         echo "##vso[task.setvariable variable=containerImage]${CONTAINER_IMAGE}"
                       else
                         echo "ERROR: container-image.txt not found in artifacts!"
+                        ls -la $(Pipeline.Workspace)/build-outputs/
+                        exit 1
+                      fi
+                - task: Bash@3
+                  displayName: "Load API container image from artifact"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "=== LOADING API CONTAINER IMAGE FROM ARTIFACT ==="
+                      if [ -f "$(Pipeline.Workspace)/build-outputs/container-image-api.txt" ]; then
+                        CONTAINER_IMAGE=$(cat $(Pipeline.Workspace)/build-outputs/container-image-api.txt)
+                        echo "API container image from artifact: '${CONTAINER_IMAGE}'"
+                        echo "##vso[task.setvariable variable=containerImageApi]${CONTAINER_IMAGE}"
+                      else
+                        echo "ERROR: container-image-api.txt not found in artifacts!"
                         ls -la $(Pipeline.Workspace)/build-outputs/
                         exit 1
                       fi
@@ -2144,6 +2234,41 @@ stages:
                         --container-registry-password "${REGISTRY_PASSWORD}"
 
                 - task: AzureCLI@2
+                  displayName: "Update API Web App Container"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+
+                      # Get registry information from DEV resource group (shared registry)
+                      DEV_RG_NAME="rg-aistock-dev-$(instanceNum)"
+                      REGISTRY_NAME=$(az acr list --resource-group "${DEV_RG_NAME}" --query '[0].name' --output tsv)
+                      REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+                      REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+                      echo "API Container Image: $(containerImageApi)"
+                      echo "API Web App Name: ${WEBAPP_NAME}"
+                      echo "Prod Resource Group: ${RG_NAME}"
+                      echo "Dev Registry Resource Group: ${DEV_RG_NAME}"
+                      echo "Shared Registry Name: ${REGISTRY_NAME}"
+
+                      if [ -z "$(containerImageApi)" ]; then
+                        echo "ERROR: API container image is empty!"
+                        exit 1
+                      fi
+
+                      az webapp config container set \
+                        --name "${WEBAPP_NAME}" \
+                        --resource-group "${RG_NAME}" \
+                        --container-image-name "$(containerImageApi)" \
+                        --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+                        --container-registry-user "${REGISTRY_USERNAME}" \
+                        --container-registry-password "${REGISTRY_PASSWORD}"
+
+                - task: AzureCLI@2
                   displayName: "Update MCP Web App Container"
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
@@ -2253,6 +2378,68 @@ stages:
                       done
 
                       echo "❌ Health check failed - no successful response received"
+                      exit 1
+
+                - task: AzureCLI@2
+                  displayName: "Run API Health Check"
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: "bash"
+                    scriptLocation: "inlineScript"
+                    inlineScript: |
+                      echo "[DIAG] Dumping resolved connection string authentication mode before API health checks..."
+                      WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
+                      RG_NAME="rg-aistock-prod-$(instanceNum)"
+                      bash ./scripts/sql-conn-auth-dump.sh "$RG_NAME" "$WEBAPP_NAME" || echo "[DIAG] Script execution failed (non-fatal)"
+                      WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
+                      HEALTH_URL="https://${WEBAPP_NAME}.azurewebsites.net/health"
+                      BASE_URL="https://${WEBAPP_NAME}.azurewebsites.net"
+
+                      echo "🏥 Starting API health check..."
+                      echo "Base URL: ${BASE_URL}"
+                      echo "Health URL: ${HEALTH_URL}"
+
+                      # Wait for initial deployment
+                      echo "Waiting for API deployment to be ready..."
+                      sleep 60
+
+                      # Check health endpoint specifically
+                      echo "Testing API health endpoint..."
+                      for i in {1..10}; do
+                        echo "API Health check attempt $i/10..."
+                        
+                        # Get detailed response
+                        HTTP_CODE=$(curl -s -o /tmp/health_api_response.txt -w "%{http_code}" "${HEALTH_URL}")
+                        RESPONSE_BODY=$(cat /tmp/health_api_response.txt 2>/dev/null || echo "No response body")
+                        
+                        echo "HTTP Status: ${HTTP_CODE}"
+                        echo "Response: ${RESPONSE_BODY}"
+                        
+                        if [ "${HTTP_CODE}" = "200" ]; then
+                          echo "✅ API Health check passed!"
+                          echo "API deployment successful and application is healthy."
+                          exit 0
+                        elif [ "${HTTP_CODE}" = "503" ] || [ "${HTTP_CODE}" = "500" ]; then
+                          echo "⚠️ API Application error detected (HTTP ${HTTP_CODE})"
+                          echo "This might be a database connectivity issue."
+                          
+                          # Try to get more detailed logs
+                          echo "Attempting to get API application logs..."
+                          az webapp log tail --name "${WEBAPP_NAME}" --resource-group "rg-aistock-prod-$(instanceNum)" --timeout 30 || echo "Could not retrieve logs"
+                          
+                          if [ $i -eq 10 ]; then
+                            echo "❌ API Health check failed after 10 attempts"
+                            echo "Last API response (HTTP ${HTTP_CODE}): ${RESPONSE_BODY}"
+                            exit 1
+                          fi
+                        else
+                          echo "⏳ Unexpected API response (HTTP ${HTTP_CODE}), retrying..."
+                        fi
+                        
+                        sleep 30
+                      done
+
+                      echo "❌ API Health check failed - no successful response received"
                       exit 1
 
                 - task: Bash@3
