@@ -498,6 +498,7 @@ jobs:
     outputs:
       image: ${{ steps.final-output.outputs.image }}
       api_image: ${{ steps.final-output-api.outputs.image }}
+      mcp_image: ${{ steps.final-output-mcp.outputs.image }}
       test_output: ${{ steps.final-output.outputs.test_output }}
 
     permissions:
@@ -650,6 +651,17 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Extract metadata (MCP Server)
+        id: meta-mcp
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.registry.outputs.registry_name }}.azurecr.io/aistocktradeapp-mcp
+          tags: |
+            type=raw,value=${{ steps.gitversion.outputs.fullSemVer }}
+            type=raw,value=v${{ steps.gitversion.outputs.fullSemVer }}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
       - name: Debug metadata outputs
         run: |
           echo "=== METADATA STEP DEBUG ==="
@@ -692,6 +704,22 @@ jobs:
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.version.prefixed=v${{ steps.gitversion.outputs.fullSemVer }}
 
+      - name: Build and push Docker image (MCP Server)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./AiStockTradeApp.McpServer/Dockerfile
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }}
+          tags: ${{ steps.meta-mcp.outputs.tags }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.gitversion.outputs.fullSemVer }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.ref.name=v${{ steps.gitversion.outputs.fullSemVer }}
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.version.prefixed=v${{ steps.gitversion.outputs.fullSemVer }}
+
       - name: Rebuild UI image locally for Trivy scanning
         run: |
           set -euo pipefail
@@ -713,6 +741,15 @@ jobs:
           echo "Resolved local API tag: ${API_TAG}"
           docker build --pull -f ./AiStockTradeApp.Api/Dockerfile -t "${API_TAG}" --build-arg APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }} .
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/build-outputs":/outputs aquasec/trivy:latest image --format sarif --output /outputs/trivy-api.sarif "${API_TAG}" || true
+
+      - name: Rebuild MCP image locally for Trivy scanning
+        run: |
+          set -euo pipefail
+          MCP_TAG_RAW='${{ steps.meta-mcp.outputs.tags }}'
+          MCP_TAG=$(printf "%s" "$MCP_TAG_RAW" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | head -n1 | xargs)
+          echo "Resolved local MCP tag: ${MCP_TAG}"
+          docker build --pull -f ./AiStockTradeApp.McpServer/Dockerfile -t "${MCP_TAG}" --build-arg APP_VERSION=${{ steps.gitversion.outputs.fullSemVer }} .
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/build-outputs":/outputs aquasec/trivy:latest image --format sarif --output /outputs/trivy-mcp.sarif "${MCP_TAG}" || true
 
       - name: Upload Trivy SARIF artifacts
         if: always()
@@ -866,6 +903,36 @@ jobs:
           echo "image=$DEPLOY_IMAGE" >> "$GITHUB_OUTPUT"
           echo "=== END API IMAGE OUTPUT STEP ==="
 
+      - name: Extract and set MCP container image for deployment
+        id: final-output-mcp
+        run: |
+          set -e
+          echo "=== MCP IMAGE OUTPUT STEP ==="
+
+          TAGS=$(cat << 'EOFTAGS'
+          ${{ steps.meta-mcp.outputs.tags }}
+          EOFTAGS
+          )
+
+          echo "MCP TAGS captured:"; echo "$TAGS"
+          if [ -z "$(echo "$TAGS" | tr -d ' \t\n\r')" ]; then
+            echo "ERROR: No MCP tags received from metadata step"; exit 1; fi
+
+          SEMVER_TAG=$(echo "$TAGS" | grep -E ":[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.]+)?$" | head -1 | tr -d '\n\r' | xargs || true)
+          SHA_TAG=$(echo "$TAGS" | grep -E "sha-[a-f0-9]+" | head -1 | tr -d '\n\r' | xargs || true)
+          if [ -n "$SEMVER_TAG" ]; then
+            DEPLOY_IMAGE="$SEMVER_TAG"; echo "Using MCP semantic version tag: $SEMVER_TAG";
+          elif [ -n "$SHA_TAG" ]; then
+            DEPLOY_IMAGE="$SHA_TAG"; echo "Using MCP SHA tag: $SHA_TAG";
+          else
+            DEPLOY_IMAGE=$(echo "$TAGS" | head -1 | tr -d '\n\r' | xargs); echo "Fallback MCP deploy image: $DEPLOY_IMAGE";
+          fi
+
+          mkdir -p build-outputs
+          echo "$DEPLOY_IMAGE" > build-outputs/container-image-mcp.txt
+          echo "image=$DEPLOY_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "=== END MCP IMAGE OUTPUT STEP ==="
+
       - name: Upload build outputs as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -937,6 +1004,19 @@ jobs:
             exit 1
           fi
 
+      - name: Load MCP container image from artifact
+        id: load-image-mcp
+        run: |
+          echo "=== LOADING MCP CONTAINER IMAGE FROM ARTIFACT ==="
+          if [ -f "build-outputs/container-image-mcp.txt" ]; then
+            CONTAINER_IMAGE=$(cat build-outputs/container-image-mcp.txt)
+            echo "MCP container image from artifact: '${CONTAINER_IMAGE}'"
+            echo "container_image_mcp=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ERROR: container-image-mcp.txt not found in artifacts!"
+            exit 1
+          fi
+
       - name: Derive appVersion from image tag (Dev)
         id: derive-version-dev
         run: |
@@ -963,7 +1043,7 @@ jobs:
           # vars.* mapped via env at top to reduce linter warnings
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-dev-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-dev-002' }}
           template: ./infrastructure/main.bicep
-          parameters: ./infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.50.0.0/16 appIntegrationSubnetPrefix=10.50.1.0/27 privateEndpointSubnetPrefix=10.50.2.0/28 appVersion=${{ steps.derive-version-dev.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
+          parameters: ./infrastructure/parameters.dev.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image }} containerImageMcp=${{ steps.load-image-mcp.outputs.container_image_mcp }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.50.0.0/16 appIntegrationSubnetPrefix=10.50.1.0/27 privateEndpointSubnetPrefix=10.50.2.0/28 appVersion=${{ steps.derive-version-dev.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches API Managed Identity (Dev)
@@ -1067,6 +1147,33 @@ jobs:
             --name "${WEBAPP_NAME}" \
             --resource-group "${RG_NAME}" \
             --container-image-name "${{ steps.load-image-api.outputs.container_image_api }}" \
+            --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+            --container-registry-user "${REGISTRY_USERNAME}" \
+            --container-registry-password "${REGISTRY_PASSWORD}"
+
+      - name: Update MCP Web App Container
+        run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          WEBAPP_NAME="mcp-aistock-dev-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+
+          # Get registry information from the same resource group
+          REGISTRY_NAME=$(az acr list --resource-group "${RG_NAME}" --query '[0].name' --output tsv)
+          REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+          REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+          echo "MCP Container Image: ${{ steps.load-image-mcp.outputs.container_image_mcp }}"
+          echo "MCP Web App Name: ${WEBAPP_NAME}"
+          echo "Resource Group: ${RG_NAME}"
+          echo "Registry Name: ${REGISTRY_NAME}"
+
+          if [ -z "${{ steps.load-image-mcp.outputs.container_image_mcp }}" ]; then
+            echo "ERROR: MCP container image is empty!"; exit 1; fi
+
+          az webapp config container set \
+            --name "${WEBAPP_NAME}" \
+            --resource-group "${RG_NAME}" \
+            --container-image-name "${{ steps.load-image-mcp.outputs.container_image_mcp }}" \
             --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
             --container-registry-user "${REGISTRY_USERNAME}" \
             --container-registry-password "${REGISTRY_PASSWORD}"
@@ -1178,6 +1285,19 @@ jobs:
             exit 1
           fi
 
+      - name: Load MCP container image from artifact
+        id: load-image-mcp
+        run: |
+          echo "=== LOADING MCP CONTAINER IMAGE FROM ARTIFACT ==="
+          if [ -f "build-outputs/container-image-mcp.txt" ]; then
+            CONTAINER_IMAGE=$(cat build-outputs/container-image-mcp.txt)
+            echo "MCP container image from artifact: '${CONTAINER_IMAGE}'"
+            echo "container_image_mcp=${CONTAINER_IMAGE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ERROR: container-image-mcp.txt not found in artifacts!"
+            exit 1
+          fi
+
       - name: Derive appVersion from image tag (Prod)
         id: derive-version-prod
         run: |
@@ -1233,7 +1353,7 @@ jobs:
           resourceGroupName: ${{ github.event_name == 'workflow_dispatch' && format('rg-aistock-prod-{0}', github.event.inputs.instanceNumber) || 'rg-aistock-prod-002' }}
           template: ./infrastructure/main.bicep
           # AAD-only auth is the standard. Bicep sets the SQL AAD admin to the API Web App MI when explicit admin values are not provided.
-          parameters: ./infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.51.0.0/16 appIntegrationSubnetPrefix=10.51.1.0/27 privateEndpointSubnetPrefix=10.51.2.0/28 appVersion=${{ steps.derive-version-prod.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
+          parameters: ./infrastructure/parameters.prod.json instanceNumber=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }} containerImage=${{ steps.load-image.outputs.container_image }} containerImageApi=${{ steps.load-image-api.outputs.container_image }} containerImageMcp=${{ steps.load-image-mcp.outputs.container_image_mcp }} alphaVantageApiKey=${{ secrets.ALPHA_VANTAGE_API_KEY }} twelveDataApiKey=${{ secrets.TWELVE_DATA_API_KEY }} enableAzureAdOnlyAuth=true enablePrivateSql=true enablePrivateKeyVault=true manageNetworking=false manageSql=false vnetAddressSpace=10.51.0.0/16 appIntegrationSubnetPrefix=10.51.1.0/27 privateEndpointSubnetPrefix=10.51.2.0/28 appVersion=${{ steps.derive-version-prod.outputs.app_version }} appServicePlanSku=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.appServicePlanSku || 'P0v3' }}
           failOnStdErr: false
 
       - name: Verify SQL Admin matches API Managed Identity (Prod)
@@ -1507,6 +1627,35 @@ jobs:
             --container-registry-user "${REGISTRY_USERNAME}" \
             --container-registry-password "${REGISTRY_PASSWORD}"
 
+      - name: Update MCP Web App Container
+        run: |
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          WEBAPP_NAME="mcp-aistock-prod-${INSTANCE_NUM}"
+          RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
+
+          # Get registry information from DEV resource group (shared registry)
+          DEV_RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
+          REGISTRY_NAME=$(az acr list --resource-group "${DEV_RG_NAME}" --query '[0].name' --output tsv)
+          REGISTRY_USERNAME=$(az acr credential show --name "${REGISTRY_NAME}" --query 'username' --output tsv)
+          REGISTRY_PASSWORD=$(az acr credential show --name "${REGISTRY_NAME}" --query 'passwords[0].value' --output tsv)
+
+          echo "MCP Container Image: ${{ steps.load-image-mcp.outputs.container_image_mcp }}"
+          echo "MCP Web App Name: ${WEBAPP_NAME}"
+          echo "Prod Resource Group: ${RG_NAME}"
+          echo "Dev Registry Resource Group: ${DEV_RG_NAME}"
+          echo "Shared Registry Name: ${REGISTRY_NAME}"
+
+          if [ -z "${{ steps.load-image-mcp.outputs.container_image_mcp }}" ]; then
+            echo "ERROR: MCP container image is empty!"; exit 1; fi
+
+          az webapp config container set \
+            --name "${WEBAPP_NAME}" \
+            --resource-group "${RG_NAME}" \
+            --container-image-name "${{ steps.load-image-mcp.outputs.container_image_mcp }}" \
+            --container-registry-url "https://${REGISTRY_NAME}.azurecr.io" \
+            --container-registry-user "${REGISTRY_USERNAME}" \
+            --container-registry-password "${REGISTRY_PASSWORD}"
+
       - name: Run Health Check
         run: |
           INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
@@ -1657,12 +1806,16 @@ jobs:
         run: |
           UI_SARIF="build-outputs/trivy-ui.sarif"
           API_SARIF="build-outputs/trivy-api.sarif"
+          MCP_SARIF="build-outputs/trivy-mcp.sarif"
           FOUND_UI=false
           FOUND_API=false
+          FOUND_MCP=false
           if [ -f "$UI_SARIF" ]; then FOUND_UI=true; fi
           if [ -f "$API_SARIF" ]; then FOUND_API=true; fi
+          if [ -f "$MCP_SARIF" ]; then FOUND_MCP=true; fi
           echo "found_ui=$FOUND_UI" >> "$GITHUB_OUTPUT"
           echo "found_api=$FOUND_API" >> "$GITHUB_OUTPUT"
+          echo "found_mcp=$FOUND_MCP" >> "$GITHUB_OUTPUT"
 
       - name: Upload Trivy UI SARIF to GitHub Security tab
         if: ${{ steps.check-sarif.outputs.found_ui == 'true' }}
@@ -1681,3 +1834,12 @@ jobs:
         with:
           sarif_file: build-outputs/trivy-api.sarif
           category: trivy-api
+ 
+      - name: Upload Trivy MCP SARIF to GitHub Security tab
+        if: ${{ steps.check-sarif.outputs.found_mcp == 'true' }}
+        uses: github/codeql-action/upload-sarif@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.SARIF_UPLOAD_TOKEN }}
+        with:
+          sarif_file: build-outputs/trivy-mcp.sarif
+          category: trivy-mcp

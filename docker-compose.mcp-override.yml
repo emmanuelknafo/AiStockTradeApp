@@ -1,0 +1,20 @@
+# Docker Compose Override for MCP Server Runtime Fixes
+# Use this file if you encounter runtime compatibility issues
+
+version: '3.8'
+
+services:
+  aistockmcpserver:
+    environment:
+      # Runtime compatibility settings for .NET 9 in containers
+      - DOTNET_EnableDiagnostics=0
+      - DOTNET_RUNNING_IN_CONTAINER=true
+      - DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+      - COMPlus_EnableDiagnostics=0
+      # Alternative runtime fixes if needed
+      - DOTNET_gcServer=1
+      - DOTNET_gcConcurrent=1
+    # Use init process to handle signals properly
+    init: true
+    # Alternative command if runtime issues persist
+    # command: ["sh", "-c", "dotnet --info && dotnet AiStockTradeApp.McpServer.dll --http"]
