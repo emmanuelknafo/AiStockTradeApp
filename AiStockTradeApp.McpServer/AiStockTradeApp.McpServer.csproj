@@ -13,7 +13,7 @@
 
     <!-- Set recommended package metadata -->
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageId>devopsabcs.AiStockTradeMcpServer</PackageId>
+    <PackageId>MngEnvMCAP675646.AiStockTradeApp.McpServer</PackageId>
     <PackageVersion>1.0.0-beta</PackageVersion>
     <PackageTags>AI; MCP; server; stdio; stocks; trading; finance</PackageTags>
     <Description>An MCP server for AI-powered stock trading operations using the MCP C# SDK.</Description>

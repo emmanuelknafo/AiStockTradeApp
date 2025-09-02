@@ -267,6 +267,7 @@ stages:
               nuGetFeedType: "internal"
               publishVstsFeed: "$(AZURE_DEVOPS_PROJECT)/$(AZURE_DEVOPS_FEED_NAME)"
               allowPackageConflicts: false
+              arguments: "--skip-duplicate"
 
           # Alternative approach using NuGet authenticate - using DotNetCoreCLI instead of NuGetCommand
           - task: NuGetAuthenticate@1
@@ -282,6 +283,7 @@ stages:
               nuGetFeedType: "internal"
               publishVstsFeed: "$(AZURE_DEVOPS_FEED_NAME)"
               allowPackageConflicts: false
+              arguments: "--skip-duplicate"
 
           # Create a release in Azure DevOps (using Work Items or Git tags)
           - task: PowerShell@2
