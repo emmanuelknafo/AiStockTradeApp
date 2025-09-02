@@ -37,6 +37,7 @@ on:
       - ".github/workflows/generate-changelog.yml"
       - "load-tests/**"
       - "infrastructure/**"
+      - "**/*.mcp.json"
   pull_request:
     branches: [ "main" ]
     paths-ignore:
@@ -62,6 +63,7 @@ on:
       - ".github/workflows/generate-changelog.yml"
       - "load-tests/**"
       - "infrastructure/**"
+      - "**/*.mcp.json"
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:

@@ -8,6 +8,7 @@ on:
       - '**/README.md'
       - 'docs/**'
       - 'AGENTS.md'
+      - '!**/*.mcp.json'
   pull_request:
     branches: [main]
     paths:
@@ -15,6 +16,7 @@ on:
       - '**/README.md'
       - 'docs/**'
       - 'AGENTS.md'
+      - '!**/*.mcp.json'
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:

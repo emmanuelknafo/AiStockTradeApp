@@ -7,6 +7,8 @@ trigger:
     include:
       - "load-tests/**"
       - ".azuredevops/pipelines/alt-load-tests.yml"
+    exclude:
+      - "**/*.mcp.json"
 
 pr:
   branches:
@@ -16,6 +18,8 @@ pr:
     include:
       - "load-tests/**"
       - ".azuredevops/pipelines/alt-load-tests.yml"
+    exclude:
+      - "**/*.mcp.json"
 
 pool:
   vmImage: ubuntu-latest

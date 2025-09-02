@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/test-job-outputs.yml'
       - "!**/*.md"
+      - '!**/*.mcp.json'
 
 # Cancel in-progress runs when a new run is triggered
 concurrency:

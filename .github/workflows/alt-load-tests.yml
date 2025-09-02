@@ -6,11 +6,13 @@ on:
     paths:
       - "load-tests/**"
       - ".github/workflows/alt-load-tests.yml"
+      - '!**/*.mcp.json'
   pull_request:
     branches: ["*"]
     paths:
       - "load-tests/**"
       - ".github/workflows/alt-load-tests.yml"
+      - '!**/*.mcp.json'
   workflow_dispatch:
 
 # Cancel in-progress runs when a new commit is pushed

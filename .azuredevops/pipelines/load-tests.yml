@@ -9,6 +9,8 @@ trigger:
     include:
       - "load-tests/**"
       - ".azuredevops/pipelines/load-tests.yml"
+    exclude:
+      - "**/*.mcp.json"
 
 pr:
   branches:
@@ -18,6 +20,8 @@ pr:
     include:
       - "load-tests/**"
       - ".azuredevops/pipelines/load-tests.yml"
+    exclude:
+      - "**/*.mcp.json"
 
 # Force a Linux agent so bash is available
 pool:

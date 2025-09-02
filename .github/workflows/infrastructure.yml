@@ -9,6 +9,7 @@ on:
       - ".github/workflows/infrastructure.yml"
       - '!**/*.md'
       - '!**/README.md'
+      - '!**/*.mcp.json'
   pull_request:
     branches:
       - main
@@ -17,6 +18,7 @@ on:
       - ".github/workflows/infrastructure.yml"
       - '!**/*.md'
       - '!**/README.md'
+      - '!**/*.mcp.json'
   workflow_dispatch:
     inputs:
       environment:

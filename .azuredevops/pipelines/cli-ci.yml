@@ -11,6 +11,7 @@ trigger:
       - .azuredevops/pipelines/cli-ci.yml
     exclude:
       - '**/*.md'
+      - '**/*.mcp.json'
 
 pr:
   branches:
@@ -22,6 +23,7 @@ pr:
       - .azuredevops/pipelines/cli-ci.yml
     exclude:
       - '**/*.md'
+      - '**/*.mcp.json'
 
 parameters:
   - name: environment

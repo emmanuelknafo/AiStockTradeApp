@@ -11,6 +11,7 @@ on:
       - ".dockerignore"
       - "**/*.bicep"
       - "**/parameters*.json"
+      - '!**/*.mcp.json'
   pull_request:
     branches: [main]
     paths:
@@ -21,6 +22,7 @@ on:
       - ".dockerignore"
       - "**/*.bicep"
       - "**/parameters*.json"
+      - '!**/*.mcp.json'
 
 # Cancel in-progress runs when a new commit is pushed
 concurrency:

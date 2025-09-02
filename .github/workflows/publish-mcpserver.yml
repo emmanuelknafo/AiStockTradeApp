@@ -8,6 +8,7 @@ on:
       - 'AiStockTradeApp.McpServer/**'
       - '.github/workflows/publish-mcpserver.yml'
       - '!AiStockTradeApp.McpServer/**/*.md'
+      - '!**/*.mcp.json'
 
   # Allow manual trigger for testing
   workflow_dispatch:

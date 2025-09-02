@@ -13,6 +13,7 @@ trigger:
     exclude:
       - "**/*.md"
       - "**/README.md"
+      - "**/*.mcp.json"
 
 pr:
   branches:
@@ -25,6 +26,7 @@ pr:
     exclude:
       - "**/*.md"
       - "**/README.md"
+      - "**/*.mcp.json"
 
 parameters:
   - name: environment

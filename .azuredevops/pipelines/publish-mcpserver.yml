@@ -31,6 +31,7 @@ trigger:
       - '.azuredevops/pipelines/publish-mcpserver.yml'
     exclude:
       - 'AiStockTradeApp.McpServer/**/*.md'
+      - '**/*.mcp.json'
 
 # Allow manual trigger for testing
 pr: none

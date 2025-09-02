@@ -27,6 +27,7 @@ on:
       - ".github/workflows/publish-mcpserver.yml"
       - "load-tests/**"
       - "infrastructure/**"
+      - "**/*.mcp.json"
   pull_request:
     branches: [main]
     paths-ignore:
@@ -53,6 +54,8 @@ on:
       - ".github/workflows/publish-mcpserver.yml"
       - "load-tests/**"
       - "infrastructure/**"
+      - "**/*.mcp.json"
+      
   # CI triggers temporarily disabled; manual runs only
   workflow_dispatch:
     inputs:
