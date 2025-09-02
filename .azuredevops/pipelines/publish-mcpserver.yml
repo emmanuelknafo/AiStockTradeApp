@@ -117,10 +117,14 @@ stages:
                                 Write-Host "Documentation/other changes detected - will increment patch version"
                                 Write-Host "##vso[task.setvariable variable=IncrementType]patch"
                             }
+                            
+                            # Debug: Confirm variables are set
+                            Write-Host "DEBUG: Variables set - HasChanges=true, ChangeType=update, IncrementType=$(if ($hasCodeChanges) { 'minor' } elseif ($hasConfigChanges) { 'patch' } else { 'patch' })"
                         } else {
                             Write-Host "No changes detected in MCP Server since ${lastTag}"
                             Write-Host "##vso[task.setvariable variable=HasChanges]false"
                             Write-Host "##vso[task.setvariable variable=ChangeType]none"
+                            Write-Host "DEBUG: Variables set - HasChanges=false, ChangeType=none"
                         }
                     }
                 } catch {
@@ -157,13 +161,14 @@ stages:
                 Write-Host "##vso[task.setvariable variable=CurrentVersion]$currentVersion"
                 
                 # Check if we should publish based on changes
-                $hasChanges = $env:HasChanges -eq 'true'
-                $changeType = $env:ChangeType
-                $incrementType = $env:IncrementType
+                # Get variables set by previous task using Azure DevOps variable syntax
+                $hasChanges = '$(HasChanges)' -eq 'true'
+                $changeType = '$(ChangeType)'
+                $incrementType = '$(IncrementType)'
                 
-                Write-Host "Has changes: $hasChanges"
-                Write-Host "Change type: $changeType"
-                Write-Host "Increment type: $incrementType"
+                Write-Host "Has changes: $hasChanges (raw: '$(HasChanges)')"
+                Write-Host "Change type: $changeType (raw: '$(ChangeType)')"
+                Write-Host "Increment type: $incrementType (raw: '$(IncrementType)')"
                 
                 $shouldPublish = $false
                 $autoIncremented = $false
@@ -490,7 +495,7 @@ stages:
                     $summary += "`n`n**Auto-incremented:** Version was automatically bumped from existing version"
                 }
                 
-                Write-Host "##vso[task.uploadsummary]$summary"
+                Write-Host $summary
 
           - task: PowerShell@2
             displayName: "Skip publish summary"
@@ -510,7 +515,7 @@ stages:
                 4. Or run this pipeline with 'Force publish' enabled
                 "@
                 
-                Write-Host "##vso[task.uploadsummary]$summary"
+                Write-Host $summary
 
           # Upload package artifacts for retention
           - task: PublishPipelineArtifact@1
