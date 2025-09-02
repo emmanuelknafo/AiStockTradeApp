@@ -182,20 +182,38 @@ jobs:
     - name: Publish to NuGet.org
       if: steps.final-version.outputs.should_publish == 'true'
       run: |
+        echo "Publishing package to NuGet.org..."
         dotnet nuget push ./nupkg/*.nupkg \
           --api-key ${{ secrets.NUGET_API_KEY }} \
           --source https://api.nuget.org/v3/index.json \
-          --skip-duplicate
+          --skip-duplicate \
+          --no-service-endpoint
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ Package published successfully (or skipped as duplicate)"
+        else
+          echo "❌ Package publish failed"
+          exit 1
+        fi
 
     - name: Create GitHub release
       if: steps.final-version.outputs.should_publish == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Create release with GitHub CLI
-        gh release create "mcpserver-v${{ steps.final-version.outputs.version }}" \
-          --title "MCP Server v${{ steps.final-version.outputs.version }}" \
-          --notes "🚀 **AI Stock Trade MCP Server v${{ steps.final-version.outputs.version }}**
+        # Check if release already exists
+        TAG_NAME="mcpserver-v${{ steps.final-version.outputs.version }}"
+        if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+          echo "Release $TAG_NAME already exists, skipping creation"
+          echo "Updating existing release with new assets..."
+          # Upload package to existing release
+          gh release upload "$TAG_NAME" ./nupkg/*.nupkg --clobber || echo "Failed to upload assets, continuing..."
+        else
+          echo "Creating new release $TAG_NAME..."
+          # Create release with GitHub CLI
+          gh release create "$TAG_NAME" \
+            --title "MCP Server v${{ steps.final-version.outputs.version }}" \
+            --notes "🚀 **AI Stock Trade MCP Server v${{ steps.final-version.outputs.version }}**
 
         Published to NuGet.org as \`${{ steps.final-version.outputs.package_id }}\`
 
@@ -208,12 +226,11 @@ jobs:
           \"servers\": {
             \"${{ steps.final-version.outputs.package_id }}\": {
               \"type\": \"stdio\",
-              \"command\": \"dnx\",
+              \"command\": \"dotnet\",
               \"args\": [
-                \"${{ steps.final-version.outputs.package_id }}\",
-                \"--version\",
-                \"${{ steps.final-version.outputs.version }}\",
-                \"--yes\"
+                \"tool\",
+                \"run\",
+                \"${{ steps.final-version.outputs.package_id }}\"
               ],
               \"env\": {
                 \"STOCK_API_BASE_URL\": \"https://your-api-url.com\"
@@ -232,7 +249,9 @@ jobs:
         - ❤️ System health monitoring
 
         View on NuGet.org: https://www.nuget.org/packages/${{ steps.final-version.outputs.package_id }}/${{ steps.final-version.outputs.version }}" \
-          $(if [[ "${{ steps.final-version.outputs.version }}" == *"beta"* ]] || [[ "${{ steps.final-version.outputs.version }}" == *"alpha"* ]] || [[ "${{ steps.final-version.outputs.version }}" == *"preview"* ]]; then echo "--prerelease"; fi)
+            $(if [[ "${{ steps.final-version.outputs.version }}" == *"beta"* ]] || [[ "${{ steps.final-version.outputs.version }}" == *"alpha"* ]] || [[ "${{ steps.final-version.outputs.version }}" == *"preview"* ]]; then echo "--prerelease"; fi) \
+            ./nupkg/*.nupkg
+        fi
 
     - name: Add summary
       if: steps.final-version.outputs.should_publish == 'true'
