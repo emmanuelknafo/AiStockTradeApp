@@ -98,7 +98,7 @@ stages:
                         $changes = git diff --name-only $lastTag HEAD -- AiStockTradeApp.McpServer/
                         
                         if ($changes) {
-                            Write-Host "Changes detected in MCP Server since $lastTag:"
+                            Write-Host "Changes detected in MCP Server since ${lastTag}:"
                             $changes | ForEach-Object { Write-Host "  $_" }
                             Write-Host "##vso[task.setvariable variable=HasChanges]true"
                             Write-Host "##vso[task.setvariable variable=ChangeType]update"
@@ -118,7 +118,7 @@ stages:
                                 Write-Host "##vso[task.setvariable variable=IncrementType]patch"
                             }
                         } else {
-                            Write-Host "No changes detected in MCP Server since $lastTag"
+                            Write-Host "No changes detected in MCP Server since ${lastTag}"
                             Write-Host "##vso[task.setvariable variable=HasChanges]false"
                             Write-Host "##vso[task.setvariable variable=ChangeType]none"
                         }
