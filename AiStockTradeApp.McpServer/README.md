@@ -15,6 +15,7 @@ This MCP server enables external AI assistants (Claude, ChatGPT, or other MCP-co
 - **SearchStockSymbols** - Search for stock symbols by company name or ticker
 - **GetStockDetails** - Get detailed company information including sector and industry
 - **GetListedStocks** - Browse available stocks with pagination support
+- **GetRandomListedStock** - Get a random listed stock for discovery and exploration of new investment opportunities
 - **GetSystemStatus** - Check API system health and availability
 
 ### Configuration Requirements

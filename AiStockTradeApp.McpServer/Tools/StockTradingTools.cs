@@ -311,6 +311,106 @@ internal class StockTradingTools
     }
 
     [McpServerTool]
+    [Description("Get a random listed stock from the available stocks. Perfect for stock discovery and exploring new investment opportunities.")]
+    public async Task<string> GetRandomListedStock()
+    {
+        try
+        {
+            // First, get the total count of available stocks
+            var countResponse = await _httpClient.GetAsync("/api/listed-stocks/count");
+            if (!countResponse.IsSuccessStatusCode)
+            {
+                return JsonSerializer.Serialize(new 
+                { 
+                    success = false, 
+                    error = "Failed to get total stock count from API" 
+                });
+            }
+
+            var countContent = await countResponse.Content.ReadAsStringAsync();
+            if (!int.TryParse(countContent, out var totalCount) || totalCount <= 0)
+            {
+                return JsonSerializer.Serialize(new 
+                { 
+                    success = false, 
+                    error = "No stocks available or invalid count returned" 
+                });
+            }
+
+            // Generate a random index within the available range
+            var random = new Random();
+            var randomIndex = random.Next(0, totalCount);
+
+            // Get one stock starting from the random index
+            var response = await _httpClient.GetAsync($"/api/listed-stocks?skip={randomIndex}&take=1");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                var stocks = JsonSerializer.Deserialize<List<ListedStock>>(content, new JsonSerializerOptions 
+                { 
+                    PropertyNameCaseInsensitive = true 
+                });
+
+                if (stocks?.Count > 0)
+                {
+                    var randomStock = stocks[0];
+                    return JsonSerializer.Serialize(new
+                    {
+                        success = true,
+                        randomSelection = new
+                        {
+                            selectedFrom = totalCount,
+                            randomIndex = randomIndex
+                        },
+                        data = new
+                        {
+                            symbol = randomStock.Symbol,
+                            name = randomStock.Name,
+                            lastSale = randomStock.LastSale,
+                            netChange = randomStock.NetChange,
+                            percentChange = randomStock.PercentChange,
+                            marketCap = randomStock.MarketCap,
+                            country = randomStock.Country,
+                            ipoYear = randomStock.IpoYear,
+                            volume = randomStock.Volume,
+                            sector = randomStock.Sector,
+                            industry = randomStock.Industry,
+                            updatedAt = randomStock.UpdatedAt
+                        }
+                    }, new JsonSerializerOptions { WriteIndented = true });
+                }
+                else
+                {
+                    return JsonSerializer.Serialize(new 
+                    { 
+                        success = false, 
+                        error = "No stock found at random index" 
+                    });
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Serialize(new 
+                { 
+                    success = false, 
+                    error = $"API returned {response.StatusCode}: {errorContent}" 
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting random listed stock");
+            return JsonSerializer.Serialize(new 
+            { 
+                success = false, 
+                error = $"Failed to get random stock: {ex.Message}" 
+            });
+        }
+    }
+
+    [McpServerTool]
     [Description("Get detailed historical price data for a stock with optional date range filtering.")]
     public async Task<string> GetDetailedHistoricalPrices(
         [Description("Stock symbol (e.g., AAPL, MSFT, GOOGL)")] string symbol,
