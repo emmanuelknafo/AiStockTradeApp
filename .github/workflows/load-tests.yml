@@ -17,6 +17,11 @@ on:
       - '.github/workflows/load-tests.yml'
       - '!.github/workflows/generate-changelog.yml'
 
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   run-jmeter:
     #runs-on: ubuntu-latest

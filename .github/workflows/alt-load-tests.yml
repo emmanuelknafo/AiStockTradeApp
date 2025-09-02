@@ -13,6 +13,11 @@ on:
       - ".github/workflows/alt-load-tests.yml"
   workflow_dispatch:
 
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   LOAD_TEST_RESOURCE: lt-aistock-dev-002
   LOAD_TEST_RESOURCE_GROUP: rg-aistock-dev-002

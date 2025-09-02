@@ -8,6 +8,11 @@ on:
       - '.github/workflows/test-job-outputs.yml'
       - "!**/*.md"
 
+# Cancel in-progress runs when a new run is triggered
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-test:
     runs-on: ubuntu-latest

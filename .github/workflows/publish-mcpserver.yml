@@ -12,6 +12,11 @@ on:
   # Allow manual trigger for testing
   workflow_dispatch:
 
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # Project path
   PROJECT_PATH: 'AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj'

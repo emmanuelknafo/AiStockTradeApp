@@ -62,6 +62,11 @@ on:
       - ".github/workflows/generate-changelog.yml"
       - "load-tests/**"
       - "infrastructure/**"
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
   #schedule:
   #  - cron: '45 2 * * 0'
 

@@ -31,6 +31,11 @@ on:
         default: "data/nasdaq.com/nasdaq_screener_1755436177903.csv"
         type: string
 
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   DOTNET_VERSION: "9.0.x"
   AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}

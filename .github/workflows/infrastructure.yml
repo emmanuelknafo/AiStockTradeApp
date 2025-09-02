@@ -43,6 +43,11 @@ on:
         default: false
         type: boolean
 
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Environment inputs with safe fallbacks for automatic triggers
 env:
   INSTANCE_NUMBER: ${{ github.event.inputs.instanceNumber || '002' }}
