@@ -5,6 +5,8 @@ using AiStockTradeApp.Entities.ViewModels;
 using ModelContextProtocol.Server;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.ApplicationInsights;
+using System.Diagnostics;
 
 /// <summary>
 /// MCP tools for stock trading operations that interface with the AI Stock Trade API.
@@ -14,18 +16,22 @@ internal class StockTradingTools
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<StockTradingTools> _logger;
+    private readonly TelemetryClient _telemetryClient;
     private readonly string _apiBaseUrl;
 
-    public StockTradingTools(HttpClient httpClient, ILogger<StockTradingTools> logger, IConfiguration configuration)
+    public StockTradingTools(HttpClient httpClient, ILogger<StockTradingTools> logger, TelemetryClient telemetryClient, IConfiguration configuration)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _telemetryClient = telemetryClient;
         _apiBaseUrl = configuration["STOCK_API_BASE_URL"] ?? 
                      Environment.GetEnvironmentVariable("STOCK_API_BASE_URL") ?? 
                      "http://localhost:5000";
         
         _httpClient.BaseAddress = new Uri(_apiBaseUrl);
         _httpClient.Timeout = TimeSpan.FromSeconds(30);
+        
+        _logger.LogInformation("StockTradingTools initialized with API base URL: {ApiBaseUrl}", _apiBaseUrl);
     }
 
     [McpServerTool]
@@ -33,21 +39,61 @@ internal class StockTradingTools
     public async Task<string> GetStockQuote(
         [Description("Stock symbol (e.g., AAPL, MSFT, GOOGL)")] string symbol)
     {
+        using var activity = Activity.Current?.Source.StartActivity("GetStockQuote");
+        var stopwatch = Stopwatch.StartNew();
+        
         try
         {
+            _logger.LogInformation("GetStockQuote started for symbol: {Symbol}", symbol);
+            
             if (string.IsNullOrWhiteSpace(symbol))
+            {
+                _logger.LogWarning("GetStockQuote called with empty or null symbol");
+                _telemetryClient.TrackEvent("StockQuote.ValidationError", new Dictionary<string, string>
+                {
+                    ["Error"] = "EmptySymbol",
+                    ["Symbol"] = symbol ?? "null"
+                });
                 return JsonSerializer.Serialize(new { error = "Stock symbol is required" });
+            }
 
             symbol = symbol.ToUpperInvariant().Trim();
+            activity?.SetTag("stock.symbol", symbol);
+            
+            _logger.LogDebug("Making API request for stock quote: {Symbol} to {ApiUrl}", symbol, $"{_apiBaseUrl}/api/stocks/quote?symbol={symbol}");
             
             var response = await _httpClient.GetAsync($"/api/stocks/quote?symbol={symbol}");
+            
+            stopwatch.Stop();
+            var duration = stopwatch.ElapsedMilliseconds;
+            
+            _telemetryClient.TrackDependency("HTTP", "StockAPI", $"GET /api/stocks/quote?symbol={symbol}", DateTime.UtcNow.Subtract(stopwatch.Elapsed), stopwatch.Elapsed, response.IsSuccessStatusCode);
             
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync();
+                _logger.LogDebug("API response received for {Symbol}, content length: {ContentLength}", symbol, content.Length);
+                
                 var stockData = JsonSerializer.Deserialize<StockData>(content, new JsonSerializerOptions 
                 { 
                     PropertyNameCaseInsensitive = true 
+                });
+
+                _logger.LogInformation("GetStockQuote completed successfully for {Symbol} - Price: {Price}, Change: {Change}%, Duration: {Duration}ms", 
+                    symbol, stockData?.Price.ToString() ?? "null", stockData?.PercentChange ?? "null", duration);
+
+                _telemetryClient.TrackEvent("StockQuote.Success", new Dictionary<string, string>
+                {
+                    ["Symbol"] = symbol,
+                    ["Price"] = stockData?.Price.ToString() ?? "null",
+                    ["Change"] = stockData?.PercentChange ?? "null",
+                    ["CompanyName"] = stockData?.CompanyName ?? "null"
+                });
+
+                _telemetryClient.TrackMetric("StockQuote.ResponseTime", duration, new Dictionary<string, string>
+                {
+                    ["Symbol"] = symbol,
+                    ["Success"] = "true"
                 });
 
                 return JsonSerializer.Serialize(new
@@ -69,16 +115,53 @@ internal class StockTradingTools
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
+                var errorMessage = $"API returned {response.StatusCode}: {errorContent}";
+                
+                _logger.LogWarning("GetStockQuote failed for {Symbol} - StatusCode: {StatusCode}, Error: {Error}, Duration: {Duration}ms", 
+                    symbol, response.StatusCode, errorContent, duration);
+
+                _telemetryClient.TrackEvent("StockQuote.ApiError", new Dictionary<string, string>
+                {
+                    ["Symbol"] = symbol,
+                    ["StatusCode"] = response.StatusCode.ToString(),
+                    ["Error"] = errorContent
+                });
+
+                _telemetryClient.TrackMetric("StockQuote.ResponseTime", duration, new Dictionary<string, string>
+                {
+                    ["Symbol"] = symbol,
+                    ["Success"] = "false",
+                    ["StatusCode"] = response.StatusCode.ToString()
+                });
+                
                 return JsonSerializer.Serialize(new 
                 { 
                     success = false, 
-                    error = $"API returned {response.StatusCode}: {errorContent}" 
+                    error = errorMessage
                 });
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting stock quote for {Symbol}", symbol);
+            stopwatch.Stop();
+            var duration = stopwatch.ElapsedMilliseconds;
+            
+            _logger.LogError(ex, "GetStockQuote exception for {Symbol} - Duration: {Duration}ms", symbol, duration);
+            
+            _telemetryClient.TrackException(ex, new Dictionary<string, string>
+            {
+                ["Method"] = "GetStockQuote",
+                ["Symbol"] = symbol ?? "null",
+                ["Duration"] = duration.ToString()
+            });
+
+            _telemetryClient.TrackEvent("StockQuote.Exception", new Dictionary<string, string>
+            {
+                ["Symbol"] = symbol ?? "null",
+                ["ExceptionType"] = ex.GetType().Name,
+                ["Message"] = ex.Message
+            });
+            
             return JsonSerializer.Serialize(new 
             { 
                 success = false, 
@@ -93,22 +176,75 @@ internal class StockTradingTools
         [Description("Stock symbol (e.g., AAPL, MSFT, GOOGL)")] string symbol,
         [Description("Number of days of historical data to retrieve (default: 30, max: 365)")] int days = 30)
     {
+        using var activity = Activity.Current?.Source.StartActivity("GetHistoricalData");
+        var stopwatch = Stopwatch.StartNew();
+        
         try
         {
+            _logger.LogInformation("GetHistoricalData started for symbol: {Symbol}, days: {Days}", symbol, days);
+            
             if (string.IsNullOrWhiteSpace(symbol))
+            {
+                _logger.LogWarning("GetHistoricalData called with empty or null symbol");
+                _telemetryClient.TrackEvent("HistoricalData.ValidationError", new Dictionary<string, string>
+                {
+                    ["Error"] = "EmptySymbol",
+                    ["Symbol"] = symbol ?? "null",
+                    ["Days"] = days.ToString()
+                });
                 return JsonSerializer.Serialize(new { error = "Stock symbol is required" });
+            }
 
             symbol = symbol.ToUpperInvariant().Trim();
             days = Math.Max(1, Math.Min(365, days)); // Clamp between 1 and 365 days
+            
+            activity?.SetTag("stock.symbol", symbol);
+            activity?.SetTag("stock.days", days);
+
+            _logger.LogDebug("Making API request for historical data: {Symbol}, {Days} days to {ApiUrl}", 
+                symbol, days, $"{_apiBaseUrl}/api/stocks/historical?symbol={symbol}&days={days}");
 
             var response = await _httpClient.GetAsync($"/api/stocks/historical?symbol={symbol}&days={days}");
+            
+            stopwatch.Stop();
+            var duration = stopwatch.ElapsedMilliseconds;
+            
+            _telemetryClient.TrackDependency("HTTP", "StockAPI", $"GET /api/stocks/historical?symbol={symbol}&days={days}", 
+                DateTime.UtcNow.Subtract(stopwatch.Elapsed), stopwatch.Elapsed, response.IsSuccessStatusCode);
             
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync();
+                _logger.LogDebug("API response received for {Symbol} historical data, content length: {ContentLength}", symbol, content.Length);
+                
                 var chartData = JsonSerializer.Deserialize<List<ChartDataPoint>>(content, new JsonSerializerOptions 
                 { 
                     PropertyNameCaseInsensitive = true 
+                });
+
+                var dataPointsCount = chartData?.Count ?? 0;
+                
+                _logger.LogInformation("GetHistoricalData completed successfully for {Symbol} - Days requested: {DaysRequested}, Data points returned: {DataPoints}, Duration: {Duration}ms", 
+                    symbol, days, dataPointsCount, duration);
+
+                _telemetryClient.TrackEvent("HistoricalData.Success", new Dictionary<string, string>
+                {
+                    ["Symbol"] = symbol,
+                    ["DaysRequested"] = days.ToString(),
+                    ["DataPointsReturned"] = dataPointsCount.ToString()
+                });
+
+                _telemetryClient.TrackMetric("HistoricalData.ResponseTime", duration, new Dictionary<string, string>
+                {
+                    ["Symbol"] = symbol,
+                    ["Success"] = "true",
+                    ["DaysRequested"] = days.ToString()
+                });
+
+                _telemetryClient.TrackMetric("HistoricalData.DataPoints", dataPointsCount, new Dictionary<string, string>
+                {
+                    ["Symbol"] = symbol,
+                    ["DaysRequested"] = days.ToString()
                 });
 
                 return JsonSerializer.Serialize(new
@@ -116,23 +252,63 @@ internal class StockTradingTools
                     success = true,
                     symbol = symbol,
                     daysRequested = days,
-                    dataPointsReturned = chartData?.Count ?? 0,
+                    dataPointsReturned = dataPointsCount,
                     data = chartData
                 }, new JsonSerializerOptions { WriteIndented = true });
             }
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
+                var errorMessage = $"API returned {response.StatusCode}: {errorContent}";
+                
+                _logger.LogWarning("GetHistoricalData failed for {Symbol} - StatusCode: {StatusCode}, Error: {Error}, Duration: {Duration}ms", 
+                    symbol, response.StatusCode, errorContent, duration);
+
+                _telemetryClient.TrackEvent("HistoricalData.ApiError", new Dictionary<string, string>
+                {
+                    ["Symbol"] = symbol,
+                    ["Days"] = days.ToString(),
+                    ["StatusCode"] = response.StatusCode.ToString(),
+                    ["Error"] = errorContent
+                });
+
+                _telemetryClient.TrackMetric("HistoricalData.ResponseTime", duration, new Dictionary<string, string>
+                {
+                    ["Symbol"] = symbol,
+                    ["Success"] = "false",
+                    ["StatusCode"] = response.StatusCode.ToString()
+                });
+                
                 return JsonSerializer.Serialize(new 
                 { 
                     success = false, 
-                    error = $"API returned {response.StatusCode}: {errorContent}" 
+                    error = errorMessage
                 });
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting historical data for {Symbol}", symbol);
+            stopwatch.Stop();
+            var duration = stopwatch.ElapsedMilliseconds;
+            
+            _logger.LogError(ex, "GetHistoricalData exception for {Symbol}, days: {Days} - Duration: {Duration}ms", symbol, days, duration);
+            
+            _telemetryClient.TrackException(ex, new Dictionary<string, string>
+            {
+                ["Method"] = "GetHistoricalData",
+                ["Symbol"] = symbol ?? "null",
+                ["Days"] = days.ToString(),
+                ["Duration"] = duration.ToString()
+            });
+
+            _telemetryClient.TrackEvent("HistoricalData.Exception", new Dictionary<string, string>
+            {
+                ["Symbol"] = symbol ?? "null",
+                ["Days"] = days.ToString(),
+                ["ExceptionType"] = ex.GetType().Name,
+                ["Message"] = ex.Message
+            });
+            
             return JsonSerializer.Serialize(new 
             { 
                 success = false, 
@@ -146,19 +322,68 @@ internal class StockTradingTools
     public async Task<string> SearchStockSymbols(
         [Description("Search query (company name, partial symbol, etc.)")] string query)
     {
+        using var activity = Activity.Current?.Source.StartActivity("SearchStockSymbols");
+        var stopwatch = Stopwatch.StartNew();
+        
         try
         {
+            _logger.LogInformation("SearchStockSymbols started for query: {Query}", query);
+            
             if (string.IsNullOrWhiteSpace(query))
+            {
+                _logger.LogWarning("SearchStockSymbols called with empty or null query");
+                _telemetryClient.TrackEvent("StockSearch.ValidationError", new Dictionary<string, string>
+                {
+                    ["Error"] = "EmptyQuery",
+                    ["Query"] = query ?? "null"
+                });
                 return JsonSerializer.Serialize(new { error = "Search query is required" });
+            }
+
+            activity?.SetTag("search.query", query);
+            
+            _logger.LogDebug("Making API request for stock search: {Query} to {ApiUrl}", 
+                query, $"{_apiBaseUrl}/api/stocks/suggestions?query={Uri.EscapeDataString(query)}");
 
             var response = await _httpClient.GetAsync($"/api/stocks/suggestions?query={Uri.EscapeDataString(query)}");
+            
+            stopwatch.Stop();
+            var duration = stopwatch.ElapsedMilliseconds;
+            
+            _telemetryClient.TrackDependency("HTTP", "StockAPI", $"GET /api/stocks/suggestions?query={Uri.EscapeDataString(query)}", 
+                DateTime.UtcNow.Subtract(stopwatch.Elapsed), stopwatch.Elapsed, response.IsSuccessStatusCode);
             
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync();
+                _logger.LogDebug("API response received for search query {Query}, content length: {ContentLength}", query, content.Length);
+                
                 var suggestions = JsonSerializer.Deserialize<List<string>>(content, new JsonSerializerOptions 
                 { 
                     PropertyNameCaseInsensitive = true 
+                });
+
+                var suggestionsCount = suggestions?.Count ?? 0;
+                
+                _logger.LogInformation("SearchStockSymbols completed successfully for query: {Query} - Suggestions returned: {SuggestionsCount}, Duration: {Duration}ms", 
+                    query, suggestionsCount, duration);
+
+                _telemetryClient.TrackEvent("StockSearch.Success", new Dictionary<string, string>
+                {
+                    ["Query"] = query,
+                    ["SuggestionsCount"] = suggestionsCount.ToString()
+                });
+
+                _telemetryClient.TrackMetric("StockSearch.ResponseTime", duration, new Dictionary<string, string>
+                {
+                    ["Success"] = "true",
+                    ["QueryLength"] = query.Length.ToString()
+                });
+
+                _telemetryClient.TrackMetric("StockSearch.Results", suggestionsCount, new Dictionary<string, string>
+                {
+                    ["Query"] = query,
+                    ["QueryLength"] = query.Length.ToString()
                 });
 
                 return JsonSerializer.Serialize(new
@@ -171,16 +396,52 @@ internal class StockTradingTools
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
+                var errorMessage = $"API returned {response.StatusCode}: {errorContent}";
+                
+                _logger.LogWarning("SearchStockSymbols failed for query: {Query} - StatusCode: {StatusCode}, Error: {Error}, Duration: {Duration}ms", 
+                    query, response.StatusCode, errorContent, duration);
+
+                _telemetryClient.TrackEvent("StockSearch.ApiError", new Dictionary<string, string>
+                {
+                    ["Query"] = query,
+                    ["StatusCode"] = response.StatusCode.ToString(),
+                    ["Error"] = errorContent
+                });
+
+                _telemetryClient.TrackMetric("StockSearch.ResponseTime", duration, new Dictionary<string, string>
+                {
+                    ["Success"] = "false",
+                    ["StatusCode"] = response.StatusCode.ToString()
+                });
+                
                 return JsonSerializer.Serialize(new 
                 { 
                     success = false, 
-                    error = $"API returned {response.StatusCode}: {errorContent}" 
+                    error = errorMessage
                 });
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error searching stock symbols for query {Query}", query);
+            stopwatch.Stop();
+            var duration = stopwatch.ElapsedMilliseconds;
+            
+            _logger.LogError(ex, "SearchStockSymbols exception for query: {Query} - Duration: {Duration}ms", query, duration);
+            
+            _telemetryClient.TrackException(ex, new Dictionary<string, string>
+            {
+                ["Method"] = "SearchStockSymbols",
+                ["Query"] = query ?? "null",
+                ["Duration"] = duration.ToString()
+            });
+
+            _telemetryClient.TrackEvent("StockSearch.Exception", new Dictionary<string, string>
+            {
+                ["Query"] = query ?? "null",
+                ["ExceptionType"] = ex.GetType().Name,
+                ["Message"] = ex.Message
+            });
+            
             return JsonSerializer.Serialize(new 
             { 
                 success = false, 
