@@ -21,6 +21,7 @@
 # - Validates package contents and installation
 
 trigger:
+  batch: true
   branches:
     include:
       - main

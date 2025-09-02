@@ -1,6 +1,7 @@
 # Azure DevOps pipeline to run JMeter load tests on Ubuntu with Docker
 
 trigger:
+  batch: true
   branches:
     include:
       - "*"

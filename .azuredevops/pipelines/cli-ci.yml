@@ -1,6 +1,7 @@
 # Azure DevOps pipeline for CLI CI/CD
 
 trigger:
+  batch: true
   branches:
     include:
       - main

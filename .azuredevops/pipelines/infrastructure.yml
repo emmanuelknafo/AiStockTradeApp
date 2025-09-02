@@ -2,6 +2,7 @@
 # Converted from GitHub Actions workflow
 
 trigger:
+  batch: true
   branches:
     include:
       - main
