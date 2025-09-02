@@ -4,7 +4,7 @@
   "packages": [
     {
       "registry_name": "nuget",
-      "name": "AiStockTradeApp.McpServer",
+      "name": "MngEnvMCAP675646.AiStockTradeApp.McpServer",
       "version": "1.0.0-beta",
       "package_arguments": [],
       "environment_variables": [
@@ -28,6 +28,5 @@
   },
   "version_detail": {
     "version": "1.0.0-beta"
-  },
-  "tags": ["AI", "MCP", "stocks", "trading", "finance", "real-time"]
+  }
 }

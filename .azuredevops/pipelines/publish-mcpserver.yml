@@ -73,7 +73,7 @@ stages:
             inputs:
               command: "build"
               projects: "$(PROJECT_PATH)"
-              arguments: "--configuration $(BUILD_CONFIGURATION) --no-restore"
+              arguments: "--configuration $(BUILD_CONFIGURATION) --no-restore -p:PublishTarget=AzureDevOps"
 
           # Version checking and auto-increment logic
           - task: PowerShell@2
@@ -200,6 +200,7 @@ stages:
               configuration: "$(BUILD_CONFIGURATION)"
               outputDir: "$(Build.ArtifactStagingDirectory)/packages"
               nobuild: true
+              buildProperties: "PublishTarget=AzureDevOps"
 
           - task: PowerShell@2
             displayName: "Validate package contents"

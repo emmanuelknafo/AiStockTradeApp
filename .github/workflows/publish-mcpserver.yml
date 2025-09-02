@@ -42,7 +42,7 @@ jobs:
       run: dotnet restore ${{ env.PROJECT_PATH }}
 
     - name: Build project
-      run: dotnet build ${{ env.PROJECT_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore -p:PublishTarget=NuGet
 
     # Tests skipped for MCP Server publishing workflow
     # The MCP Server project focuses on packaging and distribution
@@ -139,7 +139,7 @@ jobs:
 
     - name: Pack project
       if: steps.final-version.outputs.should_publish == 'true'
-      run: dotnet pack ${{ env.PROJECT_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --output ./nupkg
+      run: dotnet pack ${{ env.PROJECT_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --output ./nupkg -p:PublishTarget=NuGet
 
     - name: Validate package contents
       if: steps.final-version.outputs.should_publish == 'true'
