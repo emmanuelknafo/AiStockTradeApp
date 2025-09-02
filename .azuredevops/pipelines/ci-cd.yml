@@ -1190,7 +1190,7 @@ stages:
                 echo "MCP Deploy tag: $(deployTagMCP)"
 
           - task: Bash@3
-            displayName: "Create and push git semantic tag"
+            displayName: "Create Azure DevOps build tag"
             condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
             inputs:
               targetType: inline
@@ -1198,38 +1198,48 @@ stages:
                 set -e
                 VERSION="$(GitVersion.FullSemVer)"
                 if [ -z "$VERSION" ] || [ "$VERSION" = "0.0.0-local" ]; then
-                  echo "No valid semantic version available; skipping git tag."; exit 0; fi
+                  echo "No valid semantic version available; skipping tag creation."; exit 0; fi
                 if [[ "$VERSION" != v* ]]; then VERSION="v$VERSION"; fi
                 
-                # Check if GitHub token is available
-                if [ -z "$GITHUB_TOKEN" ]; then
-                  echo "GITHUB_TOKEN not available; skipping git tag creation"
-                  echo "##vso[build.addbuildtag]$VERSION"
-                  exit 0
-                fi
-                
-                git config user.name "ci-bot"
-                git config user.email "ci-bot@users.noreply.local"
-                echo "Preparing to create tag $VERSION on commit $(Build.SourceVersion)"
-
-                # Fetch existing tags
-                git fetch --tags --prune || true
-                
-                # Check if tag already exists
-                if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-                  echo "Tag $VERSION already exists; skipping."; exit 0; fi
-                
-                # Create the tag
-                git tag -a "$VERSION" -m "Release $VERSION (Azure DevOps CI)" $(Build.SourceVersion)
-                
-                # Push tag using GitHub token with workflows permission
-                git -c http.extraheader="AUTHORIZATION: token $GITHUB_TOKEN" push origin "$VERSION" || {
-                  echo "Tag push failed with GitHub token"; exit 1; }
-                
-                echo "Successfully created and pushed tag $VERSION"
+                echo "Creating Azure DevOps build tag: $VERSION"
                 echo "##vso[build.addbuildtag]$VERSION"
-            env:
-              GITHUB_TOKEN: $(GITHUB_TOKEN)
+                echo "##vso[build.addbuildtag]release"
+                
+                # Store version for potential GitHub release creation
+                echo "##vso[task.setvariable variable=RELEASE_VERSION;isOutput=true]$VERSION"
+                echo "Build tagged with version: $VERSION"
+
+          - task: GitHubRelease@1
+            displayName: "Create GitHub Release"
+            condition: and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['GitVersion.FullSemVer'], '0.0.0-local'))
+            inputs:
+              gitHubConnection: 'github.com_emmanuelknafo' # Your GitHub service connection
+              repositoryName: 'emmanuelknafo/AiStockTradeApp'
+              action: 'create'
+              target: '$(Build.SourceVersion)'
+              tagSource: 'gitTag'
+              tagPattern: 'v$(GitVersion.FullSemVer)'
+              tag: 'v$(GitVersion.FullSemVer)'
+              title: 'Release v$(GitVersion.FullSemVer)'
+              releaseNotesSource: 'inline'
+              releaseNotesInline: |
+                ## Release v$(GitVersion.FullSemVer)
+                
+                **Build:** $(Build.BuildNumber)
+                **Commit:** $(Build.SourceVersion)
+                **Branch:** $(Build.SourceBranchName)
+                
+                ### Changes
+                - Automated release from Azure DevOps CI/CD pipeline
+                
+                ### Container Images
+                - UI: $(deployTagUI)
+                - API: $(deployTagAPI)
+                - MCP Server: $(deployTagMCP)
+              isDraft: false
+              isPreRelease: false
+              addChangeLog: true
+              compareWith: 'lastFullRelease'
 
           - task: Bash@3
             displayName: "Extract and set container image for deployment"
