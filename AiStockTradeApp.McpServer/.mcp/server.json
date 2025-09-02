@@ -5,7 +5,7 @@
     {
       "registry_name": "nuget",
       "name": "devopsabcs.AiStockTradeMcpServer",
-      "version": "1.0.0-beta.3",
+      "version": "1.0.0-beta.4",
       "package_arguments": [],
       "environment_variables": [
         {
@@ -27,8 +27,9 @@
     "source": "github"
   },
   "version_detail": {
-    "version": "1.0.0-beta.3"
+    "version": "1.0.0-beta.4"
   },
   "tags": ["AI", "MCP", "stocks", "trading", "finance", "real-time"]
 }
+
 
