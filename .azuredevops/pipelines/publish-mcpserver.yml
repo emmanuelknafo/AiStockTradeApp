@@ -1,0 +1,429 @@
+# Azure DevOps CI/CD Pipeline for MCP Server Publishing to Azure Artifacts
+# Converted from GitHub Actions workflow: publish-mcpserver.yml
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - 'AiStockTradeApp.McpServer/**'
+      - '.azuredevops/pipelines/publish-mcpserver.yml'
+    exclude:
+      - 'AiStockTradeApp.McpServer/**/*.md'
+
+# Allow manual trigger for testing
+pr: none
+
+parameters:
+  - name: forcePublish
+    displayName: "Force publish even if version exists"
+    type: boolean
+    default: false
+
+variables:
+  - group: "AiStockTradeApp" # Variable group for shared variables including Azure Artifacts feed
+  - name: PROJECT_PATH
+    value: 'AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj'
+  - name: BUILD_CONFIGURATION
+    value: 'Release'
+  - name: DOTNET_VERSION
+    value: '9.0.x'
+  - name: vmImageName
+    value: 'ubuntu-latest'
+  # Azure DevOps Artifacts configuration
+  - name: AZURE_DEVOPS_FEED_NAME
+    value: 'AiStockTradeApp-Packages' # Configure this feed name in your Azure DevOps project
+  - name: AZURE_DEVOPS_ORGANIZATION
+    value: 'your-organization' # Replace with your Azure DevOps organization name
+  - name: AZURE_DEVOPS_PROJECT
+    value: 'your-project' # Replace with your Azure DevOps project name
+
+pool:
+  vmImage: $(vmImageName)
+
+stages:
+  - stage: PublishMcpServer
+    displayName: "Build and Publish MCP Server Package"
+    jobs:
+      - job: PublishJob
+        displayName: "Build and Publish MCP Server"
+        steps:
+          - checkout: self
+            displayName: "Checkout repository"
+            fetchDepth: 0 # Fetch full history for proper versioning
+            persistCredentials: true
+            clean: true
+
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: "sdk"
+              version: $(DOTNET_VERSION)
+              includePreviewVersions: true
+
+          - task: DotNetCoreCLI@2
+            displayName: "Restore dependencies"
+            inputs:
+              command: "restore"
+              projects: "$(PROJECT_PATH)"
+
+          - task: DotNetCoreCLI@2
+            displayName: "Build project"
+            inputs:
+              command: "build"
+              projects: "$(PROJECT_PATH)"
+              arguments: "--configuration $(BUILD_CONFIGURATION) --no-restore"
+
+          # Version checking and auto-increment logic
+          - task: PowerShell@2
+            displayName: "Check for version changes and auto-increment"
+            inputs:
+              targetType: "inline"
+              script: |
+                # Extract version from csproj file
+                $csprojContent = Get-Content "$(PROJECT_PATH)" -Raw
+                $versionMatch = [regex]::Match($csprojContent, '<PackageVersion>([^<]+)</PackageVersion>')
+                
+                if (-not $versionMatch.Success) {
+                    Write-Host "##vso[task.logissue type=error]PackageVersion not found in $(PROJECT_PATH)"
+                    exit 1
+                }
+                
+                $currentVersion = $versionMatch.Groups[1].Value
+                Write-Host "Current version: $currentVersion"
+                
+                # Extract PackageId
+                $packageIdMatch = [regex]::Match($csprojContent, '<PackageId>([^<]+)</PackageId>')
+                $packageId = if ($packageIdMatch.Success) { $packageIdMatch.Groups[1].Value } else { "AiStockTradeApp.McpServer" }
+                Write-Host "Package ID: $packageId"
+                
+                Write-Host "##vso[task.setvariable variable=PackageId]$packageId"
+                Write-Host "##vso[task.setvariable variable=CurrentVersion]$currentVersion"
+                
+                # Check if version exists in Azure DevOps Artifacts
+                # Note: This requires Azure CLI or REST API call to check existing packages
+                $shouldPublish = $true
+                $autoIncremented = $false
+                $newVersion = $currentVersion
+                
+                try {
+                    # Try to get package info from Azure DevOps feed
+                    # This is a simplified check - in practice, you might want to use Azure DevOps REST API
+                    Write-Host "Checking if version $currentVersion exists in Azure DevOps Artifacts feed..."
+                    
+                    # For force publish parameter
+                    if ('${{ parameters.forcePublish }}' -eq 'True') {
+                        Write-Host "Force publish enabled - will publish regardless of existing version"
+                        $shouldPublish = $true
+                    } else {
+                        # In a real scenario, you'd check against Azure DevOps Artifacts API
+                        # For now, we'll assume the version doesn't exist and proceed
+                        Write-Host "Version check not implemented - proceeding with publish"
+                        $shouldPublish = $true
+                    }
+                    
+                } catch {
+                    Write-Host "Could not check existing versions, proceeding with publish: $($_.Exception.Message)"
+                    $shouldPublish = $true
+                }
+                
+                # Auto-increment version if needed (only if not force publishing)
+                if (-not $shouldPublish -and '${{ parameters.forcePublish }}' -ne 'True') {
+                    Write-Host "Auto-incrementing version from $currentVersion"
+                    
+                    # Parse version parts (supports formats like 1.0.0-beta, 1.0.0-beta.1, etc.)
+                    if ($currentVersion -match '^(\d+)\.(\d+)\.(\d+)(-[a-zA-Z]+)?(\.\d+)?$') {
+                        $major = [int]$Matches[1]
+                        $minor = [int]$Matches[2]
+                        $patch = [int]$Matches[3]
+                        $prerelease = $Matches[4]
+                        $build = $Matches[5]
+                        
+                        # Increment based on version type
+                        if ($build) {
+                            # Has build number (e.g., 1.0.0-beta.1), increment build
+                            $buildNum = [int]$build.Substring(1)
+                            $newBuildNum = $buildNum + 1
+                            $newVersion = "$major.$minor.$patch$prerelease.$newBuildNum"
+                        } elseif ($prerelease) {
+                            # Has prerelease but no build (e.g., 1.0.0-beta), add .1
+                            $newVersion = "$major.$minor.$patch$prerelease.1"
+                        } else {
+                            # Release version (e.g., 1.0.0), increment patch
+                            $newPatch = $patch + 1
+                            $newVersion = "$major.$minor.$newPatch"
+                        }
+                        
+                        Write-Host "New version: $newVersion"
+                        
+                        # Update csproj file
+                        $updatedContent = $csprojContent -replace '<PackageVersion>[^<]+</PackageVersion>', "<PackageVersion>$newVersion</PackageVersion>"
+                        Set-Content -Path "$(PROJECT_PATH)" -Value $updatedContent
+                        
+                        # Update .mcp/server.json if it exists
+                        $mcpServerJson = "AiStockTradeApp.McpServer/.mcp/server.json"
+                        if (Test-Path $mcpServerJson) {
+                            $mcpContent = Get-Content $mcpServerJson -Raw | ConvertFrom-Json
+                            $mcpContent.version = $newVersion
+                            $mcpContent | ConvertTo-Json -Depth 10 | Set-Content $mcpServerJson
+                            Write-Host "Updated .mcp/server.json with version $newVersion"
+                        }
+                        
+                        $autoIncremented = $true
+                        $shouldPublish = $true
+                        
+                        # Commit the version change
+                        git config --local user.email "azure-pipelines@microsoft.com"
+                        git config --local user.name "Azure Pipelines"
+                        git add "$(PROJECT_PATH)"
+                        if (Test-Path $mcpServerJson) { git add $mcpServerJson }
+                        git commit -m "Auto-increment version to $newVersion [skip ci]"
+                        git push
+                        
+                    } else {
+                        Write-Host "##vso[task.logissue type=error]Could not parse version format: $currentVersion"
+                        exit 1
+                    }
+                }
+                
+                Write-Host "##vso[task.setvariable variable=ShouldPublish]$shouldPublish"
+                Write-Host "##vso[task.setvariable variable=FinalVersion]$newVersion"
+                Write-Host "##vso[task.setvariable variable=AutoIncremented]$autoIncremented"
+
+          - task: DotNetCoreCLI@2
+            displayName: "Pack project"
+            condition: eq(variables['ShouldPublish'], 'True')
+            inputs:
+              command: "pack"
+              packagesToPack: "$(PROJECT_PATH)"
+              configuration: "$(BUILD_CONFIGURATION)"
+              outputDir: "$(Build.ArtifactStagingDirectory)/packages"
+              nobuild: true
+
+          - task: PowerShell@2
+            displayName: "Validate package contents"
+            condition: eq(variables['ShouldPublish'], 'True')
+            inputs:
+              targetType: "inline"
+              script: |
+                Write-Host "Checking package contents..."
+                $packageFile = Get-ChildItem -Path "$(Build.ArtifactStagingDirectory)/packages" -Filter "*.nupkg" | Select-Object -First 1
+                
+                if (-not $packageFile) {
+                    Write-Host "##vso[task.logissue type=error]No package file found!"
+                    exit 1
+                }
+                
+                Write-Host "Package file: $($packageFile.FullName)"
+                
+                # Check if .mcp/server.json is included in the package
+                $zipContent = [System.IO.Compression.ZipFile]::OpenRead($packageFile.FullName)
+                $mcpServerJsonFound = $zipContent.Entries | Where-Object { $_.FullName -like "*/.mcp/server.json" -or $_.FullName -like "*.mcp/server.json" }
+                $readmeFound = $zipContent.Entries | Where-Object { $_.FullName -like "*README.md" }
+                $zipContent.Dispose()
+                
+                if ($mcpServerJsonFound) {
+                    Write-Host "✅ .mcp/server.json found in package"
+                } else {
+                    Write-Host "##vso[task.logissue type=error]❌ .mcp/server.json not found in package"
+                    exit 1
+                }
+                
+                if ($readmeFound) {
+                    Write-Host "✅ README.md found in package"
+                } else {
+                    Write-Host "##vso[task.logissue type=warning]❌ README.md not found in package"
+                }
+                
+                Write-Host "Package validation completed successfully"
+
+          # Publish to Azure DevOps Artifacts instead of NuGet.org
+          - task: DotNetCoreCLI@2
+            displayName: "Publish to Azure DevOps Artifacts"
+            condition: eq(variables['ShouldPublish'], 'True')
+            inputs:
+              command: "push"
+              packagesToPush: "$(Build.ArtifactStagingDirectory)/packages/*.nupkg"
+              nuGetFeedType: "internal"
+              publishVstsFeed: "$(AZURE_DEVOPS_PROJECT)/$(AZURE_DEVOPS_FEED_NAME)"
+              allowPackageConflicts: false
+
+          # Alternative approach using NuGet authenticate and push
+          - task: NuGetAuthenticate@1
+            displayName: "Authenticate with Azure DevOps Artifacts"
+            condition: eq(variables['ShouldPublish'], 'True')
+
+          - task: NuGetCommand@2
+            displayName: "Push to Azure DevOps Artifacts (Alternative)"
+            condition: and(eq(variables['ShouldPublish'], 'True'), failed())
+            inputs:
+              command: "push"
+              packagesToPush: "$(Build.ArtifactStagingDirectory)/packages/*.nupkg"
+              nuGetFeedType: "internal"
+              publishVstsFeed: "$(AZURE_DEVOPS_FEED_NAME)"
+              allowPackageConflicts: false
+
+          # Create a release in Azure DevOps (using Work Items or Git tags)
+          - task: PowerShell@2
+            displayName: "Create build tag and summary"
+            condition: eq(variables['ShouldPublish'], 'True')
+            inputs:
+              targetType: "inline"
+              script: |
+                $version = "$(FinalVersion)"
+                $packageId = "$(PackageId)"
+                
+                # Add build tag
+                Write-Host "##vso[build.addbuildtag]mcpserver-v$version"
+                Write-Host "##vso[build.addbuildtag]published"
+                
+                # Create Git tag
+                git tag "mcpserver-v$version"
+                git push origin "mcpserver-v$version"
+                
+                # Add to build summary
+                $artifactsFeedUrl = "https://dev.azure.com/$(AZURE_DEVOPS_ORGANIZATION)/$(AZURE_DEVOPS_PROJECT)/_artifacts/feed/$(AZURE_DEVOPS_FEED_NAME)/NuGet/$packageId/overview/$version"
+                
+                $summary = @"
+                ## 🎉 MCP Server Published Successfully!
+                
+                **Package:** ``$packageId``
+                **Version:** ``$version``
+                **Azure DevOps Artifacts URL:** [$artifactsFeedUrl]($artifactsFeedUrl)
+                
+                ### Installation from Azure DevOps Artifacts
+                
+                Add this package source to your NuGet configuration:
+                ``````
+                dotnet nuget add source "https://pkgs.dev.azure.com/$(AZURE_DEVOPS_ORGANIZATION)/$(AZURE_DEVOPS_PROJECT)/_packaging/$(AZURE_DEVOPS_FEED_NAME)/nuget/v3/index.json" --name "$(AZURE_DEVOPS_FEED_NAME)"
+                ``````
+                
+                Then install the package:
+                ``````
+                dotnet add package $packageId --version $version --source "$(AZURE_DEVOPS_FEED_NAME)"
+                ``````
+                
+                ### MCP Client Configuration
+                
+                Configure in your MCP client (VS Code or Visual Studio):
+                
+                ``````json
+                {
+                  "servers": {
+                    "$packageId": {
+                      "type": "stdio",
+                      "command": "dotnet",
+                      "args": [
+                        "run",
+                        "--project",
+                        "path/to/AiStockTradeApp.McpServer.csproj"
+                      ],
+                      "env": {
+                        "STOCK_API_BASE_URL": "https://your-api-url.com"
+                      }
+                    }
+                  }
+                }
+                ``````
+                
+                ### What's Included
+                - 🔌 MCP Server with stock trading tools
+                - 📊 Real-time stock quotes
+                - 📈 Historical data access
+                - 🔍 Stock symbol search
+                - 🏢 Company details lookup
+                - ❤️ System health monitoring
+                "@
+                
+                if ("$(AutoIncremented)" -eq "True") {
+                    $summary += "`n`n**Auto-incremented:** Version was automatically bumped from existing version"
+                }
+                
+                Write-Host "##vso[task.uploadsummary]$summary"
+
+          - task: PowerShell@2
+            displayName: "Skip publish summary"
+            condition: eq(variables['ShouldPublish'], 'False')
+            inputs:
+              targetType: "inline"
+              script: |
+                $summary = @"
+                ## ⏭️ Publish Skipped
+                
+                All versions were already published or auto-increment failed
+                
+                To publish a new version manually:
+                1. Update the ``<PackageVersion>`` in the .csproj file
+                2. Update the version in ``.mcp/server.json``
+                3. Commit and push the changes
+                4. Or run this pipeline with 'Force publish' enabled
+                "@
+                
+                Write-Host "##vso[task.uploadsummary]$summary"
+
+          # Upload package artifacts for retention
+          - task: PublishPipelineArtifact@1
+            displayName: "Upload NuGet packages as artifacts"
+            condition: eq(variables['ShouldPublish'], 'True')
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)/packages"
+              artifactName: "nuget-packages"
+
+  # Optional: Integration test stage to verify the published package
+  - stage: VerifyPackage
+    displayName: "Verify Published Package"
+    dependsOn: PublishMcpServer
+    condition: succeeded()
+    jobs:
+      - job: VerifyJob
+        displayName: "Verify Package Installation"
+        steps:
+          - checkout: none
+
+          - task: UseDotNet@2
+            displayName: "Setup .NET"
+            inputs:
+              packageType: "sdk"
+              version: $(DOTNET_VERSION)
+              includePreviewVersions: true
+
+          - task: NuGetAuthenticate@1
+            displayName: "Authenticate with Azure DevOps Artifacts"
+
+          - task: PowerShell@2
+            displayName: "Create test project and verify package"
+            inputs:
+              targetType: "inline"
+              script: |
+                # Create a temporary test project
+                $testDir = "$(Agent.TempDirectory)/mcp-test"
+                New-Item -ItemType Directory -Path $testDir -Force
+                Set-Location $testDir
+                
+                # Create a simple console app
+                dotnet new console -n "McpServerTest"
+                Set-Location "McpServerTest"
+                
+                # Add the Azure DevOps package source
+                dotnet nuget add source "https://pkgs.dev.azure.com/$(AZURE_DEVOPS_ORGANIZATION)/$(AZURE_DEVOPS_PROJECT)/_packaging/$(AZURE_DEVOPS_FEED_NAME)/nuget/v3/index.json" --name "$(AZURE_DEVOPS_FEED_NAME)"
+                
+                # Try to add our published package
+                $packageId = "$(PackageId)"
+                $version = "$(FinalVersion)"
+                
+                Write-Host "Attempting to install package: $packageId version $version"
+                dotnet add package $packageId --version $version --source "$(AZURE_DEVOPS_FEED_NAME)"
+                
+                # Verify the package was installed
+                $csprojContent = Get-Content "McpServerTest.csproj" -Raw
+                if ($csprojContent -like "*$packageId*") {
+                    Write-Host "✅ Package successfully installed and referenced in project"
+                } else {
+                    Write-Host "##vso[task.logissue type=error]❌ Package was not properly installed"
+                    exit 1
+                }
+                
+                # Try to restore to ensure all dependencies are available
+                dotnet restore
+                Write-Host "✅ Package verification completed successfully"
