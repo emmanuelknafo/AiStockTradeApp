@@ -22,8 +22,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for creating releases
-      packages: write  # Required for publishing packages
+      contents: write       # Required for creating releases and cloning repo
+      packages: write       # Required for publishing packages  
+      pull-requests: write  # Required for creating pull requests
+      actions: read         # Required for accessing workflow info
     
     steps:
     - name: Checkout repository
@@ -31,6 +33,7 @@ jobs:
       with:
         # Fetch full history for proper versioning
         fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -185,10 +188,16 @@ jobs:
 
     - name: Commit version changes
       if: steps.auto-increment.outputs.auto_incremented == 'true'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         # Configure git
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
+        
+        # Create a new branch for version update
+        BRANCH_NAME="auto-version-update-$(date +%s)"
+        git checkout -b "$BRANCH_NAME"
         
         # Add modified files
         git add ${{ env.PROJECT_PATH }} AiStockTradeApp.McpServer/.mcp/server-nuget.json
@@ -196,13 +205,35 @@ jobs:
           git add AiStockTradeApp.McpServer/.mcp/server.json
         fi
         
-        # Commit and push changes
+        # Commit changes
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
-          git commit -m "Auto-increment MCP Server version to ${{ steps.auto-increment.outputs.version }} [skip ci]"
-          git push
-          echo "Version changes committed and pushed"
+          git commit -m "Auto-increment MCP Server version to ${{ steps.auto-increment.outputs.version }}"
+          
+          # Push branch and create pull request
+          git push origin "$BRANCH_NAME"
+          
+          # Create pull request using GitHub CLI
+          gh pr create \
+            --title "Auto-increment MCP Server version to ${{ steps.auto-increment.outputs.version }}" \
+            --body "Automated version increment detected changes in MCP Server:
+            
+            - **Change Type**: ${{ steps.changes.outputs.change_type }}
+            - **Increment Type**: ${{ steps.changes.outputs.increment_type }}
+            - **New Version**: ${{ steps.auto-increment.outputs.version }}
+            
+            This PR was automatically created by the CI/CD pipeline.
+            
+            Files modified:
+            - AiStockTradeApp.McpServer.csproj
+            - .mcp/server-nuget.json
+            - .mcp/server.json (if exists)" \
+            --head "$BRANCH_NAME" \
+            --base main
+          
+          echo "Version update pull request created for branch: $BRANCH_NAME"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi
 
     - name: Use auto-incremented version

@@ -268,10 +268,19 @@ stages:
                 # Commit the changes
                 git commit -m "Auto-increment MCP Server version to $(FinalVersion) [skip ci]"
                 
-                # Push the changes
-                git push origin HEAD:$(Build.SourceBranchName)
+                # Try to push the changes - handle branch protection gracefully
+                Write-Host "Attempting to push version update..."
+                $pushResult = git push origin HEAD:$(Build.SourceBranchName) 2>&1
+                $exitCode = $LASTEXITCODE
                 
-                Write-Host "Successfully committed version update to $(FinalVersion)"
+                if ($exitCode -eq 0) {
+                    Write-Host "Successfully committed and pushed version update to $(FinalVersion)"
+                } else {
+                    Write-Host "##vso[task.logissue type=warning]Failed to push version update. This may be due to branch protection rules."
+                    Write-Host "Push output: $pushResult"
+                    Write-Host "The package will still be built and published with the updated version locally."
+                    Write-Host "Manual merge of version changes may be required."
+                }
 
           - task: DotNetCoreCLI@2
             displayName: "Pack project"
