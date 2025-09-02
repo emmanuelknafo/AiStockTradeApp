@@ -10,13 +10,15 @@ namespace AiStockTradeApp.Tests.Services
     {
         private readonly Mock<IHistoricalPriceRepository> _mockRepository;
         private readonly Mock<ILogger<HistoricalPriceService>> _mockLogger;
+        private readonly Mock<MockStockDataService> _mockDataService;
         private readonly HistoricalPriceService _service;
 
         public HistoricalPriceServiceTests()
         {
             _mockRepository = new Mock<IHistoricalPriceRepository>();
             _mockLogger = new Mock<ILogger<HistoricalPriceService>>();
-            _service = new HistoricalPriceService(_mockRepository.Object, _mockLogger.Object);
+            _mockDataService = new Mock<MockStockDataService>();
+            _service = new HistoricalPriceService(_mockRepository.Object, _mockDataService.Object, _mockLogger.Object);
         }
 
         [Theory]

@@ -13,12 +13,14 @@ namespace AiStockTradeApp.Tests.Services
         private readonly Mock<IConfiguration> _mockConfiguration;
         private readonly Mock<ILogger<StockDataService>> _mockLogger;
         private readonly Mock<IStockDataRepository> _mockRepository;
+        private readonly Mock<IMockStockDataService> _mockDataService;
 
         public StockDataServiceTests()
         {
             _mockConfiguration = new Mock<IConfiguration>();
             _mockLogger = new Mock<ILogger<StockDataService>>();
             _mockRepository = new Mock<IStockDataRepository>();
+            _mockDataService = new Mock<IMockStockDataService>();
         }
 
         private StockDataService CreateService(HttpClient? httpClient = null)
@@ -29,7 +31,7 @@ namespace AiStockTradeApp.Tests.Services
             _mockConfiguration.Setup(x => x["AlphaVantage:ApiKey"]).Returns("demo-key");
             _mockConfiguration.Setup(x => x["TwelveData:ApiKey"]).Returns("demo");
             
-            return new StockDataService(client, _mockConfiguration.Object, _mockLogger.Object, _mockRepository.Object);
+            return new StockDataService(client, _mockConfiguration.Object, _mockLogger.Object, _mockRepository.Object, _mockDataService.Object);
         }
 
         [Theory]

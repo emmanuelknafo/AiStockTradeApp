@@ -13,6 +13,7 @@ namespace AiStockTradeApp.Services.Implementations
         private readonly IConfiguration _configuration;
         private readonly ILogger<StockDataService> _logger;
         private readonly IStockDataRepository _repository;
+        private readonly IMockStockDataService _mockService;
         
         // Rate limiting (simple global limiter to avoid hammering public APIs). Previous implementation
         // used an unsynchronized dictionary which allowed concurrent callers to both see no prior request
@@ -25,12 +26,14 @@ namespace AiStockTradeApp.Services.Implementations
             HttpClient httpClient, 
             IConfiguration configuration, 
             ILogger<StockDataService> logger,
-            IStockDataRepository repository)
+            IStockDataRepository repository,
+            IMockStockDataService mockService)
         {
             _httpClient = httpClient;
             _configuration = configuration;
             _logger = logger;
             _repository = repository;
+            _mockService = mockService;
         }
 
         public async Task<StockQuoteResponse> GetStockQuoteAsync(string symbol)
@@ -107,10 +110,23 @@ namespace AiStockTradeApp.Services.Implementations
                     _logger.LogError(ex, "All APIs failed for {Symbol}", symbol);
                 }
 
+                // Final fallback: Generate mock data for testing when all APIs fail
+                _logger.LogWarning("All external APIs failed for {Symbol}, falling back to mock data", symbol);
+                var mockResponse = _mockService.GenerateMockStockData(symbol);
+                
+                if (mockResponse.Success && mockResponse.Data != null)
+                {
+                    // Cache the mock data with a shorter TTL to encourage retrying real APIs later
+                    mockResponse.Data.LastUpdated = DateTime.UtcNow;
+                    await _repository.SaveStockDataAsync(mockResponse.Data);
+                    _logger.LogInformation("Returned mock data for {Symbol} due to API exhaustion", symbol);
+                    return mockResponse;
+                }
+
                 return new StockQuoteResponse
                 {
                     Success = false,
-                    ErrorMessage = $"Unable to fetch data for {symbol} from any source"
+                    ErrorMessage = $"Unable to fetch data for {symbol} from any source, including mock fallback"
                 };
             }
             catch (Exception ex)

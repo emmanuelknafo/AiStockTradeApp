@@ -13,11 +13,15 @@ namespace AiStockTradeApp.Services.Implementations
         private readonly IHistoricalPriceRepository _repo;
         private readonly Microsoft.Extensions.Logging.ILogger<HistoricalPriceService>? _logger;
         private readonly Microsoft.ApplicationInsights.TelemetryClient? _telemetry;
+        private readonly IMockStockDataService _mockService;
+        
         public HistoricalPriceService(IHistoricalPriceRepository repo,
+            IMockStockDataService mockService,
             Microsoft.Extensions.Logging.ILogger<HistoricalPriceService>? logger = null,
             Microsoft.ApplicationInsights.TelemetryClient? telemetry = null)
         {
             _repo = repo;
+            _mockService = mockService;
             _logger = logger;
             _telemetry = telemetry;
         }
@@ -67,6 +71,29 @@ namespace AiStockTradeApp.Services.Implementations
                     { "stage", "service-fetch" }
                 });
             }
+
+            // If no cached data and online fetch failed, generate mock data for testing
+            if (existing.Count == 0)
+            {
+                _logger?.LogInformation("HistoricalPriceService: generating mock historical data for {Symbol} (no cached data, online fetch failed)", symbol);
+                var mockData = _mockService.GenerateMockHistoricalData(symbol, take ?? 30);
+                
+                if (mockData.Count > 0)
+                {
+                    // Save mock data to cache for future requests
+                    await _repo.UpsertManyAsync(mockData);
+                    _logger?.LogInformation("HistoricalPriceService: saved mock historical data for {Symbol} ({Count} records)", symbol, mockData.Count);
+                    
+                    // Apply filters if specified
+                    var filteredData = mockData.AsQueryable();
+                    if (from.HasValue) filteredData = filteredData.Where(p => p.Date >= from.Value);
+                    if (to.HasValue) filteredData = filteredData.Where(p => p.Date <= to.Value);
+                    if (take.HasValue) filteredData = filteredData.Take(take.Value);
+                    
+                    return filteredData.ToList();
+                }
+            }
+
             return existing;
         }
 

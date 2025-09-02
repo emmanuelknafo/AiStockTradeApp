@@ -57,6 +57,7 @@ builder.Services.AddHttpClient<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IListedStockService, ListedStockService>();
 builder.Services.AddScoped<IHistoricalPriceService, HistoricalPriceService>();
+builder.Services.AddScoped<IMockStockDataService, MockStockDataService>(); // Mock data fallback for when APIs fail
 builder.Services.AddSingleton<IImportJobQueue, ImportJobQueue>();
 builder.Services.AddHostedService<ImportJobProcessor>();
 
