@@ -8,10 +8,10 @@ namespace AiStockTradeApp.UITests.Tests;
 [TestFixture]
 public class DebugStockAdditionTests : BaseUITest
 {
-    private StockDashboardPage _dashboardPage;
+    private StockDashboardPage _dashboardPage = null!;
 
     [SetUp]
-    public async Task Setup()
+    public new async Task Setup()
     {
         _dashboardPage = new StockDashboardPage(Page, BaseUrl);
         await NavigateToStockDashboard();
