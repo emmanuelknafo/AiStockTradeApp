@@ -258,33 +258,70 @@ stages:
                 # This is mainly for logging the configuration for debugging
                 Write-Host "Configuration verified. Proceeding with publish..."
 
-          # Publish to Azure DevOps Artifacts
-          - task: DotNetCoreCLI@2
-            displayName: "Publish to Azure DevOps Artifacts"
+          # Publish to Azure DevOps Artifacts using NuGet authenticate and push
+          - task: NuGetAuthenticate@1
+            displayName: "Authenticate with Azure DevOps Artifacts"
+            condition: eq(variables['ShouldPublish'], 'True')
+
+          - task: PowerShell@2
+            displayName: "Push to Azure DevOps Artifacts with skip-duplicate"
             condition: eq(variables['ShouldPublish'], 'True')
             inputs:
-              command: "push"
-              packagesToPush: "$(Build.ArtifactStagingDirectory)/packages/*.nupkg"
-              nuGetFeedType: "internal"
-              publishVstsFeed: "$(AZURE_DEVOPS_PROJECT)/$(AZURE_DEVOPS_FEED_NAME)"
-              allowPackageConflicts: false
-              arguments: "--skip-duplicate"
+              targetType: "inline"
+              script: |
+                $packageFile = Get-ChildItem -Path "$(Build.ArtifactStagingDirectory)/packages" -Filter "*.nupkg" | Select-Object -First 1
+                if (-not $packageFile) {
+                    Write-Host "##vso[task.logissue type=error]No package file found!"
+                    exit 1
+                }
+                
+                $feedUrl = "https://pkgs.dev.azure.com/$(AZURE_DEVOPS_ORGANIZATION)/$(AZURE_DEVOPS_PROJECT)/_packaging/$(AZURE_DEVOPS_FEED_NAME)/nuget/v3/index.json"
+                Write-Host "Pushing package: $($packageFile.FullName)"
+                Write-Host "To feed: $feedUrl"
+                
+                # Use dotnet nuget push with --skip-duplicate
+                $pushCommand = "dotnet nuget push `"$($packageFile.FullName)`" --source `"$feedUrl`" --api-key `"VSTS`" --skip-duplicate"
+                Write-Host "Command: $pushCommand"
+                
+                Invoke-Expression $pushCommand
+                $exitCode = $LASTEXITCODE
+                
+                if ($exitCode -eq 0) {
+                    Write-Host "✅ Package published successfully (or skipped as duplicate)"
+                } else {
+                    Write-Host "##vso[task.logissue type=error]❌ Package push failed with exit code: $exitCode"
+                    exit $exitCode
+                }
 
-          # Alternative approach using NuGet authenticate - using DotNetCoreCLI instead of NuGetCommand
-          - task: NuGetAuthenticate@1
-            displayName: "Authenticate with Azure DevOps Artifacts (Backup)"
-            condition: and(eq(variables['ShouldPublish'], 'True'), failed())
-
-          - task: DotNetCoreCLI@2
+          # Backup approach - direct dotnet CLI command (fallback)
+          - task: PowerShell@2
             displayName: "Push to Azure DevOps Artifacts (Alternative - Backup)"
             condition: and(eq(variables['ShouldPublish'], 'True'), failed())
             inputs:
-              command: "push"
-              packagesToPush: "$(Build.ArtifactStagingDirectory)/packages/*.nupkg"
-              nuGetFeedType: "internal"
-              publishVstsFeed: "$(AZURE_DEVOPS_FEED_NAME)"
-              allowPackageConflicts: false
-              arguments: "--skip-duplicate"
+              targetType: "inline"
+              script: |
+                Write-Host "Primary push failed, attempting backup method..."
+                $packageFile = Get-ChildItem -Path "$(Build.ArtifactStagingDirectory)/packages" -Filter "*.nupkg" | Select-Object -First 1
+                if (-not $packageFile) {
+                    Write-Host "##vso[task.logissue type=error]No package file found!"
+                    exit 1
+                }
+                
+                # Try alternative feed URL format
+                $feedUrl = "https://pkgs.dev.azure.com/$(AZURE_DEVOPS_ORGANIZATION)/$(AZURE_DEVOPS_PROJECT)/_packaging/$(AZURE_DEVOPS_FEED_NAME)/nuget/v3/index.json"
+                Write-Host "Backup push - Package: $($packageFile.FullName)"
+                Write-Host "Backup push - Feed: $feedUrl"
+                
+                $pushCommand = "dotnet nuget push `"$($packageFile.FullName)`" --source `"$feedUrl`" --api-key `"VSTS`" --skip-duplicate --no-service-endpoint"
+                Write-Host "Backup command: $pushCommand"
+                
+                Invoke-Expression $pushCommand
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✅ Backup package push successful"
+                } else {
+                    Write-Host "##vso[task.logissue type=error]❌ Backup package push also failed"
+                    exit $LASTEXITCODE
+                }
 
           # Create a release in Azure DevOps (using Work Items or Git tags)
           - task: PowerShell@2
