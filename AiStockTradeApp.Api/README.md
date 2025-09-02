@@ -1,215 +1,277 @@
 # AiStockTradeApp.Api - REST API Backend
 
-## Project Overview
+## 🚀 Project Overview
 
-The API backend for the AI Stock Trade Application built with .NET 9 Minimal API. This service provides REST endpoints for stock data retrieval, historical price management, and background processing jobs.
+The REST API backend for the AI Stock Trade Application built with .NET 9 Minimal API. This service provides comprehensive endpoints for stock data retrieval, historical price management, user watchlist operations, and background processing jobs.
 
-## Technology Stack
+## 🏗️ Architecture Role
 
-- **.NET 9** - Minimal API Framework
-- **Entity Framework Core** - ORM for database operations
-- **SQL Server/Azure SQL** - Primary database
-- **Swagger/OpenAPI** - API documentation  
-- **Application Insights** - Telemetry and monitoring
-- **Background Services** - Hosted background job processing
+This is the **API layer** of the clean architecture solution, serving as the central data hub that:
 
-## Current Implementation
+- **Processes business logic** through service layer integration
+- **Manages data persistence** via Entity Framework Core
+- **Provides REST endpoints** using Minimal API pattern
+- **Handles background jobs** for data import and processing
+- **Serves the UI project** and external MCP clients
 
-### Project Structure
+### Key Responsibilities
+
+- **Stock data retrieval** from external APIs (Alpha Vantage, Yahoo Finance, Twelve Data)
+- **Historical price management** with CSV import capabilities
+- **User watchlist operations** with persistent storage
+- **Background job processing** for data imports and refresh
+- **Health monitoring** and system diagnostics
+- **API integration** for Model Context Protocol (MCP) server
+
+## 🛠️ Technology Stack
+
+### Core Framework
+
+- **.NET 9 Minimal API** - Lightweight, high-performance API framework
+- **Entity Framework Core 9** - ORM for database operations
+- **SQL Server/Azure SQL** - Primary database with LocalDB support
+- **ASP.NET Core Identity** - User authentication and authorization
+
+### Background Processing
+
+- **Hosted Services** - Background job processing
+- **In-memory queues** - Job queue management
+- **CSV processing** - Historical data import capabilities
+- **Scheduled tasks** - Automated data refresh
+
+### Monitoring & Observability
+
+- **Application Insights** - Telemetry and performance monitoring
+- **Structured logging** - Comprehensive request/response logging
+- **Health checks** - Endpoint health monitoring
+- **Swagger/OpenAPI** - API documentation and testing
+
+## 📁 Project Structure
+
 ```
 AiStockTradeApp.Api/
 ├── Background/
-│   ├── ImportJobModels.cs      # Job processing models
-│   └── ImportJobProcessor.cs   # Background CSV import processor
+│   ├── ImportJobModels.cs          # Job processing data models
+│   ├── ImportJobProcessor.cs       # Background CSV import processor
+│   └── ImportJobQueue.cs           # Job queue management
 ├── Middleware/
 │   └── (Custom middleware implementations)
 ├── Properties/
-│   └── launchSettings.json
-├── ApiAssemblyMarker.cs        # Assembly marker for DI
-├── Program.cs                  # Application entry point and configuration
-├── appsettings.json            # Configuration settings
-├── appsettings.Development.json
-└── Dockerfile                  # Container configuration
+│   └── launchSettings.json         # Development server configuration
+├── ApiAssemblyMarker.cs            # Assembly marker for DI registration
+├── Program.cs                      # Application entry point and API endpoints
+├── TestStartup.cs                  # Test environment configuration
+├── appsettings.json                # Application configuration
+├── appsettings.Development.json    # Development-specific settings
+└── Dockerfile                      # Container configuration
 ```
 
-## Current API Endpoints
+## 🔗 Dependencies
+
+### Project References
+
+- **AiStockTradeApp.Services** - Business logic and external API integration
+- **AiStockTradeApp.DataAccess** - Entity Framework Core and repositories
+- **AiStockTradeApp.Entities** - Domain models and data transfer objects
+
+### Key Service Integrations
+
+- **IStockDataService** - External stock API integration
+- **IHistoricalPriceService** - Historical data management
+- **IListedStockService** - Listed stocks catalog
+- **IUserWatchlistService** - User-specific watchlist operations
+
+## 🌐 API Endpoints
+
+### Stock Data Management
+
+#### Get Real-time Stock Quote
+
+```http
+GET /api/stocks/quote?symbol={symbol}
+```
+
+Retrieves current stock price, change, and market data.
+
+#### Search Stock Symbols
+
+```http
+GET /api/stocks/search?query={searchTerm}
+```
+
+Search for stocks by company name or ticker symbol.
 
 ### Historical Data Management
 
 #### Get Historical Prices
 
 ```http
-GET /api/historical-prices/{symbol}?from=2025-08-01&to=2025-08-19&take=30
+GET /api/historical-prices/{symbol}?from=2025-08-01&to=2025-08-31&take=100
 ```
 
-Retrieves historical price data for a stock symbol within a date range.
+Retrieves historical price data within a date range.
 
-**Parameters:**
-- `symbol` - Stock ticker symbol (e.g., AAPL, GOOGL)
-- `from` - Start date (YYYY-MM-DD format)
-- `to` - End date (YYYY-MM-DD format)  
-- `take` - Maximum number of records to return
-
-#### Import CSV Data
+#### Import Historical Data
 
 ```http
 POST /api/historical-prices/{symbol}/import-csv
-Content-Type: text/csv or text/plain
+Content-Type: text/csv
 ```
 
-Imports historical price data from CSV format. Supports NASDAQ-style CSV with columns:
-Date, Close/Last, Volume, Open, High, Low
+Imports historical price data from CSV format with background processing.
 
-**Headers:**
-- `X-File-Name` (optional) - Original filename for tracking
+### User Watchlist Operations
 
-**Response:**
-- `202 Accepted` with job status location for tracking import progress
+#### Get User Watchlist
 
-### Background Processing
+```http
+GET /api/watchlist
+Authorization: Bearer {token}
+```
 
-The API includes background job processing for:
+Retrieve the authenticated user's watchlist.
 
-- **CSV Import Jobs** - Asynchronous processing of uploaded CSV files
-- **Data Validation** - Ensures data integrity during imports
-- **Progress Tracking** - Monitor import job status and completion
+#### Add Stock to Watchlist
 
-## Configuration
+```http
+POST /api/watchlist
+Authorization: Bearer {token}
+```
 
-### Database Connection
+### Health and Monitoring
+
+#### Health Check
+
+```http
+GET /health
+```
+
+Returns application health status and dependency checks.
+
+#### Version Information
+
+```http
+GET /api/version
+```
+
+Get application version and build information.
+
+## ⚙️ Configuration
+
+### Application Settings
 
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost;Database=StockTracker;Trusted_Connection=true;TrustServerCertificate=true"
+    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=AiStockTradeApp;Trusted_Connection=true"
+  },
+  "AlphaVantage": {
+    "ApiKey": "YOUR_API_KEY"
+  },
+  "TwelveData": {
+    "ApiKey": "YOUR_API_KEY"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "AiStockTradeApp": "Debug"
+    }
   }
 }
 ```
 
-### Application Insights
+## 🚀 Development Workflow
 
-```json
-{
-  "ApplicationInsights": {
-    "ConnectionString": "Your-Application-Insights-Connection-String"
-  }
-}
-```
-
-## Dependencies
-
-The API project references:
-
-- **AiStockTradeApp.Entities** - Domain models and DTOs
-- **AiStockTradeApp.DataAccess** - Entity Framework data access layer  
-- **AiStockTradeApp.Services** - Business logic and external API integrations
-
-## Running the API
-
-### Development
+### Running the API
 
 ```bash
-# From the API project directory
-dotnet run
-
-# Or from solution root
+# Start the API server
 dotnet run --project AiStockTradeApp.Api
+
+# With specific environment
+dotnet run --environment Development --project AiStockTradeApp.Api
+
+# Using the start script (starts both API and UI)
+.\scripts\start.ps1 -Mode Local
 ```
 
-The API will be available at:
-- HTTPS: `https://localhost:7043`
-- HTTP: `http://localhost:5043`
-
-### Docker
+### Database Operations
 
 ```bash
-# Build container
-docker build -t ai-stock-api .
+# Add new migration
+dotnet ef migrations add MigrationName --project AiStockTradeApp.DataAccess
 
-# Run container
-docker run -p 5043:8080 ai-stock-api
+# Update database
+dotnet ef database update --project AiStockTradeApp.DataAccess
 ```
 
-## API Documentation
-
-When running in Development mode, Swagger UI is available at:
-- `https://localhost:7043/swagger`
-
-The OpenAPI specification provides interactive documentation for all available endpoints.
-
-## Background Services
-
-### Import Job Processor
-
-Handles asynchronous processing of CSV data imports:
-
-- **Job Queuing** - Accepts import requests and queues for processing
-- **Data Parsing** - Validates and parses CSV data
-- **Batch Processing** - Efficiently inserts data in batches
-- **Error Handling** - Logs and reports processing errors
-- **Progress Tracking** - Updates job status throughout processing
-
-## Security Features
-
-- **HTTPS Enforcement** - All endpoints require secure connections
-- **Input Validation** - Validates all incoming data
-- **Error Handling** - Secure error responses without sensitive information
-- **CORS Configuration** - Configurable cross-origin request policies
-
-## Monitoring and Logging
-
-- **Application Insights Integration** - Comprehensive telemetry
-- **Structured Logging** - Detailed logging with correlation IDs
-- **Health Checks** - Endpoint health monitoring
-- **Performance Metrics** - Request timing and throughput tracking
-
-## Testing
-
-Run API tests from the solution root:
+### API Testing
 
 ```bash
-# Unit tests
-dotnet test AiStockTradeApp.Tests
+# Health check
+curl https://localhost:7043/health
 
-# Integration tests specifically for API
-dotnet test --filter "Category=Integration"
+# Get stock quote
+curl "https://localhost:7043/api/stocks/quote?symbol=AAPL"
 ```
 
-## Deployment
+## 🧪 Testing Support
 
-### Azure App Service
+### Test Configuration
 
-The API is designed for deployment to Azure App Service with:
+The API supports testing scenarios with:
 
-- **Managed Identity** - Secure access to Azure resources
-- **Application Insights** - Built-in monitoring
-- **Auto-scaling** - Automatic scaling based on demand
-- **Health Checks** - Automated health monitoring
+- **In-memory database** - Fast test execution
+- **Mock external services** - Simulated stock data APIs
+- **Test environment** - Isolated test configuration
+
+## 🔒 Security Implementation
+
+### Authentication & Authorization
+
+- **JWT Bearer tokens** - Secure API authentication
+- **Authorization policies** - Role-based access control
+- **Input validation** - Model validation and sanitization
+
+### API Security
+
+- **HTTPS enforcement** - TLS encryption required
+- **CORS configuration** - Cross-origin request control
+- **Rate limiting** - API abuse prevention
+- **Input sanitization** - SQL injection and XSS prevention
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### Database Connection Problems
+
+```bash
+# Check connection string
+dotnet user-secrets list --project AiStockTradeApp.Api
+
+# Test database connectivity
+sqlcmd -S "(localdb)\MSSQLLocalDB" -Q "SELECT @@VERSION"
+```
+
+#### External API Issues
+
+- **Rate limits** - Check API key quotas
+- **Authentication** - Verify API keys in configuration
+- **Network connectivity** - Test external API endpoints
+
+## 📦 Deployment
+
+### Container Deployment
+
+```dockerfile
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
+WORKDIR /app
+EXPOSE 80 443
+```
 
 ### Environment Variables
 
-Set these environment variables for production:
-
-```bash
-ASPNETCORE_ENVIRONMENT=Production
-ConnectionStrings__DefaultConnection="Your-SQL-Connection-String"
-ApplicationInsights__ConnectionString="Your-AI-Connection-String"
-```
-
-## Contributing
-
-When adding new endpoints:
-
-1. Follow RESTful conventions
-2. Add appropriate validation
-3. Include comprehensive error handling
-4. Update Swagger documentation
-5. Add corresponding unit tests
-6. Ensure proper logging
-
-## Related Projects
-
-- **[AiStockTradeApp](../AiStockTradeApp/)** - Web UI that consumes this API
-- **[AiStockTradeApp.Entities](../AiStockTradeApp.Entities/)** - Shared domain models
-- **[AiStockTradeApp.DataAccess](../AiStockTradeApp.DataAccess/)** - Data access layer
-- **[AiStockTradeApp.Services](../AiStockTradeApp.Services/)** - Business services
+- **ASPNETCORE_ENVIRONMENT** - Development/Production
+- **ConnectionStrings__DefaultConnection** - Database connection
+- **AlphaVantage__ApiKey** - Stock data API key

@@ -828,22 +828,25 @@ _logger.LogInformation("Processing stock request for {Symbol} with correlation {
 
 When working with this codebase:
 
-1. **Always preserve the established patterns** - Follow dependency injection, repository patterns, and error handling strategies
+1. **Always preserve the established patterns** - Follow dependency injection, repository patterns, and error handling strategies as documented in individual project READMEs
 2. **Maintain localization compliance** - Ensure all new user-facing text uses the SimpleStringLocalizer pattern by adding keys to both "en" and "fr" translation dictionaries
-3. **Understand the architecture** - UI project uses HTTP client to communicate with API project; UI has minimal business logic
-4. **Test coverage required** - Add appropriate unit tests for new services and UI tests for new features
-5. **Database changes** - Create migrations for any schema modifications in the API project
+3. **Understand the architecture** - UI project uses HTTP client to communicate with API project; UI has minimal business logic. Review project-specific READMEs for detailed architecture understanding
+4. **Test coverage required** - Add appropriate unit tests for new services and UI tests for new features as outlined in testing project documentation
+5. **Database changes** - Create migrations for any schema modifications in the API project following DataAccess project guidelines
 6. **Security first** - Consider security implications of all changes, especially input validation and data access
-7. **Performance awareness** - Consider caching and query optimization for data-heavy operations
+7. **Performance awareness** - Consider caching and query optimization for data-heavy operations per DataAccess optimization patterns
 8. **Logging and monitoring** - Add appropriate logging for new functionality to aid troubleshooting
-9. **Documentation updates** - Update this file and relevant README files when architectural changes are made
+9. **Documentation updates** - Update relevant project README files and this copilot-instructions.md file when architectural changes are made. Each project has comprehensive README documentation that must be maintained
+10. **MCP Server integration** - When working with external AI integrations, refer to the MCP Server project documentation for proper tool implementation and configuration
 
 ### Code Generation Guidelines
-- Use the established namespaces and folder structure
+- Use the established namespaces and folder structure as documented in individual project READMEs
 - Follow the dependency injection patterns for service registration
-- For UI project: Use ApiStockDataServiceClient for data access (HTTP calls to API)
-- For API project: Use direct service implementations with database access and Minimal API endpoints
-- For MCP Server project: Use HTTP client to communicate with API project, implement MCP tools with proper error handling
+- For UI project: Use ApiStockDataServiceClient for data access (HTTP calls to API) per UI project documentation
+- For API project: Use direct service implementations with database access and Minimal API endpoints per API project documentation
+- For MCP Server project: Use HTTP client to communicate with API project, implement MCP tools with proper error handling per MCP Server documentation
+- For DataAccess project: Follow repository pattern implementations and Entity Framework conventions per DataAccess project documentation
+- For Entities project: Use proper validation attributes and follow model design patterns per Entities project documentation
 - Implement proper error handling with logging
 - Add appropriate validation attributes to models
 - Include XML documentation comments for public APIs
@@ -864,7 +867,47 @@ When working with this codebase:
 - **Build error resolution** - When modifying code and building, always resolve all compilation errors and warnings before proceeding. Use `dotnet build` to check for issues and address them systematically
 - **Proper application startup** - The start script handles clean shutdown of existing processes, package restoration, solution building, and launches both API and UI components with correct port configurations
 - **Dependency management** - The start script ensures all project dependencies are properly restored and built in the correct order before launching services
-- **README maintenance** - Each project subfolder contains a README.md file that must be continuously kept up to date to reflect the current folder/project contents, including new features, architectural changes, and dependencies
+- **README maintenance** - Each project subfolder contains a comprehensive README.md file that is continuously kept up to date to reflect the current folder/project contents, including new features, architectural changes, and dependencies. These READMEs follow a standardized format with clear sections for project overview, architecture role, technology stack, configuration, and development guidelines.
 - **Documentation synchronization** - After making significant changes to the codebase, always review and update the copilot-instructions.md file to ensure all guidelines, patterns, and architectural decisions remain accurate and current
 
 This solution represents a modern, scalable, and maintainable approach to building web applications with .NET, emphasizing clean architecture, comprehensive testing, and production-ready deployment practices.
+
+## 📖 Project Documentation
+
+Each project in the solution contains comprehensive README documentation that provides detailed information about:
+
+- **Project Overview** - Purpose and role in the overall architecture
+- **Technology Stack** - Specific technologies and frameworks used
+- **Project Structure** - Detailed folder organization and file purposes
+- **Configuration** - Setup instructions and environment requirements
+- **Development Guidelines** - Coding patterns and best practices
+- **Dependencies** - Project references and NuGet packages
+- **Testing Strategies** - Unit testing and integration testing approaches
+
+### Documentation Standards
+
+All project READMEs follow a standardized format ensuring:
+
+1. **Comprehensive coverage** of project functionality and architecture
+2. **Up-to-date information** reflecting current implementation
+3. **Clear explanations** of design decisions and patterns
+4. **Practical examples** for common development scenarios
+5. **Consistent formatting** using markdown best practices
+6. **Cross-references** to related projects and dependencies
+
+### Key Documentation Files
+
+- **Root README.md** - Solution overview and getting started guide
+- **AiStockTradeApp/README.md** - Web UI project documentation
+- **AiStockTradeApp.Api/README.md** - REST API project documentation
+- **AiStockTradeApp.Entities/README.md** - Domain models and view models
+- **AiStockTradeApp.DataAccess/README.md** - Entity Framework data layer
+- **AiStockTradeApp.Services/README.md** - Business logic services
+- **AiStockTradeApp.Tests/README.md** - Unit testing strategies
+- **AiStockTradeApp.UITests/README.md** - End-to-end testing with Playwright
+- **AiStockTradeApp.Cli/README.md** - Command line tools
+- **AiStockTradeApp.McpServer/README.md** - Model Context Protocol integration
+- **Infrastructure/README.md** - Azure infrastructure documentation
+- **Scripts/README.md** - Automation and development scripts
+
+These documentation files serve as the definitive guide for understanding and working with the AI Stock Trade application solution.
