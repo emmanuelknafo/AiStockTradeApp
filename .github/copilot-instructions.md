@@ -23,6 +23,7 @@ AiStockTradeApp/                    # Root solution folder
 ├── AiStockTradeApp.Tests/          # ✅ Unit Tests - Service testing
 ├── AiStockTradeApp.UITests/        # 🤖 UI Tests - Playwright automation
 ├── AiStockTradeApp.Cli/            # 📟 CLI Tool - Command line utilities
+├── AiStockTradeApp.McpServer/      # 🔌 MCP Server - Model Context Protocol integration
 ├── infrastructure/                 # ☁️ Azure Infrastructure (Bicep)
 ├── scripts/                        # 📜 PowerShell automation scripts
 └── docker-compose.yml              # 🐳 Local development container setup
@@ -40,6 +41,7 @@ AiStockTradeApp/                    # Root solution folder
 | **AiStockTradeApp.Tests** | Unit testing | Service tests, controller tests, authentication tests | All projects |
 | **AiStockTradeApp.UITests** | End-to-end testing | Playwright page objects, authentication flows | Web UI |
 | **AiStockTradeApp.Cli** | Command line tools | Data migration, historical data download/import | Services |
+| **AiStockTradeApp.McpServer** | Model Context Protocol server | Stock trading tools, MCP integration, external AI assistant access | HTTP client to API |
 
 ## 🛠️ Technology Stack
 
@@ -87,6 +89,86 @@ AiStockTradeApp/                    # Root solution folder
 - **Docker** - Containerization
 - **Bicep** - Infrastructure as Code
 - **GitHub Actions** - CI/CD pipelines
+
+### Model Context Protocol (MCP) Integration
+- **MCP Server** - Protocol server for AI assistant integration
+- **Stock Trading Tools** - MCP tools for external AI access to stock data
+- **HTTP Transport** - Communication via HTTP and STDIO protocols
+- **Tool Registration** - Automated tool discovery and registration
+
+## 🔌 MCP Server Integration
+
+The **AiStockTradeApp.McpServer** project provides Model Context Protocol integration, enabling external AI assistants (like Claude, ChatGPT, or other MCP-compatible clients) to access stock trading functionality through standardized tools.
+
+### MCP Server Features
+- **Real-time Stock Quotes** - Get current stock prices and market data
+- **Historical Data Access** - Retrieve historical price information with date ranges
+- **Stock Search** - Find stock symbols by company name or ticker
+- **Company Details** - Access detailed company information and metadata
+- **Listed Stocks** - Browse available stocks with pagination
+- **System Status** - Monitor API health and availability
+
+### Available MCP Tools
+The server exposes the following tools to MCP clients:
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `GetStockQuote` | Get real-time stock quote data | symbol (string) |
+| `GetHistoricalData` | Retrieve historical price data | symbol (string), days (optional) |
+| `SearchStockSymbols` | Search for stock symbols | query (string) |
+| `GetStockDetails` | Get detailed company information | symbol (string) |
+| `GetListedStocks` | Browse available stocks with pagination | page (optional), pageSize (optional) |
+| `GetDetailedHistoricalPrices` | Get detailed historical prices with date range | symbol (string), startDate (optional), endDate (optional) |
+| `GetSystemStatus` | Check API system health | none |
+
+### MCP Server Configuration
+```csharp
+// Program.cs - MCP Server setup
+var mcpServerBuilder = builder.Services
+    .AddMcpServer()
+    .WithTools<StockTradingTools>();
+
+// Support both STDIO and HTTP transports
+if (useStreamableHttp)
+{
+    mcpServerBuilder.WithHttpTransport();
+    app.MapMcpServer("/mcp");
+}
+else
+{
+    mcpServerBuilder.WithStdioTransport();
+}
+```
+
+### Client Configuration Example
+```json
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "stock_api_base_url",
+      "description": "Base URL for the Stock Trading API",
+      "password": false
+    }
+  ],
+  "servers": {
+    "AiStockTradeApp.McpServer": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["run", "--project", "<PROJECT_PATH>"],
+      "env": {
+        "STOCK_API_BASE_URL": "${input:stock_api_base_url}"
+      }
+    }
+  }
+}
+```
+
+### Usage Scenarios
+- **AI Investment Advisors** - External AI can analyze stock data and provide recommendations
+- **Automated Trading Bots** - MCP clients can access real-time data for algorithmic trading
+- **Research Tools** - AI assistants can help with stock research and analysis
+- **Portfolio Management** - External tools can integrate with the stock data for portfolio optimization
 
 ## 🌐 Localization Implementation
 
@@ -761,6 +843,7 @@ When working with this codebase:
 - Follow the dependency injection patterns for service registration
 - For UI project: Use ApiStockDataServiceClient for data access (HTTP calls to API)
 - For API project: Use direct service implementations with database access and Minimal API endpoints
+- For MCP Server project: Use HTTP client to communicate with API project, implement MCP tools with proper error handling
 - Implement proper error handling with logging
 - Add appropriate validation attributes to models
 - Include XML documentation comments for public APIs
@@ -773,6 +856,7 @@ When working with this codebase:
 - Verify database queries with EF Core logging
 - Test external API integrations with mock responses
 - Validate localization with culture switching
+- Test MCP Server tools with compatible AI clients (Claude, ChatGPT, etc.)
 
 ### Development Workflow Guidelines
 - **Always use the start script** - When starting the application, use `.\scripts\start.ps1 -Mode Local` instead of `dotnet run`. The start script properly initializes all dependencies including the API and UI projects

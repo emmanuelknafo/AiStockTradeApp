@@ -1,22 +1,30 @@
-# MCP Server
+# AI Stock Trade App - MCP Server
 
-This README was created using the C# MCP server project template. It demonstrates how you can easily create an MCP server using C# and publish it as a NuGet package.
+A Model Context Protocol (MCP) server that provides AI assistants with access to real-time stock market data and trading tools through the AI Stock Trade App API.
 
-See [aka.ms/nuget/mcp/guide](https://aka.ms/nuget/mcp/guide) for the full guide.
+## 🚀 Overview
 
-Please note that this template is currently in an early preview stage. If you have feedback, please take a [brief survey](http://aka.ms/dotnet-mcp-template-survey).
+This MCP server enables external AI assistants (Claude, ChatGPT, or other MCP-compatible clients) to access comprehensive stock trading functionality including real-time quotes, historical data, stock search, and system monitoring.
 
-## Checklist before publishing to NuGet.org
+## 🛠️ Available Tools
 
-- Test the MCP server locally using the steps below.
-- Update the package metadata in the .csproj file, in particular the `<PackageId>`.
-- Update `.mcp/server.json` to declare your MCP server's inputs.
-  - See [configuring inputs](https://aka.ms/nuget/mcp/guide/configuring-inputs) for more details.
-- Pack the project using `dotnet pack`.
+### Stock Data Tools
+- **GetStockQuote** - Get real-time stock quote data including current price, change, and basic company information
+- **GetHistoricalData** - Retrieve historical price data over a specified number of days
+- **GetDetailedHistoricalPrices** - Get detailed historical prices with optional date range filtering
+- **SearchStockSymbols** - Search for stock symbols by company name or ticker
+- **GetStockDetails** - Get detailed company information including sector and industry
+- **GetListedStocks** - Browse available stocks with pagination support
+- **GetSystemStatus** - Check API system health and availability
 
-The `bin/Release` directory will contain the package file (.nupkg), which can be [published to NuGet.org](https://learn.microsoft.com/nuget/nuget-org/publish-a-package).
+### Configuration Requirements
 
-## Developing locally
+The MCP server requires the Stock Trading API to be running and accessible. Configure the API base URL through:
+- Environment variable: `STOCK_API_BASE_URL`
+- Configuration input during setup
+- Default: `http://localhost:5000`
+
+## 🔧 Local Development Setup
 
 To test this MCP server from source code (locally) without using a built MCP server package, you can configure your IDE to run the project directly using `dotnet run`.
 
