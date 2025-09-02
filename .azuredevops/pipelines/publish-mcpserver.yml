@@ -6,8 +6,12 @@
 #    - Contents: Read and Write
 #    - Pull requests: Write  
 #    - Metadata: Read
-# 2. Add the token as a pipeline variable named GITHUB_TOKEN (mark as secret)
+# 2. In Azure DevOps, go to your pipeline → Edit → Variables → Add variable:
+#    - Name: GITHUB_TOKEN
+#    - Value: <your-github-token>
+#    - ✅ Keep this value secret (check the lock icon)
 # 3. This enables automatic PR creation for version updates on the GitHub repository
+# 4. Without the token, branches are still created but PRs must be created manually
 #
 # 📋 Pipeline Features:
 # - Auto-detects changes in MCP Server project
@@ -38,6 +42,8 @@ parameters:
 
 variables:
   - group: "AiStockTradeApp-Packages" # Variable group for shared variables including Azure Artifacts feed
+  - name: GITHUB_TOKEN # Add your GitHub Personal Access Token here (mark as secret)
+    value: $(GITHUB_TOKEN) # This references a pipeline variable - set this in Azure DevOps pipeline variables
   - name: PROJECT_PATH
     value: 'AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj'
   - name: BUILD_CONFIGURATION
@@ -458,9 +464,15 @@ stages:
                     
                     Write-Host "##vso[task.setvariable variable=PRCreated]false"
                     Write-Host "##vso[task.setvariable variable=ManualPRRequired]true"
+                    
+                    # Exit successfully - branch creation was successful, manual PR is acceptable
+                    Write-Host "✅ Branch created successfully. Manual PR creation is required but this is not an error."
                 }
                 
                 Write-Host "##vso[task.setvariable variable=BranchName]$branchName"
+                
+                # Always exit successfully - branch creation succeeded
+                exit 0
 
           - task: DotNetCoreCLI@2
             displayName: "Pack project"
@@ -687,12 +699,6 @@ stages:
                 - 🏢 Company details lookup
                 - ❤️ System health monitoring
                 "@
-                - ❤️ System health monitoring
-                "@
-                
-                if ("$(AutoIncremented)" -eq "True") {
-                    $summary += "`n`n**Auto-incremented:** Version was automatically bumped from existing version"
-                }
                 
                 Write-Host $summary
 

@@ -24,7 +24,7 @@ internal class RandomNumberTools
     [Description("Generates a random number between the specified minimum and maximum values.")]
     public int GetRandomNumber(
         [Description("Minimum value (inclusive)")] int min = 0,
-        [Description("Maximum value (exclusive)")] int max = 109)
+        [Description("Maximum value (exclusive)")] int max = 110)
     {
         using var activity = Activity.Current?.Source.StartActivity("GetRandomNumber");
         var stopwatch = Stopwatch.StartNew();
