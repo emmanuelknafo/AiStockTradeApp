@@ -30,7 +30,7 @@ variables:
   - name: DOTNET_VERSION
     value: '9.0.x'
   - name: vmImageName
-    value: 'ubuntu-latest'
+    value: 'ubuntu-22.04'
   # Azure DevOps Artifacts configuration
   - name: AZURE_DEVOPS_FEED_NAME
     value: 'AiStockTradeApp-Packages' # Configure this feed name in your Azure DevOps project
@@ -238,7 +238,7 @@ stages:
                 
                 Write-Host "Package validation completed successfully"
 
-          # Publish to Azure DevOps Artifacts instead of NuGet.org
+          # Publish to Azure DevOps Artifacts
           - task: DotNetCoreCLI@2
             displayName: "Publish to Azure DevOps Artifacts"
             condition: eq(variables['ShouldPublish'], 'True')
@@ -249,13 +249,13 @@ stages:
               publishVstsFeed: "$(AZURE_DEVOPS_PROJECT)/$(AZURE_DEVOPS_FEED_NAME)"
               allowPackageConflicts: false
 
-          # Alternative approach using NuGet authenticate and push
+          # Alternative approach using NuGet authenticate - using DotNetCoreCLI instead of NuGetCommand
           - task: NuGetAuthenticate@1
-            displayName: "Authenticate with Azure DevOps Artifacts"
-            condition: eq(variables['ShouldPublish'], 'True')
+            displayName: "Authenticate with Azure DevOps Artifacts (Backup)"
+            condition: and(eq(variables['ShouldPublish'], 'True'), failed())
 
-          - task: NuGetCommand@2
-            displayName: "Push to Azure DevOps Artifacts (Alternative)"
+          - task: DotNetCoreCLI@2
+            displayName: "Push to Azure DevOps Artifacts (Alternative - Backup)"
             condition: and(eq(variables['ShouldPublish'], 'True'), failed())
             inputs:
               command: "push"
