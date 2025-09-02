@@ -48,11 +48,11 @@ public static class TestSetupHelper
     }
 
     /// <summary>
-    /// Ensure the API is started for UI tests. Uses PLAYWRIGHT_API_BASE_URL or defaults to http://localhost:5256
+    /// Ensure the API is started for UI tests. Uses PLAYWRIGHT_API_BASE_URL or defaults to https://localhost:7032
     /// </summary>
     public static async Task EnsureApiStartedAsync()
     {
-        var apiBaseUrl = Environment.GetEnvironmentVariable("PLAYWRIGHT_API_BASE_URL") ?? "http://localhost:5256";
+        var apiBaseUrl = Environment.GetEnvironmentVariable("PLAYWRIGHT_API_BASE_URL") ?? "https://localhost:7032";
         var healthUrl = apiBaseUrl.TrimEnd('/') + "/health";
 
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISABLE_UI_TEST_AUTOSTART")))

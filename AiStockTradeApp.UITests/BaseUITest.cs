@@ -13,8 +13,8 @@ public class BaseUITest : PageTest
 
     public BaseUITest()
     {
-        // Use environment variable for base URL, fallback to standard HTTP dev port (matches auto-start logic)
-        BaseUrl = Environment.GetEnvironmentVariable("PLAYWRIGHT_BASE_URL") ?? "http://localhost:5000";
+        // Use environment variable for base URL, fallback to HTTPS dev port (matches start script and launchSettings)
+        BaseUrl = Environment.GetEnvironmentVariable("PLAYWRIGHT_BASE_URL") ?? "https://localhost:7043";
     }
 
     public override BrowserNewContextOptions ContextOptions()
@@ -168,12 +168,12 @@ public class BaseUITest : PageTest
     {
         try
         {
-            await Page.GotoAsync($"{BaseUrl}/Stock/Dashboard", new PageGotoOptions { Timeout = 15000 });
+            await Page.GotoAsync($"{BaseUrl}/Stock/Dashboard", new PageGotoOptions { Timeout = 20000 });
             await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
             // Additional wait for JavaScript to initialize
             await Page.WaitForTimeoutAsync(1000);
-            // Ensure network quiescence to reduce flakiness on CI
-            await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10000 });
+            // Ensure network quiescence to reduce flakiness on CI (increased timeout for slower environments)
+            await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 15000 });
             // Ensure core controls are present and (if possible) visible before tests proceed
             try
             {
