@@ -125,7 +125,7 @@ var logger = app.Services.GetRequiredService<ILogger<Program>>();
 var configuration = app.Services.GetRequiredService<IConfiguration>();
 var apiBaseUrl = configuration["STOCK_API_BASE_URL"] ?? 
                 Environment.GetEnvironmentVariable("STOCK_API_BASE_URL") ?? 
-                "https://app-aistock-dev-002.azurewebsites.net";
+                "http://localhost:5000"; // Default to localhost for development
 
 logger.LogInformation("Starting AI Stock Trade MCP Server");
 logger.LogInformation("Transport Mode: {TransportMode} {AutoDetected}", 

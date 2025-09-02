@@ -613,7 +613,7 @@ resource webMcp 'Microsoft.Web/sites@2024-11-01' = {
         }
         // Configure MCP server with stock API endpoint
         {
-          name: 'StockApi__BaseUrl'
+          name: 'STOCK_API_BASE_URL'
           value: 'https://${webApi.properties.defaultHostName}'
         }
       ]
