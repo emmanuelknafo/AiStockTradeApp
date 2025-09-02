@@ -40,13 +40,9 @@ jobs:
     - name: Build project
       run: dotnet build ${{ env.PROJECT_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
 
-    - name: Run tests (if any exist)
-      run: |
-        if [ -d "AiStockTradeApp.Tests" ]; then
-          dotnet test AiStockTradeApp.Tests --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --verbosity normal
-        else
-          echo "No tests found, skipping test step"
-        fi
+    # Tests skipped for MCP Server publishing workflow
+    # The MCP Server project focuses on packaging and distribution
+    # Unit tests are handled in separate CI workflows
 
     - name: Check for version changes
       id: version-check
