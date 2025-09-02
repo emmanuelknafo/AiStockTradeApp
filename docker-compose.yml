@@ -47,11 +47,11 @@ services:
       context: .
       dockerfile: AiStockTradeApp.McpServer/Dockerfile
     ports:
-      - "5000:5000" # MCP Server available on http://localhost:5000/mcp
+      - "5000:8080" # MCP Server available on http://localhost:5000/mcp (external:internal)
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: "http://+:5000"
-      ASPNETCORE_HTTP_PORTS: "5000"
+      ASPNETCORE_URLS: "http://+:8080"
+      ASPNETCORE_HTTP_PORTS: "8080"
       STOCK_API_BASE_URL: "http://aistocktradeappapi:8080"
     depends_on:
       AiStockTradeAppApi:
