@@ -60,6 +60,29 @@ else
     mcpServerBuilder.WithStdioServerTransport();
 }
 
+// If running as an HTTP host, allow the hosting environment to control the listen port
+if (useStreamableHttp && builder is WebApplicationBuilder webBuilder)
+{
+    // Azure App Service and many container platforms expose the target port in PORT or WEBSITES_PORT
+    var portEnv = Environment.GetEnvironmentVariable("PORT")
+                  ?? Environment.GetEnvironmentVariable("WEBSITES_PORT")
+                  ?? Environment.GetEnvironmentVariable("ASPNETCORE_PORT");
+
+    if (!string.IsNullOrEmpty(portEnv) && int.TryParse(portEnv, out var port))
+    {
+        webBuilder.WebHost.UseUrls($"http://*:{port}");
+    }
+    else
+    {
+        // Fall back to any ASPNETCORE_URLS set by the environment (or keep defaults)
+        var urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+        if (!string.IsNullOrEmpty(urls))
+        {
+            webBuilder.WebHost.UseUrls(urls);
+        }
+    }
+}
+
 // Build and configure the application
 IHost app;
 if (useStreamableHttp)
