@@ -101,8 +101,15 @@ jobs:
         echo "package_id=$PACKAGE_ID" >> $GITHUB_OUTPUT
         
         # Check if version exists on NuGet (this will fail if version doesn't exist, which is what we want)
-        if curl -f -s "https://api.nuget.org/v3-flatcontainer/$PACKAGE_ID/$VERSION/$PACKAGE_ID.$VERSION.nupkg" > /dev/null; then
-          echo "Version $VERSION already exists on NuGet.org"
+        # Try both case-sensitive and case-insensitive package IDs due to NuGet normalization
+        PACKAGE_ID_LOWER=$(echo "$PACKAGE_ID" | tr '[:upper:]' '[:lower:]')
+        
+        if curl -f -s "https://api.nuget.org/v3-flatcontainer/$PACKAGE_ID_LOWER/$VERSION/$PACKAGE_ID_LOWER.$VERSION.nupkg" > /dev/null 2>&1; then
+          echo "Version $VERSION already exists on NuGet.org (package: $PACKAGE_ID_LOWER)"
+          echo "should_publish=false" >> $GITHUB_OUTPUT
+          echo "existing_version=$VERSION" >> $GITHUB_OUTPUT
+        elif curl -f -s "https://api.nuget.org/v3-flatcontainer/$PACKAGE_ID/$VERSION/$PACKAGE_ID.$VERSION.nupkg" > /dev/null 2>&1; then
+          echo "Version $VERSION already exists on NuGet.org (package: $PACKAGE_ID)"
           echo "should_publish=false" >> $GITHUB_OUTPUT
           echo "existing_version=$VERSION" >> $GITHUB_OUTPUT
         else

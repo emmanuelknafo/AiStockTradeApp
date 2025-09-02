@@ -226,6 +226,17 @@ stages:
                             
                             # Also update the main server.json if it exists
                             $mcpServerJson = "AiStockTradeApp.McpServer/.mcp/server.json"
+                            if (Test-Path $mcpServerJson) {
+                                $jsonContent = Get-Content $mcpServerJson -Raw
+                                $updatedJsonContent = $jsonContent -replace '"version": "[^"]*"', """version"": ""$newVersion"""
+                                Set-Content -Path $mcpServerJson -Value $updatedJsonContent
+                                Write-Host "Updated $mcpServerJson"
+                            }
+                            
+                            $shouldPublish = $true
+                            $autoIncremented = $true
+                            
+                            Write-Host "Successfully updated version to $newVersion"
                         } else {
                             Write-Host "##vso[task.logissue type=error]Could not parse version format: $currentVersion"
                             exit 1
@@ -239,6 +250,28 @@ stages:
                 Write-Host "##vso[task.setvariable variable=ShouldPublish]$shouldPublish"
                 Write-Host "##vso[task.setvariable variable=FinalVersion]$newVersion"
                 Write-Host "##vso[task.setvariable variable=AutoIncremented]$autoIncremented"
+
+          - task: PowerShell@2
+            displayName: "Commit version update"
+            condition: eq(variables['AutoIncremented'], 'True')
+            inputs:
+              targetType: "inline"
+              script: |
+                # Configure git user
+                git config user.name "Azure DevOps Pipeline"
+                git config user.email "azuredevops@emmanuelknafo.dev"
+                
+                # Add the modified files
+                git add "$(PROJECT_PATH)"
+                git add "AiStockTradeApp.McpServer/.mcp/*.json"
+                
+                # Commit the changes
+                git commit -m "Auto-increment MCP Server version to $(FinalVersion) [skip ci]"
+                
+                # Push the changes
+                git push origin HEAD:$(Build.SourceBranchName)
+                
+                Write-Host "Successfully committed version update to $(FinalVersion)"
 
           - task: DotNetCoreCLI@2
             displayName: "Pack project"
