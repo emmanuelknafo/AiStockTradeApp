@@ -12,7 +12,7 @@ This document explains how the MCP Server package is configured for dual publica
 
 ### 2. **NuGet.org** (Public Feed)
 - **Triggered by**: GitHub Actions (`.github/workflows/publish-mcpserver.yml`)
-- **Package Name**: `AiStockTradeApp.McpServer`
+- **Package Name**: `devopsabcs.AiStockTradeMcpServer`
 - **Target**: Public NuGet Gallery for community use
 - **Configuration**: `.mcp/server-nuget.json`
 
@@ -90,7 +90,7 @@ dotnet add package MngEnvMCAP675646.AiStockTradeApp.McpServer --version 1.0.0-be
 ### For Public Users (NuGet.org)
 ```bash
 # Install directly from NuGet.org
-dotnet add package AiStockTradeApp.McpServer --version 1.0.0-beta
+dotnet add package devopsabcs.AiStockTradeMcpServer --version 1.0.0-beta
 ```
 
 ## 🔄 Version Management

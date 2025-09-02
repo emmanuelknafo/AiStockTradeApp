@@ -15,7 +15,8 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Conditional PackageId based on build environment -->
     <PackageId Condition="'$(PublishTarget)' == 'AzureDevOps'">MngEnvMCAP675646.AiStockTradeApp.McpServer</PackageId>
-    <PackageId Condition="'$(PublishTarget)' != 'AzureDevOps'">AiStockTradeApp.McpServer</PackageId>
+    <PackageId Condition="'$(PublishTarget)' == 'NuGet'">devopsabcs.AiStockTradeMcpServer</PackageId>
+    <PackageId Condition="'$(PublishTarget)' != 'AzureDevOps' AND '$(PublishTarget)' != 'NuGet'">AiStockTradeApp.McpServer</PackageId>
     <PackageVersion>1.0.0-beta</PackageVersion>
     <PackageTags>AI; MCP; server; stdio; stocks; trading; finance</PackageTags>
     <Description>An MCP server for AI-powered stock trading operations using the MCP C# SDK.</Description>
@@ -29,7 +30,8 @@
   <ItemGroup>
     <!-- Conditionally include server.json based on build target -->
     <None Include=".mcp\server-azuredevops.json" Pack="true" PackagePath="/.mcp/server.json" Condition="'$(PublishTarget)' == 'AzureDevOps'" />
-    <None Include=".mcp\server-nuget.json" Pack="true" PackagePath="/.mcp/server.json" Condition="'$(PublishTarget)' != 'AzureDevOps'" />
+    <None Include=".mcp\server-nuget.json" Pack="true" PackagePath="/.mcp/server.json" Condition="'$(PublishTarget)' == 'NuGet'" />
+    <None Include=".mcp\server-nuget.json" Pack="true" PackagePath="/.mcp/server.json" Condition="'$(PublishTarget)' != 'AzureDevOps' AND '$(PublishTarget)' != 'NuGet'" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 

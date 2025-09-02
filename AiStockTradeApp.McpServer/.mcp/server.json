@@ -4,7 +4,7 @@
   "packages": [
     {
       "registry_name": "nuget",
-      "name": "AiStockTradeApp.McpServer",
+      "name": "devopsabcs.AiStockTradeMcpServer",
       "version": "1.0.0-beta",
       "package_arguments": [],
       "environment_variables": [
