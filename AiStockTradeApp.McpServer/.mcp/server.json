@@ -1,10 +1,10 @@
 {
   "description": "MCP Server for AI-powered stock trading operations. Provides tools for stock quotes, historical data, analysis, and trading operations through a comprehensive API.",
-  "name": "io.github.emmanuelknafo/AiStockTradeApp",
+  "name": "io.github.devopsabcs/AiStockTradeApp",
   "packages": [
     {
       "registry_name": "nuget",
-      "name": "emmanuelknafo.AiStockTradeMcpServer",
+      "name": "devopsabcs.AiStockTradeMcpServer",
       "version": "1.0.0-beta",
       "package_arguments": [],
       "environment_variables": [
