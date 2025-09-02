@@ -6,10 +6,10 @@
 #    - Contents: Read and Write
 #    - Pull requests: Write  
 #    - Metadata: Read
-# 2. In Azure DevOps, go to your pipeline → Edit → Variables → Add variable:
-#    - Name: GITHUB_TOKEN
-#    - Value: <your-github-token>
-#    - ✅ Keep this value secret (check the lock icon)
+# 2. In Azure DevOps, add the token to the "AiStockTradeApp-Packages" variable group:
+#    - Go to Pipelines → Library → Variable groups → AiStockTradeApp-Packages
+#    - Add variable: Name = GH_TOKEN, Value = <your-github-token>
+#    - ✅ Mark as secret (click the lock icon)
 # 3. This enables automatic PR creation for version updates on the GitHub repository
 # 4. Without the token, branches are still created but PRs must be created manually
 #
@@ -41,9 +41,7 @@ parameters:
     default: false
 
 variables:
-  - group: "AiStockTradeApp-Packages" # Variable group for shared variables including Azure Artifacts feed
-  - name: GITHUB_TOKEN # Add your GitHub Personal Access Token here (mark as secret)
-    value: $(GITHUB_TOKEN) # This references a pipeline variable - set this in Azure DevOps pipeline variables
+  - group: "AiStockTradeApp-Packages" # Variable group for shared variables including Azure Artifacts feed and GH_TOKEN
   - name: PROJECT_PATH
     value: 'AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj'
   - name: BUILD_CONFIGURATION
@@ -293,6 +291,8 @@ stages:
           - task: PowerShell@2
             displayName: "Create PR for version update"
             condition: eq(variables['AutoIncremented'], 'True')
+            env:
+              GITHUB_TOKEN: $(GH_TOKEN) # Reference GH_TOKEN from the AiStockTradeApp-Packages variable group
             inputs:
               targetType: "inline"
               script: |
@@ -454,7 +454,7 @@ stages:
                     Write-Host "🔗 Manual PR creation required at: https://github.com/$repoOwner/$repoName/pull/new/$branchName"
                     Write-Host ""
                     Write-Host "To enable automatic PR creation, set up one of the following:"
-                    Write-Host "1. Add GITHUB_TOKEN as a pipeline variable with a GitHub Personal Access Token"
+                    Write-Host "1. Add GH_TOKEN to the 'AiStockTradeApp-Packages' variable group with your GitHub Personal Access Token"
                     Write-Host "2. Install GitHub CLI on the build agent"
                     Write-Host ""
                     Write-Host "Required GitHub token permissions:"
