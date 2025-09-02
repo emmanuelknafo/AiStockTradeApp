@@ -6,6 +6,7 @@ on:
     branches: [ main ]
     paths:
       - 'AiStockTradeApp.McpServer/**'
+      - '.github/workflows/publish-mcpserver.yml'
       - '!AiStockTradeApp.McpServer/**/*.md'
 
   # Allow manual trigger for testing
@@ -53,7 +54,6 @@ jobs:
         # Extract version from csproj file
         VERSION=$(grep -oP '<PackageVersion>\K[^<]*' ${{ env.PROJECT_PATH }})
         echo "Current version: $VERSION"
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
         
         # Check if this version already exists on NuGet.org
         PACKAGE_ID=$(grep -oP '<PackageId>\K[^<]*' ${{ env.PROJECT_PATH }})
@@ -64,17 +64,85 @@ jobs:
         if curl -f -s "https://api.nuget.org/v3-flatcontainer/$PACKAGE_ID/$VERSION/$PACKAGE_ID.$VERSION.nupkg" > /dev/null; then
           echo "Version $VERSION already exists on NuGet.org"
           echo "should_publish=false" >> $GITHUB_OUTPUT
+          echo "existing_version=$VERSION" >> $GITHUB_OUTPUT
         else
           echo "Version $VERSION does not exist on NuGet.org, proceeding with publish"
           echo "should_publish=true" >> $GITHUB_OUTPUT
         fi
+        
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Auto-increment version if needed
+      id: auto-increment
+      if: steps.version-check.outputs.should_publish == 'false'
+      run: |
+        CURRENT_VERSION="${{ steps.version-check.outputs.existing_version }}"
+        echo "Auto-incrementing version from $CURRENT_VERSION"
+        
+        # Parse version parts (supports formats like 1.0.0-beta, 1.0.0-beta.1, etc.)
+        if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-zA-Z]+)?(\.[0-9]+)?$ ]]; then
+          MAJOR=${BASH_REMATCH[1]}
+          MINOR=${BASH_REMATCH[2]}
+          PATCH=${BASH_REMATCH[3]}
+          PRERELEASE=${BASH_REMATCH[4]}
+          BUILD=${BASH_REMATCH[5]}
+          
+          # Increment based on version type
+          if [[ -n "$BUILD" ]]; then
+            # Has build number (e.g., 1.0.0-beta.1), increment build
+            NEW_BUILD=$((${BUILD#.} + 1))
+            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}${PRERELEASE}.${NEW_BUILD}"
+          elif [[ -n "$PRERELEASE" ]]; then
+            # Has prerelease but no build (e.g., 1.0.0-beta), add .1
+            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}${PRERELEASE}.1"
+          else
+            # Release version (e.g., 1.0.0), increment patch
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          fi
+          
+          echo "New version: $NEW_VERSION"
+          
+          # Update csproj file
+          sed -i "s|<PackageVersion>$CURRENT_VERSION</PackageVersion>|<PackageVersion>$NEW_VERSION</PackageVersion>|" ${{ env.PROJECT_PATH }}
+          
+          # Update .mcp/server.json
+          sed -i "s|\"version\": \"$CURRENT_VERSION\"|\"version\": \"$NEW_VERSION\"|" AiStockTradeApp.McpServer/.mcp/server.json
+          
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "should_publish=true" >> $GITHUB_OUTPUT
+          echo "auto_incremented=true" >> $GITHUB_OUTPUT
+          
+          # Commit the version change
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add ${{ env.PROJECT_PATH }} AiStockTradeApp.McpServer/.mcp/server.json
+          git commit -m "Auto-increment version to $NEW_VERSION [skip ci]" || echo "No changes to commit"
+          git push || echo "No changes to push"
+        else
+          echo "Could not parse version format: $CURRENT_VERSION"
+          exit 1
+        fi
+
+    - name: Use auto-incremented version
+      id: final-version
+      run: |
+        if [[ "${{ steps.auto-increment.outputs.auto_incremented }}" == "true" ]]; then
+          echo "version=${{ steps.auto-increment.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "should_publish=${{ steps.auto-increment.outputs.should_publish }}" >> $GITHUB_OUTPUT
+          echo "package_id=${{ steps.version-check.outputs.package_id }}" >> $GITHUB_OUTPUT
+        else
+          echo "version=${{ steps.version-check.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "should_publish=${{ steps.version-check.outputs.should_publish }}" >> $GITHUB_OUTPUT
+          echo "package_id=${{ steps.version-check.outputs.package_id }}" >> $GITHUB_OUTPUT
+        fi
 
     - name: Pack project
-      if: steps.version-check.outputs.should_publish == 'true'
+      if: steps.final-version.outputs.should_publish == 'true'
       run: dotnet pack ${{ env.PROJECT_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --output ./nupkg
 
     - name: Validate package contents
-      if: steps.version-check.outputs.should_publish == 'true'
+      if: steps.final-version.outputs.should_publish == 'true'
       run: |
         echo "Checking package contents..."
         PACKAGE_FILE=$(find ./nupkg -name "*.nupkg" | head -1)
@@ -104,7 +172,7 @@ jobs:
         echo "Package validation completed successfully"
 
     - name: Publish to NuGet.org
-      if: steps.version-check.outputs.should_publish == 'true'
+      if: steps.final-version.outputs.should_publish == 'true'
       run: |
         dotnet nuget push ./nupkg/*.nupkg \
           --api-key ${{ secrets.NUGET_API_KEY }} \
@@ -112,16 +180,16 @@ jobs:
           --skip-duplicate
 
     - name: Create GitHub release
-      if: steps.version-check.outputs.should_publish == 'true'
+      if: steps.final-version.outputs.should_publish == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         # Create release with GitHub CLI
-        gh release create "mcpserver-v${{ steps.version-check.outputs.version }}" \
-          --title "MCP Server v${{ steps.version-check.outputs.version }}" \
-          --notes "🚀 **AI Stock Trade MCP Server v${{ steps.version-check.outputs.version }}**
+        gh release create "mcpserver-v${{ steps.final-version.outputs.version }}" \
+          --title "MCP Server v${{ steps.final-version.outputs.version }}" \
+          --notes "🚀 **AI Stock Trade MCP Server v${{ steps.final-version.outputs.version }}**
 
-        Published to NuGet.org as \`${{ steps.version-check.outputs.package_id }}\`
+        Published to NuGet.org as \`${{ steps.final-version.outputs.package_id }}\`
 
         ### Installation
 
@@ -130,13 +198,13 @@ jobs:
         \`\`\`json
         {
           \"servers\": {
-            \"${{ steps.version-check.outputs.package_id }}\": {
+            \"${{ steps.final-version.outputs.package_id }}\": {
               \"type\": \"stdio\",
               \"command\": \"dnx\",
               \"args\": [
-                \"${{ steps.version-check.outputs.package_id }}\",
+                \"${{ steps.final-version.outputs.package_id }}\",
                 \"--version\",
-                \"${{ steps.version-check.outputs.version }}\",
+                \"${{ steps.final-version.outputs.version }}\",
                 \"--yes\"
               ],
               \"env\": {
@@ -155,29 +223,33 @@ jobs:
         - 🏢 Company details lookup
         - ❤️ System health monitoring
 
-        View on NuGet.org: https://www.nuget.org/packages/${{ steps.version-check.outputs.package_id }}/${{ steps.version-check.outputs.version }}" \
-          ${{ contains(steps.version-check.outputs.version, 'beta') || contains(steps.version-check.outputs.version, 'alpha') || contains(steps.version-check.outputs.version, 'preview') && '--prerelease' || '' }}
+        View on NuGet.org: https://www.nuget.org/packages/${{ steps.final-version.outputs.package_id }}/${{ steps.final-version.outputs.version }}" \
+          $(if [[ "${{ steps.final-version.outputs.version }}" == *"beta"* ]] || [[ "${{ steps.final-version.outputs.version }}" == *"alpha"* ]] || [[ "${{ steps.final-version.outputs.version }}" == *"preview"* ]]; then echo "--prerelease"; fi)
 
     - name: Add summary
-      if: steps.version-check.outputs.should_publish == 'true'
+      if: steps.final-version.outputs.should_publish == 'true'
       run: |
         echo "## 🎉 MCP Server Published Successfully!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Package:** \`${{ steps.version-check.outputs.package_id }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "**Version:** \`${{ steps.version-check.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "**NuGet URL:** https://www.nuget.org/packages/${{ steps.version-check.outputs.package_id }}/${{ steps.version-check.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Package:** \`${{ steps.final-version.outputs.package_id }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Version:** \`${{ steps.final-version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**NuGet URL:** https://www.nuget.org/packages/${{ steps.final-version.outputs.package_id }}/${{ steps.final-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
+        if [[ "${{ steps.auto-increment.outputs.auto_incremented }}" == "true" ]]; then
+          echo "**Auto-incremented:** Version was automatically bumped from existing version" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
         echo "### Usage" >> $GITHUB_STEP_SUMMARY
         echo "Configure in your MCP client to start using the stock trading tools!" >> $GITHUB_STEP_SUMMARY
 
     - name: Skip publish summary
-      if: steps.version-check.outputs.should_publish == 'false'
+      if: steps.final-version.outputs.should_publish == 'false'
       run: |
         echo "## ⏭️ Publish Skipped" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Version \`${{ steps.version-check.outputs.version }}\` already exists on NuGet.org" >> $GITHUB_STEP_SUMMARY
+        echo "All versions were already published or auto-increment failed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "To publish a new version:" >> $GITHUB_STEP_SUMMARY
+        echo "To publish a new version manually:" >> $GITHUB_STEP_SUMMARY
         echo "1. Update the \`<PackageVersion>\` in the .csproj file" >> $GITHUB_STEP_SUMMARY
         echo "2. Update the version in \`.mcp/server.json\`" >> $GITHUB_STEP_SUMMARY
         echo "3. Commit and push the changes" >> $GITHUB_STEP_SUMMARY
