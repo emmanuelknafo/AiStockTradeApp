@@ -15,6 +15,14 @@ services:
       # Point UI to the API service inside the compose network
       StockApi__BaseUrl: "http://aistocktradeappapi:8080"
       StockApi__HttpBaseUrl: "http://aistocktradeappapi:8080"
+      # Data Protection Keys path for persistent authentication
+      DATA_PROTECTION_KEYS_PATH: "/app/keys"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=StockTraderDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;MultipleActiveResultSets=true"
+    volumes:
+      - ui_data_protection_keys:/app/keys # Persistent data protection keys for authentication
+    depends_on:
+      sqlserver:
+        condition: service_healthy
     networks:
       - app-network
 
@@ -32,6 +40,10 @@ services:
       HttpsRedirection__HttpsPort: "0" # disable HTTPS redirect in container
       ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=StockTraderDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;MultipleActiveResultSets=true"
       USE_INMEMORY_DB: "false"
+      # Data Protection Keys path for persistent data protection
+      DATA_PROTECTION_KEYS_PATH: "/app/keys"
+    volumes:
+      - api_data_protection_keys:/app/keys # Persistent data protection keys
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -81,6 +93,8 @@ services:
 
 volumes:
   sqlserver_data:
+  ui_data_protection_keys: # Persistent volume for UI data protection keys
+  api_data_protection_keys: # Persistent volume for API data protection keys
 
 networks:
   app-network:

@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using AiStockTradeApp.Entities.Models;
 using AiStockTradeApp.DataAccess.Data;
 using AiStockTradeApp.DataAccess;
+using Microsoft.AspNetCore.DataProtection;
 
 namespace AiStockTradeApp
 {
@@ -145,6 +146,34 @@ namespace AiStockTradeApp
             })
             .AddEntityFrameworkStores<ApplicationIdentityContext>()
             .AddDefaultTokenProviders();
+
+            // Configure Data Protection for container persistence
+            // This ensures authentication cookies and tokens remain valid across container restarts
+            var dataProtectionKeysPath = Environment.GetEnvironmentVariable("DATA_PROTECTION_KEYS_PATH") 
+                ?? builder.Configuration["DataProtection:KeysPath"] 
+                ?? "/app/keys"; // Default container path
+
+            try
+            {
+                var keysDirectory = new DirectoryInfo(dataProtectionKeysPath);
+                if (!keysDirectory.Exists)
+                {
+                    keysDirectory.Create();
+                    Console.WriteLine($"Created data protection keys directory: {dataProtectionKeysPath}");
+                }
+
+                builder.Services.AddDataProtection()
+                    .PersistKeysToFileSystem(keysDirectory)
+                    .SetApplicationName("AiStockTradeApp") // Must be same across all instances
+                    .SetDefaultKeyLifetime(TimeSpan.FromDays(90)); // Keys valid for 90 days
+
+                Console.WriteLine($"Data protection configured with persistent keys at: {dataProtectionKeysPath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to configure persistent data protection keys: {ex.Message}");
+                Console.WriteLine("Using default in-memory data protection (cookies will be invalidated on restart)");
+            }
 
             // Configure Application Cookie settings
             builder.Services.ConfigureApplicationCookie(options =>

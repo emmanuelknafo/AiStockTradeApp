@@ -417,6 +417,11 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'StockApi__HttpBaseUrl'
           value: 'http://${webApi.properties.defaultHostName}'
         }
+        // Data Protection configuration for persistent authentication keys
+        {
+          name: 'DataProtection__KeysPath'
+          value: '/home/data-protection-keys'
+        }
       ]
       connectionStrings: [
         {
@@ -513,6 +518,11 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
         {
           name: 'APP_VERSION'
           value: empty(appVersion) ? '' : appVersion
+        }
+        // Data Protection configuration for persistent keys
+        {
+          name: 'DataProtection__KeysPath'
+          value: '/home/data-protection-keys'
         }
       ]
       connectionStrings: [
@@ -615,6 +625,11 @@ resource webMcp 'Microsoft.Web/sites@2024-11-01' = {
         {
           name: 'STOCK_API_BASE_URL'
           value: 'https://${webApi.properties.defaultHostName}'
+        }
+        // Data Protection configuration for persistent keys
+        {
+          name: 'DataProtection__KeysPath'
+          value: '/home/data-protection-keys'
         }
       ]
       connectionStrings: [
