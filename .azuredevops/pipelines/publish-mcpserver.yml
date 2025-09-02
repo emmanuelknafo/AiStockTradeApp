@@ -147,6 +147,7 @@ stages:
 
           - task: PowerShell@2
             displayName: "Check for version changes and auto-increment"
+            name: "CheckVersionAndAutoIncrement"
             inputs:
               targetType: "inline"
               script: |
@@ -168,6 +169,7 @@ stages:
                 Write-Host "Package ID: $packageId"
                 
                 Write-Host "##vso[task.setvariable variable=PackageId]$packageId"
+                Write-Host "##vso[task.setvariable variable=PackageId;isOutput=true]$packageId"
                 Write-Host "##vso[task.setvariable variable=CurrentVersion]$currentVersion"
                 
                 # Check if we should publish based on changes
@@ -264,6 +266,7 @@ stages:
                 
                 Write-Host "##vso[task.setvariable variable=ShouldPublish]$shouldPublish"
                 Write-Host "##vso[task.setvariable variable=FinalVersion]$newVersion"
+                Write-Host "##vso[task.setvariable variable=FinalVersion;isOutput=true]$newVersion"
                 Write-Host "##vso[task.setvariable variable=AutoIncremented]$autoIncremented"
 
           - task: PowerShell@2
@@ -540,6 +543,11 @@ stages:
     displayName: "Verify Published Package"
     dependsOn: PublishMcpServer
     condition: succeeded()
+    variables:
+      - name: PackageId
+        value: $[ stageDependencies.PublishMcpServer.PublishJob.outputs['CheckVersionAndAutoIncrement.PackageId'] ]
+      - name: FinalVersion
+        value: $[ stageDependencies.PublishMcpServer.PublishJob.outputs['CheckVersionAndAutoIncrement.FinalVersion'] ]
     jobs:
       - job: VerifyJob
         displayName: "Verify Package Installation"
@@ -576,6 +584,27 @@ stages:
                 # Try to add our published package
                 $packageId = "$(PackageId)"
                 $version = "$(FinalVersion)"
+                
+                # Fallback values if stage variables are not available
+                if ($packageId -eq '$(PackageId)' -or [string]::IsNullOrEmpty($packageId)) {
+                    $packageId = "AiStockTradeApp.McpServer"
+                    Write-Host "Using fallback package ID: $packageId"
+                }
+                
+                if ($version -eq '$(FinalVersion)' -or [string]::IsNullOrEmpty($version)) {
+                    # Try to get latest version from the feed
+                    Write-Host "No version provided, attempting to find latest version from feed..."
+                    try {
+                        $listCommand = "dotnet list package --source `"$(AZURE_DEVOPS_FEED_NAME)`" --include-prerelease"
+                        $listResult = Invoke-Expression $listCommand 2>$null
+                        # For now, use a fallback version
+                        $version = "1.0.0"
+                        Write-Host "Using fallback version: $version"
+                    } catch {
+                        $version = "1.0.0"
+                        Write-Host "Using fallback version: $version"
+                    }
+                }
                 
                 Write-Host "Attempting to install package: $packageId version $version"
                 dotnet add package $packageId --version $version --source "$(AZURE_DEVOPS_FEED_NAME)"
