@@ -1,5 +1,20 @@
 # Azure DevOps CI/CD Pipeline for MCP Server Publishing to Azure Artifacts
 # Converted from GitHub Actions workflow: publish-mcpserver.yml
+#
+# 🔧 Setup Instructions:
+# 1. Create a GitHub Personal Access Token with the following permissions:
+#    - Contents: Read and Write
+#    - Pull requests: Write  
+#    - Metadata: Read
+# 2. Add the token as a pipeline variable named GITHUB_TOKEN (mark as secret)
+# 3. This enables automatic PR creation for version updates on the GitHub repository
+#
+# 📋 Pipeline Features:
+# - Auto-detects changes in MCP Server project
+# - Auto-increments version based on change type (code = minor, config = patch)
+# - Creates GitHub PR for version updates (respects branch protection)
+# - Publishes to Azure DevOps Artifacts feed
+# - Validates package contents and installation
 
 trigger:
   branches:
@@ -270,7 +285,7 @@ stages:
                 Write-Host "##vso[task.setvariable variable=AutoIncremented]$autoIncremented"
 
           - task: PowerShell@2
-            displayName: "Commit version update"
+            displayName: "Create PR for version update"
             condition: eq(variables['AutoIncremented'], 'True')
             inputs:
               targetType: "inline"
@@ -279,26 +294,173 @@ stages:
                 git config user.name "Azure DevOps Pipeline"
                 git config user.email "azuredevops@emmanuelknafo.dev"
                 
+                # Create a new branch for the version update
+                $timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+                $branchName = "auto-version-update-$timestamp"
+                
+                Write-Host "Creating new branch: $branchName"
+                git checkout -b $branchName
+                
                 # Add the modified files
                 git add "$(PROJECT_PATH)"
                 git add "AiStockTradeApp.McpServer/.mcp/*.json"
                 
+                # Check if there are changes to commit
+                $stagingChanges = git diff --staged --name-only
+                if (-not $stagingChanges) {
+                    Write-Host "No changes to commit"
+                    exit 0
+                }
+                
                 # Commit the changes
                 git commit -m "Auto-increment MCP Server version to $(FinalVersion) [skip ci]"
                 
-                # Try to push the changes - handle branch protection gracefully
-                Write-Host "Attempting to push version update..."
-                $pushResult = git push origin HEAD:$(Build.SourceBranchName) 2>&1
-                $exitCode = $LASTEXITCODE
+                # Push the new branch
+                Write-Host "Pushing branch to origin..."
+                git push origin $branchName
+                $pushResult = $LASTEXITCODE
                 
-                if ($exitCode -eq 0) {
-                    Write-Host "Successfully committed and pushed version update to $(FinalVersion)"
-                } else {
-                    Write-Host "##vso[task.logissue type=warning]Failed to push version update. This may be due to branch protection rules."
-                    Write-Host "Push output: $pushResult"
-                    Write-Host "The package will still be built and published with the updated version locally."
-                    Write-Host "Manual merge of version changes may be required."
+                if ($pushResult -ne 0) {
+                    Write-Host "##vso[task.logissue type=error]Failed to push branch $branchName"
+                    exit $pushResult
                 }
+                
+                Write-Host "✅ Branch $branchName pushed successfully"
+                
+                # Try to create pull request using GitHub CLI or API
+                Write-Host "Creating pull request on GitHub..."
+                
+                $prTitle = "Auto-increment MCP Server version to $(FinalVersion)"
+                $prDescription = @"
+                Automated version increment detected changes in MCP Server:
+                
+                - **Change Type**: $(ChangeType)
+                - **Increment Type**: $(IncrementType)
+                - **New Version**: $(FinalVersion)
+                
+                This PR was automatically created by the Azure DevOps CI/CD pipeline.
+                
+                Files modified:
+                - AiStockTradeApp.McpServer.csproj
+                - .mcp/server-azuredevops.json
+                - .mcp/server.json (if exists)
+                
+                The package will be published automatically once this PR is merged.
+                "@
+                
+                $repoOwner = "emmanuelknafo"
+                $repoName = "AiStockTradeApp"
+                
+                # Method 1: Try GitHub CLI if available
+                $ghAvailable = $false
+                try {
+                    $ghVersion = gh --version 2>$null
+                    if ($LASTEXITCODE -eq 0) {
+                        $ghAvailable = $true
+                        Write-Host "GitHub CLI available: $($ghVersion[0])"
+                    }
+                } catch {
+                    Write-Host "GitHub CLI not available"
+                }
+                
+                $prCreated = $false
+                
+                if ($ghAvailable) {
+                    try {
+                        # Set up GitHub CLI authentication using environment variable if available
+                        if ($env:GITHUB_TOKEN) {
+                            Write-Host "Using GITHUB_TOKEN for authentication"
+                        } else {
+                            Write-Host "⚠️ GITHUB_TOKEN environment variable not set"
+                        }
+                        
+                        # Create PR using GitHub CLI
+                        $ghCommand = "gh pr create --title `"$prTitle`" --body `"$prDescription`" --head `"$branchName`" --base main --repo $repoOwner/$repoName"
+                        Write-Host "Creating PR with command: $ghCommand"
+                        
+                        $prResult = Invoke-Expression $ghCommand 2>&1
+                        
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Host "✅ Pull request created successfully using GitHub CLI!"
+                            Write-Host "PR URL: $prResult"
+                            $prCreated = $true
+                            
+                            # Extract PR number from URL if possible
+                            if ($prResult -match '/pull/(\d+)') {
+                                $prNumber = $Matches[1]
+                                Write-Host "📝 PR Number: $prNumber"
+                                Write-Host "##vso[task.setvariable variable=PRNumber]$prNumber"
+                            }
+                            
+                            Write-Host "##vso[task.setvariable variable=PRCreated]true"
+                            Write-Host "##vso[task.setvariable variable=PRUrl]$prResult"
+                        } else {
+                            Write-Host "GitHub CLI PR creation failed: $prResult"
+                        }
+                    } catch {
+                        Write-Host "GitHub CLI PR creation failed: $($_.Exception.Message)"
+                    }
+                }
+                
+                # Method 2: Try GitHub REST API if CLI failed
+                if (-not $prCreated -and $env:GITHUB_TOKEN) {
+                    try {
+                        Write-Host "Attempting to create PR using GitHub REST API..."
+                        
+                        $apiUrl = "https://api.github.com/repos/$repoOwner/$repoName/pulls"
+                        $headers = @{
+                            'Authorization' = "token $env:GITHUB_TOKEN"
+                            'Accept' = 'application/vnd.github.v3+json'
+                            'Content-Type' = 'application/json'
+                            'User-Agent' = 'Azure-DevOps-Pipeline'
+                        }
+                        
+                        $prBody = @{
+                            title = $prTitle
+                            body = $prDescription
+                            head = $branchName
+                            base = "main"
+                        } | ConvertTo-Json
+                        
+                        $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Body $prBody -Headers $headers
+                        
+                        $prNumber = $response.number
+                        $prUrl = $response.html_url
+                        
+                        Write-Host "✅ Pull request created successfully using GitHub API!"
+                        Write-Host "📝 PR Number: $prNumber"
+                        Write-Host "🔗 PR URL: $prUrl"
+                        
+                        Write-Host "##vso[task.setvariable variable=PRCreated]true"
+                        Write-Host "##vso[task.setvariable variable=PRNumber]$prNumber"
+                        Write-Host "##vso[task.setvariable variable=PRUrl]$prUrl"
+                        $prCreated = $true
+                        
+                    } catch {
+                        Write-Host "GitHub API PR creation failed: $($_.Exception.Message)"
+                    }
+                }
+                
+                # Fallback: Manual PR instructions
+                if (-not $prCreated) {
+                    Write-Host "##vso[task.logissue type=warning]Could not create pull request automatically."
+                    Write-Host "📝 Branch created: $branchName"
+                    Write-Host "🔗 Manual PR creation required at: https://github.com/$repoOwner/$repoName/pull/new/$branchName"
+                    Write-Host ""
+                    Write-Host "To enable automatic PR creation, set up one of the following:"
+                    Write-Host "1. Add GITHUB_TOKEN as a pipeline variable with a GitHub Personal Access Token"
+                    Write-Host "2. Install GitHub CLI on the build agent"
+                    Write-Host ""
+                    Write-Host "Required GitHub token permissions:"
+                    Write-Host "- Contents: Read and Write"
+                    Write-Host "- Pull requests: Write"
+                    Write-Host "- Metadata: Read"
+                    
+                    Write-Host "##vso[task.setvariable variable=PRCreated]false"
+                    Write-Host "##vso[task.setvariable variable=ManualPRRequired]true"
+                }
+                
+                Write-Host "##vso[task.setvariable variable=BranchName]$branchName"
 
           - task: DotNetCoreCLI@2
             displayName: "Pack project"
@@ -459,6 +621,28 @@ stages:
                 **Package:** ``$packageId``
                 **Version:** ``$version``
                 **Azure DevOps Artifacts URL:** [$artifactsFeedUrl]($artifactsFeedUrl)
+                "@
+                
+                # Add PR information if auto-incremented
+                if ("$(AutoIncremented)" -eq "True") {
+                    if ("$(PRCreated)" -eq "true") {
+                        $prUrl = "$(PRUrl)"
+                        $prNumber = "$(PRNumber)"
+                        if ($prNumber) {
+                            $summary += "`n`n**🔄 Version Auto-incremented:** A pull request (#$prNumber) has been created for the version update.`n**🔗 PR Link:** [$prUrl]($prUrl)"
+                        } else {
+                            $summary += "`n`n**🔄 Version Auto-incremented:** A pull request has been created for the version update.`n**🔗 PR Link:** [$prUrl]($prUrl)"
+                        }
+                    } elseif ("$(ManualPRRequired)" -eq "true") {
+                        $branchName = "$(BranchName)"
+                        $manualPrUrl = "https://github.com/emmanuelknafo/AiStockTradeApp/pull/new/$branchName"
+                        $summary += "`n`n**🔄 Version Auto-incremented:** Version was automatically updated but PR creation failed.`n**📝 Manual PR Required:** [$manualPrUrl]($manualPrUrl)"
+                    } else {
+                        $summary += "`n`n**🔄 Version Auto-incremented:** Version was automatically bumped from existing version"
+                    }
+                }
+                
+                $summary += @"
                 
                 ### Installation from Azure DevOps Artifacts
                 
@@ -501,6 +685,8 @@ stages:
                 - 📈 Historical data access
                 - 🔍 Stock symbol search
                 - 🏢 Company details lookup
+                - ❤️ System health monitoring
+                "@
                 - ❤️ System health monitoring
                 "@
                 
