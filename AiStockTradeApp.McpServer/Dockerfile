@@ -32,11 +32,13 @@ COPY --from=build /app .
 
 # Set environment variables
 ENV ASPNETCORE_ENVIRONMENT=Production
-ENV ASPNETCORE_URLS=http://+:5000
+ENV ASPNETCORE_URLS=http://+:8080
+ENV WEBSITES_PORT=8080
+ENV PORT=8080
 ENV STOCK_API_BASE_URL=https://app-aistock-dev-002.azurewebsites.net
 
 # Expose port
-EXPOSE 5000
+EXPOSE 8080
 
 # Use non-root user (Alpine sets $APP_UID automatically)
 USER $APP_UID
