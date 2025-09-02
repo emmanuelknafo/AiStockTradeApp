@@ -1,17 +1,4 @@
 {
-  "inputs": [
-    {
-      "id": "ado_org",
-      "type": "promptString",
-      "description": "Azure DevOps organization name  (e.g. 'contoso')"
-    },
-    {
-      "id": "stock_api_base_url",
-      "type": "promptString",
-      "description": "Base URL for the Stock Trading API (e.g., http://localhost:5000 or https://your-api.azurewebsites.net)",
-      "password": false
-    }
-  ],
   "servers": {
     "ado": {
       "type": "stdio",
@@ -29,6 +16,23 @@
       "env": {
         "STOCK_API_BASE_URL": "${input:stock_api_base_url}"
       }
+    },
+    "StockTradeHttp": {
+      "url": "https://mcp-aistock-dev-002.azurewebsites.net/mcp",
+      "type": "http"
     }
-  }
+  },
+  "inputs": [
+    {
+      "id": "ado_org",
+      "type": "promptString",
+      "description": "Azure DevOps organization name  (e.g. 'contoso')"
+    },
+    {
+      "id": "stock_api_base_url",
+      "type": "promptString",
+      "description": "Base URL for the Stock Trading API (e.g., http://localhost:5000 or https://your-api.azurewebsites.net)",
+      "password": false
+    }
+  ]
 }
