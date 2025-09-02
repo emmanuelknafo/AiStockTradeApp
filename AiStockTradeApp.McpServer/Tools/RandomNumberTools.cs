@@ -11,7 +11,7 @@ internal class RandomNumberTools
     [Description("Generates a random number between the specified minimum and maximum values.")]
     public int GetRandomNumber(
         [Description("Minimum value (inclusive)")] int min = 0,
-        [Description("Maximum value (exclusive)")] int max = 106)
+        [Description("Maximum value (exclusive)")] int max = 107)
     {
         return Random.Shared.Next(min, max);
     }
