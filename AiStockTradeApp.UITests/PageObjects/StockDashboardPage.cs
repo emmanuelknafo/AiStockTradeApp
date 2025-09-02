@@ -62,6 +62,16 @@ public class StockDashboardPage
             // Might have failed to add stock, but continue anyway
         }
         
+        // Wait for input to be cleared (JavaScript clears it before reload)
+        try
+        {
+            await _page.WaitForFunctionAsync("() => document.getElementById('ticker-input').value === ''", new PageWaitForFunctionOptions { Timeout = 3000 });
+        }
+        catch (TimeoutException)
+        {
+            // Input might not be cleared if there was an error, continue anyway
+        }
+        
         // Wait for page reload to complete (JavaScript triggers reload after 1 second)
         // We need to wait for network idle to ensure the page has fully reloaded
         try
@@ -227,32 +237,6 @@ public class StockDashboardPage
     {
         var countElement = _page.Locator("#stock-count");
         return await countElement.TextContentAsync() ?? "0";
-    }
-
-    // Wait for portfolio stock count to increase beyond a known value
-    public async Task WaitForPortfolioCountIncrease(int previousCount, int timeoutMs = 20000)
-    {
-        var endTime = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        var countLocator = _page.Locator("#stock-count");
-        while (DateTime.UtcNow < endTime)
-        {
-            try
-            {
-                var text = await countLocator.TextContentAsync();
-                if (int.TryParse(text, out var current) && current > previousCount)
-                {
-                    return;
-                }
-            }
-            catch
-            {
-                // Ignore transient DOM issues and keep polling
-            }
-
-            await Task.Delay(500);
-        }
-
-        throw new TimeoutException($"Portfolio stock count did not increase within {timeoutMs}ms");
     }
 
     // Export Actions

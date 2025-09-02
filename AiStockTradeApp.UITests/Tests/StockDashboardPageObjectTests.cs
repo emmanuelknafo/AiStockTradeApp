@@ -132,11 +132,16 @@ public class StockDashboardPageObjectTests : BaseUITest
         totalValue.Should().NotBeNullOrEmpty();
         stockCount.Should().NotBeNullOrEmpty();
 
-    // Add a stock and verify count changes without relying on price load timing
+    // Add a stock and verify count changes after page reload
     var originalStockCountInt = int.Parse(stockCount);
     await _dashboardPage.AddStock("GOOGL");
-    await _dashboardPage.WaitForPortfolioCountIncrease(originalStockCountInt, timeoutMs: 20000);
-
+    
+    // Wait for page reload after adding stock (JavaScript triggers reload after 1 second)
+    await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 15000 });
+    
+    // Wait a bit more for portfolio stats to be updated after reload
+    await Page.WaitForTimeoutAsync(2000);
+    
     var newStockCount = await _dashboardPage.GetStockCount();
     var newStockCountInt = int.Parse(newStockCount);
     newStockCountInt.Should().BeGreaterThan(originalStockCountInt);

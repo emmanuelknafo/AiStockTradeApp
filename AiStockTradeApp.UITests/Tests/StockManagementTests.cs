@@ -23,11 +23,18 @@ public class StockManagementTests : BaseUITest
         await Expect(addButton).ToBeVisibleAsync();
         await addButton.ClickAsync();
 
-        // Wait for the stock card to appear with a more reasonable timeout
+        // Wait for success notification to appear first
+        var notification = Page.Locator(".notification.success");
+        await Expect(notification).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 5000 });
+
+        // Wait for the input to be cleared (JavaScript clears it before reload)
+        await Expect(tickerInput).ToHaveValueAsync("", new LocatorAssertionsToHaveValueOptions { Timeout = 5000 });
+
+        // Wait for page reload and stock card to appear with longer timeout
         try
         {
             var stockCard = Page.Locator("#card-AAPL");
-            await Expect(stockCard).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 10000 });
+            await Expect(stockCard).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 15000 });
 
             // Verify stock symbol is displayed
             var symbolHeader = stockCard.Locator("h2");
@@ -37,12 +44,11 @@ public class StockManagementTests : BaseUITest
             var removeButton = stockCard.Locator(".remove-button");
             await Expect(removeButton).ToBeVisibleAsync();
         }
-        catch (PlaywrightException)
+        catch (PlaywrightException ex)
         {
             // If the stock card doesn't appear (e.g., due to API issues), 
-            // at least verify that the input was cleared or some action was taken
-            var inputValue = await tickerInput.InputValueAsync();
-            inputValue.Should().BeEmpty("Input should be cleared after adding stock");
+            // fail the test since this is testing the add functionality
+            Assert.Fail($"Stock card did not appear after adding AAPL: {ex.Message}");
         }
     }
 
