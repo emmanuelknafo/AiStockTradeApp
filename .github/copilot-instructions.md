@@ -570,6 +570,11 @@ dotnet test AiStockTradeApp.UITests
 - **Application Insights** - Monitoring and telemetry
 - **Key Vault** - Secure configuration storage
 
+#### Naming conventions
+- Prefer Azure resource name prefixes using the official abbreviations (for example: `rg-`, `vnet-`, `snet-`, `kv-`, `sql-`, `sqldb-`, `app-`, `api-`, `asp-`, `acr-`, `appi-`, `log-`).
+- Follow Microsoft’s resource abbreviations guidance: https://learn.microsoft.com/th-th/azure/cloud-adoption-framework/ready/azure-best-practices/resource-abbreviations
+- Keep names deterministic in bicep using a consistent pattern like `<prefix>-<app>-<env>-<instance>` to avoid drift and enable idempotent deployments.
+
 ### Environment Configuration
 ```json
 // appsettings.{Environment}.json
