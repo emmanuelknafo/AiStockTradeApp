@@ -8,8 +8,6 @@ EXPOSE 8081
 # Create the keys directory and set permissions before switching to non-root user
 RUN mkdir -p /app/keys && chmod 755 /app/keys
 USER $APP_UID
-# Use in-memory database for container environments
-ENV USE_INMEMORY_DB=true
 
 
 # This stage is used to build the service project
@@ -63,8 +61,6 @@ FROM base AS final
 WORKDIR /app
 ARG APP_VERSION
 ENV APP_VERSION=${APP_VERSION}
-# Use in-memory database for container environments
-ENV USE_INMEMORY_DB=true
 # Ensure keys directory exists and has proper permissions
 USER root
 RUN mkdir -p /app/keys && chown -R $APP_UID:$APP_UID /app/keys && chmod -R 755 /app/keys
