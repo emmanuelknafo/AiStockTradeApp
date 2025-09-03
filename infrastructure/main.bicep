@@ -807,30 +807,16 @@ resource keyVaultPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/private
   }
 }
 
-// Grant Key Vault access to Web App
-resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+// Grant Key Vault access to the shared User-Assigned Managed Identity (covers both UI and API)
+resource keyVaultAccessPolicyUami 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: keyVault
-  name: guid(keyVault.id, webApp.id, 'Key Vault Secrets User')
+  name: guid(keyVault.id, userAssignedIdentity.id, 'Key Vault Secrets User')
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
       '4633458b-17de-408a-b874-0445c86b69e6'
     ) // Key Vault Secrets User
-  principalId: userAssignedIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Grant Key Vault access to API Web App
-resource keyVaultAccessPolicyApi 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: keyVault
-  name: guid(keyVault.id, webApi.id, 'Key Vault Secrets User')
-  properties: {
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '4633458b-17de-408a-b874-0445c86b69e6'
-    )
-  principalId: userAssignedIdentity.properties.principalId
+    principalId: userAssignedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
 }
