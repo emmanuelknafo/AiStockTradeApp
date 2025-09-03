@@ -96,6 +96,7 @@ var webApiName = 'api-${resourceNamePrefix}-${instanceNumber}'
 var webMcpName = 'mcp-${resourceNamePrefix}-${instanceNumber}'
 var containerRegistryResourceName = 'cr${toLower(replace(containerRegistryName, '-', ''))}${toLower(environment)}${instanceNumber}${uniqueString(resourceGroup().id)}'
 var keyVaultName = 'kv-${resourceNamePrefix}-${instanceNumber}'
+var userAssignedIdentityName = 'ui-${resourceNamePrefix}-${instanceNumber}'
 var applicationInsightsUiName = 'appi-ui-${resourceNamePrefix}-${instanceNumber}'
 var applicationInsightsApiName = 'appi-api-${resourceNamePrefix}-${instanceNumber}'
 var applicationInsightsMcpName = 'appi-mcp-${resourceNamePrefix}-${instanceNumber}'
@@ -209,6 +210,12 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
   }
 }
 
+// Shared User-Assigned Managed Identity for UI + API
+resource userAssignedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' = {
+  name: userAssignedIdentityName
+  location: location
+}
+
 // SQL Server (create/update when manageSql=true)
 resource sqlServer 'Microsoft.Sql/servers@2024-11-01-preview' = if (manageSql) {
   name: sqlServerName
@@ -290,7 +297,7 @@ resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01
   parent: keyVault
   name: 'SqlConnectionString'
   properties: {
-  value: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+  value: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;User Id=${userAssignedIdentity.properties.clientId};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
   }
 }
 
@@ -329,7 +336,10 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
   name: webAppName
   location: location
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentity.id}': {}
+    }
   }
   properties: {
     serverFarmId: appServicePlan.id
@@ -426,7 +436,7 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
       connectionStrings: [
         {
           name: 'DefaultConnection'
-          connectionString: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+          connectionString: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;User Id=${userAssignedIdentity.properties.clientId};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
         }
   ]
@@ -441,7 +451,10 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
   name: webApiName
   location: location
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentity.id}': {}
+    }
   }
   properties: {
     serverFarmId: appServicePlan.id
@@ -528,7 +541,7 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
       connectionStrings: [
         {
           name: 'DefaultConnection'
-          connectionString: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Default;Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
+          connectionString: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;User Id=${userAssignedIdentity.properties.clientId};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
           type: 'SQLAzure'
         }
   ]
@@ -803,7 +816,7 @@ resource keyVaultAccessPolicy 'Microsoft.Authorization/roleAssignments@2022-04-0
       'Microsoft.Authorization/roleDefinitions',
       '4633458b-17de-408a-b874-0445c86b69e6'
     ) // Key Vault Secrets User
-    principalId: webApp.identity.principalId
+  principalId: userAssignedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -817,7 +830,7 @@ resource keyVaultAccessPolicyApi 'Microsoft.Authorization/roleAssignments@2022-0
       'Microsoft.Authorization/roleDefinitions',
       '4633458b-17de-408a-b874-0445c86b69e6'
     )
-    principalId: webApi.identity.principalId
+  principalId: userAssignedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -853,6 +866,9 @@ output webApiPrincipalId string = webApi.identity.principalId
 output webMcpName string = webMcp.name
 output webMcpUrl string = 'https://${webMcp.properties.defaultHostName}'
 output webMcpPrincipalId string = webMcp.identity.principalId
+output userAssignedIdentityName string = userAssignedIdentity.name
+output userAssignedIdentityPrincipalId string = userAssignedIdentity.properties.principalId
+output userAssignedIdentityClientId string = userAssignedIdentity.properties.clientId
 output sqlServerName string = sqlServerName
 output sqlServerFqdn string = sqlServerFqdnValue
 output sqlDatabaseName string = sqlDatabaseName

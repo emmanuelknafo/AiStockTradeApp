@@ -221,7 +221,7 @@ stages:
                         --parameters deployLoadTesting=true
 
                 - task: AzureCLI@2
-                  displayName: "Set Web App Managed Identity as SQL Admin (Dev)"
+                  displayName: "Set Shared UAMI as SQL Entra Admin (Dev)"
                   condition: ne('${{ parameters.destroy }}', true)
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
@@ -231,36 +231,42 @@ stages:
                       set -e
                       INSTANCE_NUM="${{ parameters.instanceNumber }}"
                       RG_NAME="rg-aistock-dev-${INSTANCE_NUM}"
-                      WEBAPP_NAME="app-aistock-dev-${INSTANCE_NUM}"
                       SQL_SERVER_NAME="sql-aistock-dev-${INSTANCE_NUM}"
-                      echo "[DEV] Ensuring web app managed identity present..."
-                      for i in 1 2 3 4 5; do
-                        PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
-                        if [ -n "$PRINCIPAL_ID" ] && [ "$PRINCIPAL_ID" != "null" ]; then echo "[DEV] principalId: $PRINCIPAL_ID"; break; fi
-                        echo "[DEV] Identity not yet available (attempt $i); assigning..."
-                        az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null || true
-                        sleep 6
-                      done
-                      if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[DEV][ERROR] Managed identity principal ID unavailable"; exit 1; fi
+                      # Derive the shared UAMI name from parameters
+                      APP_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.dev.json'))['parameters']['appName']['value'])")
+                      ENV_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.dev.json'))['parameters']['environment']['value'])")
+                      IDENTITY_NAME="uami-${APP_NAME}-${ENV_NAME}-${INSTANCE_NUM}"
+                      echo "[DEV] Resolving shared user-assigned identity: $IDENTITY_NAME"
+                      PRINCIPAL_ID=$(az identity show --resource-group "$RG_NAME" --name "$IDENTITY_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then
+                        echo "[DEV][ERROR] Could not resolve principalId for UAMI $IDENTITY_NAME in $RG_NAME"; exit 1
+                      fi
+                      echo "[DEV] UAMI principalId: $PRINCIPAL_ID"
                       echo "[DEV] Checking current SQL Entra admin..."
                       CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
                       CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
                       if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
-                        echo "[DEV] Desired admin already set to MI ($CURRENT_ADMIN_LOGIN) - skipping reconfiguration."
+                        echo "[DEV] Desired admin already set to UAMI ($CURRENT_ADMIN_LOGIN) - skipping reconfiguration."
+                        if [ "$CURRENT_ADMIN_LOGIN" != "$IDENTITY_NAME" ]; then
+                          echo "[DEV] Display name mismatch ($CURRENT_ADMIN_LOGIN != $IDENTITY_NAME); normalizing..."
+                          az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
+                          sleep 5
+                          az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$IDENTITY_NAME" --object-id "$PRINCIPAL_ID"
+                        fi
                       else
                         if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
-                          echo "[DEV] Replacing existing admin '$CURRENT_ADMIN_LOGIN' with web app MI"
+                          echo "[DEV] Replacing existing admin '$CURRENT_ADMIN_LOGIN' with shared UAMI"
                           az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
                           sleep 5
                         else
-                          echo "[DEV] No existing Entra admin set; creating new admin with MI"
+                          echo "[DEV] No existing Entra admin set; creating new admin with shared UAMI"
                         fi
-                        az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
+                        az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$IDENTITY_NAME" --object-id "$PRINCIPAL_ID"
                       fi
                       echo "[DEV] Waiting for admin propagation..."
                       get_admin_sid_dev() {
                         local list_sid
-                        list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$WEBAPP_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
+                        list_sid=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[?login=='$IDENTITY_NAME'].sid | [0]" -o tsv 2>/dev/null || echo "")
                         if [ -n "$list_sid" ] && [ "$list_sid" != "null" ]; then echo "$list_sid"; return; fi
                         echo ""
                       }
@@ -283,7 +289,7 @@ stages:
                       FINAL_OID=$(get_admin_sid_dev)
                       if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
                         echo "[DEV][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
-                      echo "[DEV] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
+                      echo "[DEV] Shared UAMI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
 
                 - task: AzureCLI@2
                   displayName: "Enable Azure AD-only Authentication (Dev)"
@@ -605,7 +611,7 @@ stages:
                         $MANAGE_SQL_PARAM $MANAGE_NETWORKING_PARAM
 
                 - task: AzureCLI@2
-                  displayName: "Set Web App Managed Identity as SQL Admin (Prod)"
+                  displayName: "Set Shared UAMI as SQL Entra Admin (Prod)"
                   condition: ne('${{ parameters.destroy }}', true)
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
@@ -615,37 +621,37 @@ stages:
                       set -e
                       INSTANCE_NUM="${{ parameters.instanceNumber }}"
                       RG_NAME="rg-aistock-prod-${INSTANCE_NUM}"
-                      WEBAPP_NAME="app-aistock-prod-${INSTANCE_NUM}"
                       SQL_SERVER_NAME="sql-aistock-prod-${INSTANCE_NUM}"
-                      echo "[PROD] Ensuring web app managed identity present..."
-                      for i in 1 2 3 4 5; do
-                        PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
-                        if [ -n "$PRINCIPAL_ID" ] && [ "$PRINCIPAL_ID" != "null" ]; then echo "[PROD] principalId: $PRINCIPAL_ID"; break; fi
-                        echo "[PROD] Identity not yet available (attempt $i); assigning..."
-                        az webapp identity assign --name "$WEBAPP_NAME" --resource-group "$RG_NAME" >/dev/null || true
-                        sleep 6
-                      done
-                      if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] Managed identity principal ID unavailable"; exit 1; fi
+                      # Derive the shared UAMI name from parameters
+                      APP_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.prod.json'))['parameters']['appName']['value'])")
+                      ENV_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.prod.json'))['parameters']['environment']['value'])")
+                      IDENTITY_NAME="uami-${APP_NAME}-${ENV_NAME}-${INSTANCE_NUM}"
+                      echo "[PROD] Resolving shared user-assigned identity: $IDENTITY_NAME"
+                      PRINCIPAL_ID=$(az identity show --resource-group "$RG_NAME" --name "$IDENTITY_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then
+                        echo "[PROD][ERROR] Could not resolve principalId for UAMI $IDENTITY_NAME in $RG_NAME"; exit 1
+                      fi
+                      echo "[PROD] UAMI principalId: $PRINCIPAL_ID"
                       echo "[PROD] Checking current SQL Entra admin..."
                       CURRENT_ADMIN_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
                       CURRENT_ADMIN_OID=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].sid" -o tsv 2>/dev/null || echo "")
                       if [ "$CURRENT_ADMIN_OID" = "$PRINCIPAL_ID" ]; then
-                        echo "[PROD] Desired admin already set to MI ($CURRENT_ADMIN_LOGIN)."
-                        if [ "$CURRENT_ADMIN_LOGIN" != "$WEBAPP_NAME" ]; then
-                          echo "[PROD] Display name mismatch ($CURRENT_ADMIN_LOGIN != $WEBAPP_NAME); normalizing..."
+                        echo "[PROD] Desired admin already set to UAMI ($CURRENT_ADMIN_LOGIN)."
+                        if [ "$CURRENT_ADMIN_LOGIN" != "$IDENTITY_NAME" ]; then
+                          echo "[PROD] Display name mismatch ($CURRENT_ADMIN_LOGIN != $IDENTITY_NAME); normalizing..."
                           az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
                           sleep 5
-                          az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
+                          az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$IDENTITY_NAME" --object-id "$PRINCIPAL_ID"
                         fi
                       else
                         if [ -n "$CURRENT_ADMIN_LOGIN" ]; then
-                          echo "[PROD] Existing admin '$CURRENT_ADMIN_LOGIN' (sid=$CURRENT_ADMIN_OID) differs from MI (sid=$PRINCIPAL_ID); replacing..."
+                          echo "[PROD] Existing admin '$CURRENT_ADMIN_LOGIN' (sid=$CURRENT_ADMIN_OID) differs from UAMI (sid=$PRINCIPAL_ID); replacing..."
                           az sql server ad-admin delete --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" || true
                           sleep 5
                         else
-                          echo "[PROD] No existing Entra admin; creating new MI admin."
+                          echo "[PROD] No existing Entra admin; creating new UAMI admin."
                         fi
-                        az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$PRINCIPAL_ID"
+                        az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$IDENTITY_NAME" --object-id "$PRINCIPAL_ID"
                       fi
                       echo "[PROD] Waiting for admin propagation..."
                       get_admin_sid_prod() {
@@ -673,7 +679,7 @@ stages:
                       FINAL_OID=$(get_admin_sid_prod)
                       if [ "$PROPAGATED" != "true" ] || [ "$FINAL_OID" != "$PRINCIPAL_ID" ]; then
                         echo "[PROD][ERROR] Admin assignment did not propagate correctly (expected=$PRINCIPAL_ID, final=$FINAL_OID)"; exit 1; fi
-                      echo "[PROD] MI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
+                      echo "[PROD] Shared UAMI is confirmed as SQL Entra admin (sid=$FINAL_OID)."
 
                 - task: AzureCLI@2
                   displayName: "Enable Azure AD-only Authentication (Prod)"
