@@ -45,6 +45,10 @@ switch ($Environment) {
     "local" {
         $BaseUrl = "${Protocol}://${TargetHost}:${Port}"
         Write-Host "Using local environment: $BaseUrl" -ForegroundColor Cyan
+        if ($Protocol -ieq 'https') {
+            $env:VERIFY_SSL = 'false'
+            Write-Host "Locust SSL verification disabled for local HTTPS (VERIFY_SSL=$env:VERIFY_SSL)" -ForegroundColor DarkGray
+        }
     }
     "development" {
         $BaseUrl = "https://dev-stockapi.azurewebsites.net"
@@ -180,17 +184,22 @@ function Start-ApiInNewWindow {
         }
         
         # Create a PowerShell command to run the API
-        $apiCommand = @"
-Write-Host 'Starting AI Stock Trading API...' -ForegroundColor Green
-Write-Host 'Project Path: $ProjectPath' -ForegroundColor Cyan
-Write-Host 'API URL: $apiUrl' -ForegroundColor Cyan
-Write-Host ''
-Write-Host 'Press Ctrl+C to stop the API when load testing is complete.' -ForegroundColor Yellow
-Write-Host ''
-Set-Location '$ProjectPath'
-dotnet run --urls='$apiUrl'
-Write-Host ''
-Write-Host 'API has stopped. Press any key to close this window...' -ForegroundColor Yellow
+    $apiCommand = @"
+Write-Host "Starting AI Stock Trading API..." -ForegroundColor Green
+Write-Host "Project Path: $ProjectPath" -ForegroundColor Cyan
+Write-Host "API URL: $apiUrl" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Press Ctrl+C to stop the API when load testing is complete." -ForegroundColor Yellow
+Write-Host ""
+Set-Location "$ProjectPath"
+
+# Ensure API uses in-memory DB for load tests
+`$env:USE_INMEMORY_DB = 'true'
+Write-Host "USE_INMEMORY_DB=`$env:USE_INMEMORY_DB" -ForegroundColor Gray
+
+dotnet run --urls="$apiUrl"
+Write-Host ""
+Write-Host "API has stopped. Press any key to close this window..." -ForegroundColor Yellow
 Read-Host
 "@
         

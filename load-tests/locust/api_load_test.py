@@ -3,6 +3,7 @@ AI Stock Trade API - Comprehensive Load Test Script
 Tests various API endpoints with realistic user behavior patterns
 """
 
+import os
 import random
 import time
 from locust import HttpUser, task, between
@@ -28,6 +29,14 @@ class StockApiUser(HttpUser):
     
     def on_start(self):
         """Called when a user starts - can be used for login, setup, etc."""
+        # Optionally relax SSL verification for local dev with self-signed certs
+        verify_ssl = os.getenv("VERIFY_SSL", "true").lower() in ("true", "1", "yes", "y")
+        if not verify_ssl:
+            try:
+                # Locust's HttpSession exposes `verify` which maps to requests' verify
+                self.client.verify = False
+            except Exception:
+                pass
         # Test health endpoint first
         self.client.get("/health")
     
