@@ -187,7 +187,7 @@ jobs:
           # Resolve shared UAMI name from parameters
           APP_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.dev.json'))['parameters']['appName']['value'])")
           ENV_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.dev.json'))['parameters']['environment']['value'])")
-          IDENTITY_NAME="uami-${APP_NAME}-${ENV_NAME}-${INSTANCE_NUM}"
+          IDENTITY_NAME="ui-${APP_NAME}-${ENV_NAME}-${INSTANCE_NUM}"
           echo "[DEV] Resolving shared user-assigned identity: $IDENTITY_NAME"
           PRINCIPAL_ID=$(az identity show --resource-group "$RG_NAME" --name "$IDENTITY_NAME" --query principalId -o tsv 2>/dev/null || echo "")
           if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[DEV][ERROR] Could not resolve principalId for UAMI $IDENTITY_NAME in $RG_NAME"; exit 1; fi
@@ -490,7 +490,7 @@ jobs:
           # Resolve shared UAMI name from parameters
           APP_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.prod.json'))['parameters']['appName']['value'])")
           ENV_NAME=$(python -c "import json;print(json.load(open('infrastructure/parameters.prod.json'))['parameters']['environment']['value'])")
-          IDENTITY_NAME="uami-${APP_NAME}-${ENV_NAME}-${INSTANCE_NUM}"
+          IDENTITY_NAME="ui-${APP_NAME}-${ENV_NAME}-${INSTANCE_NUM}"
           echo "[PROD] Resolving shared user-assigned identity: $IDENTITY_NAME"
           PRINCIPAL_ID=$(az identity show --resource-group "$RG_NAME" --name "$IDENTITY_NAME" --query principalId -o tsv 2>/dev/null || echo "")
           if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] Could not resolve principalId for UAMI $IDENTITY_NAME in $RG_NAME"; exit 1; fi
