@@ -180,10 +180,13 @@ namespace AiStockTradeApp.Tests.Services
             _mockRepository.Setup(x => x.GetAsync(symbol, null, null, null))
                 .ReturnsAsync((List<HistoricalPrice>)null!);
 
-            // Act & Assert
-            var act = async () => await _service.GetAsync(symbol);
-            await act.Should().ThrowAsync<NullReferenceException>()
-                .WithMessage("*");
+            // Act
+            var result = await _service.GetAsync(symbol);
+
+            // Assert - service should handle nulls gracefully and return empty list
+            result.Should().NotBeNull();
+            result.Should().BeEmpty();
+            _mockRepository.Verify(x => x.GetAsync(symbol, null, null, null), Times.Once);
         }
     }
 }
