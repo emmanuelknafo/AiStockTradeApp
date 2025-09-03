@@ -153,26 +153,73 @@ namespace AiStockTradeApp
                 ?? builder.Configuration["DataProtection:KeysPath"] 
                 ?? "/app/keys"; // Default container path
 
+            DirectoryInfo? keysDirectory = null;
+            bool usePersistedKeys = false;
+
             try
             {
-                var keysDirectory = new DirectoryInfo(dataProtectionKeysPath);
+                keysDirectory = new DirectoryInfo(dataProtectionKeysPath);
                 if (!keysDirectory.Exists)
                 {
                     keysDirectory.Create();
                     Console.WriteLine($"Created data protection keys directory: {dataProtectionKeysPath}");
                 }
 
-                builder.Services.AddDataProtection()
-                    .PersistKeysToFileSystem(keysDirectory)
-                    .SetApplicationName("AiStockTradeApp") // Must be same across all instances
-                    .SetDefaultKeyLifetime(TimeSpan.FromDays(90)); // Keys valid for 90 days
+                // Test write permissions by creating a temporary file
+                var testFile = Path.Combine(dataProtectionKeysPath, $"test_{Guid.NewGuid():N}.tmp");
+                File.WriteAllText(testFile, "test");
+                File.Delete(testFile);
+                usePersistedKeys = true;
 
-                Console.WriteLine($"Data protection configured with persistent keys at: {dataProtectionKeysPath}");
+                Console.WriteLine($"Data protection keys directory verified with write access: {dataProtectionKeysPath}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Console.WriteLine($"Warning: No write access to data protection keys directory '{dataProtectionKeysPath}': {ex.Message}");
+                
+                // Try fallback to a temporary directory that should be writable
+                try
+                {
+                    var tempKeysPath = Path.Combine(Path.GetTempPath(), "AiStockTradeApp", "keys");
+                    keysDirectory = new DirectoryInfo(tempKeysPath);
+                    if (!keysDirectory.Exists)
+                    {
+                        keysDirectory.Create();
+                    }
+
+                    // Test write permissions
+                    var testFile = Path.Combine(tempKeysPath, $"test_{Guid.NewGuid():N}.tmp");
+                    File.WriteAllText(testFile, "test");
+                    File.Delete(testFile);
+                    usePersistedKeys = true;
+
+                    Console.WriteLine($"Using fallback data protection keys directory: {tempKeysPath}");
+                }
+                catch (Exception fallbackEx)
+                {
+                    Console.WriteLine($"Warning: Fallback keys directory also failed: {fallbackEx.Message}");
+                    Console.WriteLine("Will use ephemeral data protection keys (authentication will reset on container restart)");
+                }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Warning: Failed to configure persistent data protection keys: {ex.Message}");
-                Console.WriteLine("Using default in-memory data protection (cookies will be invalidated on restart)");
+                Console.WriteLine("Will use ephemeral data protection keys (authentication will reset on container restart)");
+            }
+
+            // Configure data protection based on what we were able to set up
+            var dataProtectionBuilder = builder.Services.AddDataProtection()
+                .SetApplicationName("AiStockTradeApp") // Must be same across all instances
+                .SetDefaultKeyLifetime(TimeSpan.FromDays(90)); // Keys valid for 90 days
+
+            if (usePersistedKeys && keysDirectory != null)
+            {
+                dataProtectionBuilder.PersistKeysToFileSystem(keysDirectory);
+                Console.WriteLine($"Data protection configured with persistent keys at: {keysDirectory.FullName}");
+            }
+            else
+            {
+                Console.WriteLine("Data protection configured with ephemeral keys (will reset on restart)");
             }
 
             // Configure Application Cookie settings

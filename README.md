@@ -257,9 +257,15 @@ dotnet test AiStockTradeApp.UITests
 
 ## 📦 Docker Support
 
+The application includes comprehensive Docker support for local development and deployment. The Docker configuration is designed to avoid port conflicts with host services.
+
 ### Development with Docker Compose
 
 ```bash
+# Quick start with Docker (recommended)
+.\scripts\start.ps1 -Mode Docker
+
+# Manual Docker Compose commands
 # Start all services
 docker-compose up --build
 
@@ -268,6 +274,42 @@ docker-compose -f docker-compose.yml -f docker-compose.mcp-override.yml up --bui
 
 # Stop services
 docker-compose down
+```
+
+### 🔌 Port Configuration
+
+To avoid conflicts with existing services on your host machine, the Docker configuration uses the following port mappings:
+
+| Service | Container Port | Host Port | Access URL |
+|---------|---------------|-----------|------------|
+| Web UI | 8080 | 8080 | <http://localhost:8080> |
+| REST API | 8080 | 8082 | <http://localhost:8082> |
+| MCP Server | 8080 | 5000 | <http://localhost:5000/mcp> |
+| SQL Server | 1433 | **14330** | localhost,14330 |
+
+> **Note**: SQL Server uses port **14330** on the host (instead of the default 1433) to avoid conflicts with existing SQL Server installations.
+
+### 🗄️ Database Access from Host
+
+When running in Docker mode, you can connect to the SQL Server container from your host machine using:
+
+- **Server**: `localhost,14330` (note the comma, not colon)
+- **Database**: `StockTraderDb`
+- **Username**: `sa`
+- **Password**: `YourStrong@Passw0rd`
+- **Connection String**: `Server=localhost,14330;Database=StockTraderDb;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;MultipleActiveResultSets=true`
+
+Use the helper script to get connection details and optionally launch SQL management tools:
+
+```powershell
+# Display connection information
+.\scripts\connect-to-docker-sql.ps1
+
+# Launch SQL Server Management Studio with connection details
+.\scripts\connect-to-docker-sql.ps1 -Tool SSMS
+
+# Launch Azure Data Studio with connection details
+.\scripts\connect-to-docker-sql.ps1 -Tool ADS
 ```
 
 ### Individual Container Builds
@@ -375,7 +417,7 @@ The solution includes automated deployment pipelines:
 
 ### Project Dependencies
 
-```
+```text
 AiStockTradeApp (UI)
 ├── AiStockTradeApp.Services (API client only)
 └── AiStockTradeApp.Entities
