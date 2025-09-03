@@ -1446,8 +1446,16 @@ stages:
                       WEBAPP_NAME="api-aistock-dev-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-dev-$(instanceNum)"
                       echo "[DEV] Ensuring SQL AD admin is set to API Web App MI..."
-                      MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
-                      if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[DEV][ERROR] Web app MI principalId not found"; exit 1; fi
+                      # Prefer user-assigned identity principalId; fall back to system-assigned if present
+                      UAMI_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query "userAssignedIdentities | keys(@)[0]" -o tsv 2>/dev/null || echo "")
+                      if [ -n "$UAMI_ID" ] && [ "$UAMI_ID" != "null" ]; then
+                        MI_PRINCIPAL_ID=$(az identity show --ids "$UAMI_ID" --query principalId -o tsv 2>/dev/null || echo "")
+                        ADMIN_DISPLAY_NAME=$(az identity show --ids "$UAMI_ID" --query name -o tsv 2>/dev/null || echo "$WEBAPP_NAME")
+                      else
+                        MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                        ADMIN_DISPLAY_NAME="$WEBAPP_NAME"
+                      fi
+                      if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[DEV][ERROR] Managed identity principalId not found (expected user-assigned)"; exit 1; fi
                       # Detect AAD-only mode; deleting admin is blocked when true
                       AAD_ONLY=$(az sql server ad-only-auth show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "azureAdOnlyAuthentication" -o tsv 2>/dev/null || echo "")
                       CURR_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
@@ -1460,7 +1468,7 @@ stages:
                         else
                           echo "[DEV] Skipping delete because AAD-only is enabled; will upsert via create."
                         fi
-                        az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$MI_PRINCIPAL_ID"
+                        az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$ADMIN_DISPLAY_NAME" --object-id "$MI_PRINCIPAL_ID"
                       else
                         echo "[DEV] Already correct; no change needed."
                       fi
@@ -1980,8 +1988,19 @@ stages:
                       APP_WEBAPP="app-aistock-prod-$(instanceNum)"
                       RG_NAME="rg-aistock-prod-$(instanceNum)"
                       echo "[PROD][MSI-GUARD] Checking managed identities for $API_WEBAPP and $APP_WEBAPP in $RG_NAME"
-                      API_MI=$(az webapp identity show --name "$API_WEBAPP" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
-                      APP_MI=$(az webapp identity show --name "$APP_WEBAPP" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      # Resolve principalIds from user-assigned identities if present, else fallback to system-assigned
+                      API_UAMI=$(az webapp identity show --name "$API_WEBAPP" --resource-group "$RG_NAME" --query "userAssignedIdentities | keys(@)[0]" -o tsv 2>/dev/null || echo "")
+                      if [ -n "$API_UAMI" ] && [ "$API_UAMI" != "null" ]; then
+                        API_MI=$(az identity show --ids "$API_UAMI" --query principalId -o tsv 2>/dev/null || echo "")
+                      else
+                        API_MI=$(az webapp identity show --name "$API_WEBAPP" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      fi
+                      APP_UAMI=$(az webapp identity show --name "$APP_WEBAPP" --resource-group "$RG_NAME" --query "userAssignedIdentities | keys(@)[0]" -o tsv 2>/dev/null || echo "")
+                      if [ -n "$APP_UAMI" ] && [ "$APP_UAMI" != "null" ]; then
+                        APP_MI=$(az identity show --ids "$APP_UAMI" --query principalId -o tsv 2>/dev/null || echo "")
+                      else
+                        APP_MI=$(az webapp identity show --name "$APP_WEBAPP" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                      fi
                       echo "[PROD][MSI-GUARD] API_MI=$API_MI"
                       echo "[PROD][MSI-GUARD] APP_MI=$APP_MI"
                       if [ -z "$API_MI" ]; then
@@ -2026,8 +2045,16 @@ stages:
                       WEBAPP_NAME="api-aistock-prod-$(instanceNum)"
                       SQL_SERVER_NAME="sql-aistock-prod-$(instanceNum)"
                       echo "[PROD] Ensuring SQL AD admin is set to API Web App MI..."
-                      MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
-                      if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] Web app MI principalId not found"; exit 1; fi
+                      # Prefer user-assigned identity principalId; fall back to system-assigned if present
+                      UAMI_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query "userAssignedIdentities | keys(@)[0]" -o tsv 2>/dev/null || echo "")
+                      if [ -n "$UAMI_ID" ] && [ "$UAMI_ID" != "null" ]; then
+                        MI_PRINCIPAL_ID=$(az identity show --ids "$UAMI_ID" --query principalId -o tsv 2>/dev/null || echo "")
+                        ADMIN_DISPLAY_NAME=$(az identity show --ids "$UAMI_ID" --query name -o tsv 2>/dev/null || echo "$WEBAPP_NAME")
+                      else
+                        MI_PRINCIPAL_ID=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query principalId -o tsv 2>/dev/null || echo "")
+                        ADMIN_DISPLAY_NAME="$WEBAPP_NAME"
+                      fi
+                      if [ -z "$MI_PRINCIPAL_ID" ] || [ "$MI_PRINCIPAL_ID" = "null" ]; then echo "[PROD][ERROR] Managed identity principalId not found (expected user-assigned)"; exit 1; fi
                       # Detect AAD-only mode; deleting admin is blocked when true
                       AAD_ONLY=$(az sql server ad-only-auth show --name "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "azureAdOnlyAuthentication" -o tsv 2>/dev/null || echo "")
                       CURR_LOGIN=$(az sql server ad-admin list --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --query "[0].login" -o tsv 2>/dev/null || echo "")
@@ -2040,7 +2067,7 @@ stages:
                         else
                           echo "[PROD] Skipping delete because AAD-only is enabled; will upsert via create."
                         fi
-                        az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$WEBAPP_NAME" --object-id "$MI_PRINCIPAL_ID"
+                        az sql server ad-admin create --server "$SQL_SERVER_NAME" --resource-group "$RG_NAME" --display-name "$ADMIN_DISPLAY_NAME" --object-id "$MI_PRINCIPAL_ID"
                       else
                         echo "[PROD] Already correct; no change needed."
                       fi
@@ -2112,6 +2139,16 @@ stages:
                       if ! timeout 5 bash -c "</dev/tcp/${SQL_SERVER_NAME}.database.windows.net/1433" 2>/dev/null; then echo "[ERROR] Port 1433 unreachable"; exit 1; fi
                       SQL_SCRIPT=$'USE [${DATABASE_NAME}];\nIF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name='"'${WEBAPP_NAME}'"') BEGIN PRINT 'Creating user ${WEBAPP_NAME}'; CREATE USER [${WEBAPP_NAME}] FROM EXTERNAL PROVIDER; END;\nDECLARE @roles TABLE(r sysname); INSERT INTO @roles VALUES(\'db_datareader\'),(\'db_datawriter\'),(\'db_ddladmin\');\nDECLARE c CURSOR LOCAL FAST_FORWARD FOR SELECT r FROM @roles; OPEN c; DECLARE @r sysname; FETCH NEXT FROM c INTO @r;\nWHILE @@FETCH_STATUS=0 BEGIN IF IS_ROLEMEMBER(@r,\'${WEBAPP_NAME}\')=1 PRINT @r+\' already assigned\'; ELSE EXEC(\'ALTER ROLE \"' +QUOTENAME(@r)+ '\" ADD MEMBER [${WEBAPP_NAME}]\'); FETCH NEXT FROM c INTO @r; END CLOSE c; DEALLOCATE c;\nSELECT dp.name AS principal, r.name AS role_name FROM sys.database_principals dp JOIN sys.database_role_members rm ON dp.principal_id=rm.member_principal_id JOIN sys.database_principals r ON rm.role_principal_id=r.principal_id WHERE dp.name=\'${WEBAPP_NAME}\';'
                       printf '%s\n' "$SQL_SCRIPT" > setup_managed_identity.sql
+                      # Derive SQL principal display name (prefer user-assigned identity name)
+                      PRINCIPAL_NAME="$WEBAPP_NAME"
+                      UAMI_ID_FOR_SQL=$(az webapp identity show --name "$WEBAPP_NAME" --resource-group "$RG_NAME" --query "userAssignedIdentities | keys(@)[0]" -o tsv 2>/dev/null || echo "")
+                      if [ -n "$UAMI_ID_FOR_SQL" ] && [ "$UAMI_ID_FOR_SQL" != "null" ]; then
+                        PRINCIPAL_NAME=$(az identity show --ids "$UAMI_ID_FOR_SQL" --query name -o tsv 2>/dev/null || echo "$WEBAPP_NAME")
+                      fi
+                      echo "[INFO] Using SQL principal name: $PRINCIPAL_NAME (was web app name: $WEBAPP_NAME)"
+                      # Replace literal ${WEBAPP_NAME} placeholders with PRINCIPAL_NAME in the generated SQL
+                      ESCAPED_PRINCIPAL=$(printf '%s' "$PRINCIPAL_NAME" | sed -e 's/[&/]/\\&/g')
+                      sed -i "s|\\\${WEBAPP_NAME}|$ESCAPED_PRINCIPAL|g" setup_managed_identity.sql
 
                       echo "[INFO] Waiting for successful token-based connectivity..."
                       LOGIN_OK=0
@@ -2151,15 +2188,15 @@ stages:
                       echo "SELECT SUSER_SNAME() AS suser, CURRENT_USER AS current_user, DB_NAME() AS dbname;" > test_connection.sql
                       /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 15 -i test_connection.sql || echo "[WARN] Identity test query failed"
                       echo "[INFO] Verifying presence of managed identity user principal..."
-                      VERIFY_SQL=$'SET NOCOUNT ON; SELECT name,type_desc,create_date FROM sys.database_principals WHERE name='"'${WEBAPP_NAME}'"';'
+                      VERIFY_SQL=$'SET NOCOUNT ON; SELECT name,type_desc,create_date FROM sys.database_principals WHERE name='"'${PRINCIPAL_NAME:-${WEBAPP_NAME}}'"';'
                       VERIFY_OUTPUT=$(/opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 30 -h -1 -Q "$VERIFY_SQL" 2>/dev/null || echo "")
-                      if echo "$VERIFY_OUTPUT" | grep -qi "${WEBAPP_NAME}"; then
+                      if echo "$VERIFY_OUTPUT" | grep -qi "${PRINCIPAL_NAME:-${WEBAPP_NAME}}"; then
                         echo "[INFO] Managed identity user exists in database."
                       else
-                        echo "[ERROR] Managed identity user ${WEBAPP_NAME} NOT FOUND after creation attempts."; exit 1
+                        echo "[ERROR] Managed identity user ${PRINCIPAL_NAME:-${WEBAPP_NAME}} NOT FOUND after creation attempts."; exit 1
                       fi
                       echo "[INFO] Listing role memberships for managed identity (if any)..."
-                      ROLE_SQL=$'SET NOCOUNT ON; SELECT r.name AS role_name FROM sys.database_principals dp JOIN sys.database_role_members rm ON dp.principal_id=rm.member_principal_id JOIN sys.database_principals r ON rm.role_principal_id=r.principal_id WHERE dp.name='"'${WEBAPP_NAME}'"';'
+                      ROLE_SQL=$'SET NOCOUNT ON; SELECT r.name AS role_name FROM sys.database_principals dp JOIN sys.database_role_members rm ON dp.principal_id=rm.member_principal_id JOIN sys.database_principals r ON rm.role_principal_id=r.principal_id WHERE dp.name='"'${PRINCIPAL_NAME:-${WEBAPP_NAME}}'"';'
                       /opt/mssql-tools/bin/sqlcmd -S "$SQL_SERVER_FQDN" -d "$DATABASE_NAME" -C -l 30 -Q "$ROLE_SQL" || echo "[WARN] Role listing query failed"
                       echo "[INFO] Managed identity SQL setup complete"
 
