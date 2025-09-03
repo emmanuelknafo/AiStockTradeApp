@@ -58,36 +58,47 @@ builder.Services.AddHttpClient<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IStockDataService, StockDataService>();
 builder.Services.AddScoped<IListedStockService, ListedStockService>();
 builder.Services.AddScoped<IHistoricalPriceService, HistoricalPriceService>();
-builder.Services.AddScoped<MockStockDataService>(); // Mock data fallback for when APIs fail
+builder.Services.AddScoped<IMockStockDataService, MockStockDataService>(); // Mock data fallback for when APIs fail
 builder.Services.AddSingleton<IImportJobQueue, ImportJobQueue>();
 builder.Services.AddHostedService<ImportJobProcessor>();
 
-// Configure Data Protection for container persistence
+// Configure Data Protection for container persistence only
 // This ensures any protected data remains valid across container restarts
-var dataProtectionKeysPath = Environment.GetEnvironmentVariable("DATA_PROTECTION_KEYS_PATH") 
-    ?? builder.Configuration["DataProtection:KeysPath"] 
-    ?? "/app/keys"; // Default container path
+// For local development, skip persistent data protection to avoid file system issues
+var isContainer = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" ||
+                  !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATA_PROTECTION_KEYS_PATH"));
 
-try
+if (isContainer)
 {
-    var keysDirectory = new DirectoryInfo(dataProtectionKeysPath);
-    if (!keysDirectory.Exists)
+    var dataProtectionKeysPath = Environment.GetEnvironmentVariable("DATA_PROTECTION_KEYS_PATH") 
+        ?? builder.Configuration["DataProtection:KeysPath"] 
+        ?? "/app/keys"; // Default container path
+
+    try
     {
-        keysDirectory.Create();
-        Console.WriteLine($"Created data protection keys directory: {dataProtectionKeysPath}");
+        var keysDirectory = new DirectoryInfo(dataProtectionKeysPath);
+        if (!keysDirectory.Exists)
+        {
+            keysDirectory.Create();
+            Console.WriteLine($"Created data protection keys directory: {dataProtectionKeysPath}");
+        }
+
+        builder.Services.AddDataProtection()
+            .PersistKeysToFileSystem(keysDirectory)
+            .SetApplicationName("AiStockTradeApp") // Must be same across all instances
+            .SetDefaultKeyLifetime(TimeSpan.FromDays(90)); // Keys valid for 90 days
+
+        Console.WriteLine($"Data protection configured with persistent keys at: {dataProtectionKeysPath}");
     }
-
-    builder.Services.AddDataProtection()
-        .PersistKeysToFileSystem(keysDirectory)
-        .SetApplicationName("AiStockTradeApp") // Must be same across all instances
-        .SetDefaultKeyLifetime(TimeSpan.FromDays(90)); // Keys valid for 90 days
-
-    Console.WriteLine($"Data protection configured with persistent keys at: {dataProtectionKeysPath}");
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Failed to configure persistent data protection keys: {ex.Message}");
+        Console.WriteLine("Using default in-memory data protection");
+    }
 }
-catch (Exception ex)
+else
 {
-    Console.WriteLine($"Warning: Failed to configure persistent data protection keys: {ex.Message}");
-    Console.WriteLine("Using default in-memory data protection");
+    Console.WriteLine("Local development mode: Using default in-memory data protection");
 }
 
 // CORS
