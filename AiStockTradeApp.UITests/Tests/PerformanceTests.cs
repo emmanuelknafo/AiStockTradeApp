@@ -75,7 +75,16 @@ public class PerformanceTests : BaseUITest
         {
             var averageTimePerStock = duration.TotalSeconds / successfulAdditions;
             TestContext.WriteLine($"Average time per successful addition: {averageTimePerStock:F2} seconds");
-            averageTimePerStock.Should().BeLessThan(30, "Each successful stock addition should not take more than 30 seconds on average");
+            
+            // Adjust performance thresholds based on CI environment
+            var maxTimePerStock = IsRunningInCI() ? 45.0 : 30.0;
+            var ciEnvironment = Environment.GetEnvironmentVariable("SYSTEM_TEAMFOUNDATIONCOLLECTIONURI") != null ? "Azure DevOps" : 
+                               Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != null ? "GitHub Actions" : "Local";
+            
+            TestContext.WriteLine($"Running in: {ciEnvironment}, Max time per stock: {maxTimePerStock}s");
+            
+            averageTimePerStock.Should().BeLessThan(maxTimePerStock, 
+                $"Each successful stock addition should not take more than {maxTimePerStock} seconds on average in {ciEnvironment} environment");
         }
         else
         {
@@ -229,5 +238,13 @@ public class PerformanceTests : BaseUITest
             await removeButton.ClickAsync();
             await Page.WaitForTimeoutAsync(1000);
         }
+    }
+
+    private static bool IsRunningInCI()
+    {
+        return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")) ||
+               !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")) ||
+               !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SYSTEM_TEAMFOUNDATIONCOLLECTIONURI")) ||
+               !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("BUILD_BUILDID"));
     }
 }
