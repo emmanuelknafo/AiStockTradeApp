@@ -27,6 +27,9 @@
 .PARAMETER NoBrowser
   If set, prevents automatic opening of browser windows for UI and API endpoints.
 
+.PARAMETER RemoveVolumes
+  If set in Docker mode, forces removal of Docker volumes during cleanup for a completely fresh start. Default: $false (volumes are preserved for data persistence).
+
 .EXAMPLES
   # Clean rebuild and start containers
   ./scripts/start.ps1 -Mode Docker
@@ -47,6 +50,9 @@ param(
   [string]$UiProfile = 'https',
   [switch]$UseHttps,
   [switch]$NoBrowser,
+  
+  # Docker mode options
+  [switch]$RemoveVolumes,
   
   # Help parameter
   [switch]$Help
@@ -86,8 +92,13 @@ EXAMPLES:
     # Run without opening browser windows automatically
     ./scripts/start.ps1 -Mode Docker -NoBrowser
 
+    # Force removal of volumes for completely fresh start
+    ./scripts/start.ps1 -Mode Docker -RemoveVolumes
+
 DOCKER MODE:
-    - Performs complete cleanup (removes containers, images, volumes)
+    - Performs complete cleanup (removes containers, images, networks)
+    - By default, preserves volumes to maintain data persistence and test data protection
+    - Use -RemoveVolumes to force removal of volumes and start completely fresh
     - Rebuilds all images from scratch (no cache)
     - Starts services and waits for SQL Server to be healthy
     - Services available at: UI (http://localhost:8080), API (http://localhost:8082), MCP Server (http://localhost:5000)
@@ -208,8 +219,14 @@ function Invoke-DockerCleanUpAndUp {
     Write-Warning "Could not clean up existing dotnet processes: $($_.Exception.Message)"
   }
 
-  Write-Host 'Stopping containers and removing images, networks, and volumes...' -ForegroundColor Cyan
-  & docker compose -f $composeFile down --rmi all --volumes --remove-orphans | Write-Host
+  Write-Host 'Stopping containers and removing images and networks...' -ForegroundColor Cyan
+  if ($RemoveVolumes) {
+    Write-Host 'Also removing volumes (forced via -RemoveVolumes)...' -ForegroundColor Yellow
+    & docker compose -f $composeFile down --rmi all --volumes --remove-orphans | Write-Host
+  } else {
+    Write-Host 'Preserving volumes for data persistence...' -ForegroundColor Green
+    & docker compose -f $composeFile down --rmi all --remove-orphans | Write-Host
+  }
 
   Write-Host 'Rebuilding images with no cache...' -ForegroundColor Cyan
   & docker compose -f $composeFile build --no-cache | Write-Host
