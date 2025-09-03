@@ -48,7 +48,7 @@ services:
       - SA_PASSWORD=YourStrong@Passw0rd
       - MSSQL_PID=Express
     ports:
-      - "1433:1433"
+      - "14330:1433"  # Map host port 14330 to container port 1433 to avoid conflict with host SQL Server
     volumes:
       - sqlserver_data:/var/opt/mssql
     healthcheck:

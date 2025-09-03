@@ -102,6 +102,7 @@ DOCKER MODE:
     - Rebuilds all images from scratch (no cache)
     - Starts services and waits for SQL Server to be healthy
     - Services available at: UI (http://localhost:8080), API (http://localhost:8082), MCP Server (http://localhost:5000)
+    - SQL Server available at: localhost:14330 (mapped to avoid conflict with host SQL Server on 1433)
     - Automatically opens browser windows to both UI and API
 
 LOCAL MODE:
