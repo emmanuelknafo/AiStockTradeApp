@@ -33,7 +33,8 @@ namespace AiStockTradeApp.Services.Implementations
         {
             if (string.IsNullOrWhiteSpace(symbol)) return new List<HistoricalPrice>();
             symbol = symbol.ToUpperInvariant();
-            var existing = await _repo.GetAsync(symbol, from, to, take);
+            // Defensive: some repository implementations/mocks may return null
+            var existing = await _repo.GetAsync(symbol, from, to, take) ?? new List<HistoricalPrice>();
             if (existing.Count > 0)
                 return existing;
 
@@ -76,7 +77,8 @@ namespace AiStockTradeApp.Services.Implementations
             if (existing.Count == 0)
             {
                 _logger?.LogInformation("HistoricalPriceService: generating mock historical data for {Symbol} (no cached data, online fetch failed)", symbol);
-                var mockData = _mockService.GenerateMockHistoricalData(symbol, take ?? 30);
+                // Defensive: ensure mock service and its result are non-null
+                var mockData = _mockService?.GenerateMockHistoricalData(symbol, take ?? 30) ?? new List<HistoricalPrice>();
                 
                 if (mockData.Count > 0)
                 {
