@@ -845,10 +845,12 @@ resource keyVaultAccessPolicyMcp 'Microsoft.Authorization/roleAssignments@2022-0
 // Outputs
 output webAppName string = webApp.name
 output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
-output webAppPrincipalId string = webApp.identity.principalId
+// For user-assigned identity, principalId is provided by the UAMI itself
+output webAppPrincipalId string = userAssignedIdentity.properties.principalId
 output webApiName string = webApi.name
 output webApiUrl string = 'https://${webApi.properties.defaultHostName}'
-output webApiPrincipalId string = webApi.identity.principalId
+// For user-assigned identity, principalId is provided by the UAMI itself
+output webApiPrincipalId string = userAssignedIdentity.properties.principalId
 output webMcpName string = webMcp.name
 output webMcpUrl string = 'https://${webMcp.properties.defaultHostName}'
 output webMcpPrincipalId string = webMcp.identity.principalId
