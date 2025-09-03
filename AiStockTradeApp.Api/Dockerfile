@@ -4,20 +4,14 @@
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 USER root
 
-# Install required dependencies for Playwright
+# Install required dependencies for Playwright and Node.js/npm from Debian repos (stable & reliable)
 RUN apt-get update && apt-get install -y \
     curl \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js (required for Playwright)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs  
-
 RUN node --version
-# Ensure npm is available (some NodeSource builds may not include npm); then upgrade to latest
-RUN apt-get update && apt-get install -y npm && rm -rf /var/lib/apt/lists/*
-RUN npm --version
-RUN npm install -g npm@latest
 RUN npm --version
 
 # Use a shared path for Playwright browsers so runtime (non-root) can access them
