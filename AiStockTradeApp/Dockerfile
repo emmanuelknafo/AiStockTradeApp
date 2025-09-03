@@ -2,10 +2,12 @@
 
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
-USER $APP_UID
 WORKDIR /app
 EXPOSE 8080
 EXPOSE 8081
+# Create the keys directory and set permissions before switching to non-root user
+RUN mkdir -p /app/keys && chmod 755 /app/keys
+USER $APP_UID
 # Use in-memory database for container environments
 ENV USE_INMEMORY_DB=true
 
@@ -63,5 +65,9 @@ ARG APP_VERSION
 ENV APP_VERSION=${APP_VERSION}
 # Use in-memory database for container environments
 ENV USE_INMEMORY_DB=true
+# Ensure keys directory exists and has proper permissions
+USER root
+RUN mkdir -p /app/keys && chown -R $APP_UID:$APP_UID /app/keys && chmod -R 755 /app/keys
+USER $APP_UID
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "AiStockTradeApp.dll"]
