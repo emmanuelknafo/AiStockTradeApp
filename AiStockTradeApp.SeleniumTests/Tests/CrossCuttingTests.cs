@@ -8,7 +8,7 @@ public class CrossCuttingTests : TestBase
 {
     [Trait("Category", "CrossCutting")]
     [Trait("AdoId", "1412")]
-    [Fact(Skip = "Requires fault injection or controllable backend")]
+    [Fact]
     public void ErrorHandling_ProviderTimeout_ShowsLocalizedPartialError_AndLogs()
     {
         var dashboard = new DashboardPage(Driver);
@@ -20,7 +20,7 @@ public class CrossCuttingTests : TestBase
 
     [Trait("Category", "CrossCutting")]
     [Trait("AdoId", "1413")]
-    [Fact(Skip = "Needs localized resources configured")]
+    [Fact]
     public void Localization_SwitchToFrench_ShowsAllStringsTranslated()
     {
         var dashboard = new DashboardPage(Driver);
@@ -32,7 +32,7 @@ public class CrossCuttingTests : TestBase
 
     [Trait("Category", "CrossCutting")]
     [Trait("AdoId", "1414")]
-    [Fact(Skip = "Requires perf harness and warm cache")]
+    [Fact]
     public void Performance_P95_InitialDashboardLoad_Under1_5s_For20Symbols_Cached()
     {
         var dashboard = new DashboardPage(Driver);
@@ -43,7 +43,7 @@ public class CrossCuttingTests : TestBase
 
     [Trait("Category", "CrossCutting")]
     [Trait("AdoId", "1415")]
-    [Fact(Skip = "Requires API surface and auth setup")]
+    [Fact]
     public void Security_PreventCrossUserAccess_AndMutation()
     {
         // TODO: Attempt to access another user's watchlist endpoints

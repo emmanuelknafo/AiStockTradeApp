@@ -8,12 +8,18 @@ public class AuthenticatedWatchlistTests : TestBase
 {
     [Trait("Category", "Authenticated")]
     [Trait("AdoId", "1403")]
-    [Fact(Skip = "Needs app URL and seeded user credentials")]
+    [Fact]
     public void Dashboard_ShowsPersistedWatchlist_WithQuotes()
     {
         var auth = new AuthPage(Driver);
         var dashboard = new DashboardPage(Driver);
         CultureSwitcher.SetCulture(Driver, Settings.BaseUrl, Settings.Culture);
+        // Optional seeding: if SELENIUM_SEED_USERID is provided, seed watchlist with AAPL & MSFT
+        var seedUserId = Environment.GetEnvironmentVariable("SELENIUM_SEED_USERID");
+        if (!string.IsNullOrWhiteSpace(seedUserId))
+        {
+            TestDataSeeder.EnsureWatchlist(seedUserId, "AAPL", "MSFT");
+        }
         auth.SignIn(Settings.BaseUrl, Settings.Credentials.Username, Settings.Credentials.Password);
         dashboard.Go(Settings.BaseUrl);
 
@@ -23,7 +29,7 @@ public class AuthenticatedWatchlistTests : TestBase
 
     [Trait("Category", "Authenticated")]
     [Trait("AdoId", "1404")]
-    [Fact(Skip = "Needs seeded empty watchlist user")]
+    [Fact]
     public void EmptyWatchlist_ShowsLocalizedEmptyState_AndAddCta()
     {
         var auth = new AuthPage(Driver);
@@ -37,7 +43,7 @@ public class AuthenticatedWatchlistTests : TestBase
 
     [Trait("Category", "Authenticated")]
     [Trait("AdoId", "1405")]
-    [Fact(Skip = "Requires seeded user and UI hooks")]
+    [Fact]
     public void AddSymbol_Validates_Persists_AndPreventsDuplicates()
     {
         var auth = new AuthPage(Driver);
@@ -54,11 +60,16 @@ public class AuthenticatedWatchlistTests : TestBase
 
     [Trait("Category", "Authenticated")]
     [Trait("AdoId", "1406")]
-    [Fact(Skip = "Requires seeded user with AAPL")]
+    [Fact]
     public void RemoveSymbol_Deletes_FromPersistedWatchlist_AndUI()
     {
         var auth = new AuthPage(Driver);
         var dashboard = new DashboardPage(Driver);
+        var seedUserId = Environment.GetEnvironmentVariable("SELENIUM_SEED_USERID");
+        if (!string.IsNullOrWhiteSpace(seedUserId))
+        {
+            TestDataSeeder.EnsureWatchlist(seedUserId, "AAPL");
+        }
         auth.SignIn(Settings.BaseUrl, Settings.Credentials.Username, Settings.Credentials.Password);
         dashboard.Go(Settings.BaseUrl)
                  .RemoveSymbol("AAPL");
@@ -68,7 +79,7 @@ public class AuthenticatedWatchlistTests : TestBase
 
     [Trait("Category", "Authenticated")]
     [Trait("AdoId", "1407")]
-    [Fact(Skip = "Requires session setup and user with AAPL")]
+    [Fact]
     public void MergeOnSignIn_SessionItems_DeDup_AppendToUser()
     {
         // This would require pre-populating session before login, which may

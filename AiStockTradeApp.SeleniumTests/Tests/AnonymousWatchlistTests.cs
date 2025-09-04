@@ -8,7 +8,7 @@ public class AnonymousWatchlistTests : TestBase
 {
     [Trait("Category", "Anonymous")]
     [Trait("AdoId", "1408")]
-    [Fact(Skip = "Needs app running")]
+    [Fact]
     public void Dashboard_ShowsSessionWatchlist_WithQuotes()
     {
         var dashboard = new DashboardPage(Driver);
@@ -24,7 +24,7 @@ public class AnonymousWatchlistTests : TestBase
 
     [Trait("Category", "Anonymous")]
     [Trait("AdoId", "1409")]
-    [Fact(Skip = "Needs app running")]
+    [Fact]
     public void EmptySession_ShowsLocalizedEmptyState_AndAddCta()
     {
         var dashboard = new DashboardPage(Driver);
@@ -34,7 +34,7 @@ public class AnonymousWatchlistTests : TestBase
 
     [Trait("Category", "Anonymous")]
     [Trait("AdoId", "1410")]
-    [Fact(Skip = "Needs app running")]
+    [Fact]
     public void AddRemoveSymbol_AffectsSessionOnly_AndPreventsDuplicates()
     {
         var dashboard = new DashboardPage(Driver);
@@ -50,7 +50,7 @@ public class AnonymousWatchlistTests : TestBase
 
     [Trait("Category", "Anonymous")]
     [Trait("AdoId", "1411")]
-    [Fact(Skip = "Needs credentials and seeded data")]
+    [Fact]
     public void ContextSwitch_OnSignOut_UsesSessionList()
     {
         var auth = new AuthPage(Driver);
