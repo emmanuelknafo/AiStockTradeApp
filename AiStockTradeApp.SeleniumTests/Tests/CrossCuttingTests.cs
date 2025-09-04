@@ -7,6 +7,7 @@ namespace AiStockTradeApp.SeleniumTests.Tests;
 public class CrossCuttingTests : TestBase
 {
     [Trait("Category", "CrossCutting")]
+    [Trait("AdoId", "1412")]
     [Fact(Skip = "Requires fault injection or controllable backend")]
     public void ErrorHandling_ProviderTimeout_ShowsLocalizedPartialError_AndLogs()
     {
@@ -18,6 +19,7 @@ public class CrossCuttingTests : TestBase
     }
 
     [Trait("Category", "CrossCutting")]
+    [Trait("AdoId", "1413")]
     [Fact(Skip = "Needs localized resources configured")]
     public void Localization_SwitchToFrench_ShowsAllStringsTranslated()
     {
@@ -29,6 +31,7 @@ public class CrossCuttingTests : TestBase
     }
 
     [Trait("Category", "CrossCutting")]
+    [Trait("AdoId", "1414")]
     [Fact(Skip = "Requires perf harness and warm cache")]
     public void Performance_P95_InitialDashboardLoad_Under1_5s_For20Symbols_Cached()
     {
@@ -39,6 +42,7 @@ public class CrossCuttingTests : TestBase
     }
 
     [Trait("Category", "CrossCutting")]
+    [Trait("AdoId", "1415")]
     [Fact(Skip = "Requires API surface and auth setup")]
     public void Security_PreventCrossUserAccess_AndMutation()
     {

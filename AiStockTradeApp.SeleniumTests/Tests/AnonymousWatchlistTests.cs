@@ -7,6 +7,7 @@ namespace AiStockTradeApp.SeleniumTests.Tests;
 public class AnonymousWatchlistTests : TestBase
 {
     [Trait("Category", "Anonymous")]
+    [Trait("AdoId", "1408")]
     [Fact(Skip = "Needs app running")]
     public void Dashboard_ShowsSessionWatchlist_WithQuotes()
     {
@@ -22,6 +23,7 @@ public class AnonymousWatchlistTests : TestBase
     }
 
     [Trait("Category", "Anonymous")]
+    [Trait("AdoId", "1409")]
     [Fact(Skip = "Needs app running")]
     public void EmptySession_ShowsLocalizedEmptyState_AndAddCta()
     {
@@ -31,6 +33,7 @@ public class AnonymousWatchlistTests : TestBase
     }
 
     [Trait("Category", "Anonymous")]
+    [Trait("AdoId", "1410")]
     [Fact(Skip = "Needs app running")]
     public void AddRemoveSymbol_AffectsSessionOnly_AndPreventsDuplicates()
     {
@@ -46,6 +49,7 @@ public class AnonymousWatchlistTests : TestBase
     }
 
     [Trait("Category", "Anonymous")]
+    [Trait("AdoId", "1411")]
     [Fact(Skip = "Needs credentials and seeded data")]
     public void ContextSwitch_OnSignOut_UsesSessionList()
     {

@@ -7,6 +7,7 @@ namespace AiStockTradeApp.SeleniumTests.Tests;
 public class AuthenticatedWatchlistTests : TestBase
 {
     [Trait("Category", "Authenticated")]
+    [Trait("AdoId", "1403")]
     [Fact(Skip = "Needs app URL and seeded user credentials")]
     public void Dashboard_ShowsPersistedWatchlist_WithQuotes()
     {
@@ -21,6 +22,7 @@ public class AuthenticatedWatchlistTests : TestBase
     }
 
     [Trait("Category", "Authenticated")]
+    [Trait("AdoId", "1404")]
     [Fact(Skip = "Needs seeded empty watchlist user")]
     public void EmptyWatchlist_ShowsLocalizedEmptyState_AndAddCta()
     {
@@ -34,6 +36,7 @@ public class AuthenticatedWatchlistTests : TestBase
     }
 
     [Trait("Category", "Authenticated")]
+    [Trait("AdoId", "1405")]
     [Fact(Skip = "Requires seeded user and UI hooks")]
     public void AddSymbol_Validates_Persists_AndPreventsDuplicates()
     {
@@ -50,6 +53,7 @@ public class AuthenticatedWatchlistTests : TestBase
     }
 
     [Trait("Category", "Authenticated")]
+    [Trait("AdoId", "1406")]
     [Fact(Skip = "Requires seeded user with AAPL")]
     public void RemoveSymbol_Deletes_FromPersistedWatchlist_AndUI()
     {
@@ -63,6 +67,7 @@ public class AuthenticatedWatchlistTests : TestBase
     }
 
     [Trait("Category", "Authenticated")]
+    [Trait("AdoId", "1407")]
     [Fact(Skip = "Requires session setup and user with AAPL")]
     public void MergeOnSignIn_SessionItems_DeDup_AppendToUser()
     {
