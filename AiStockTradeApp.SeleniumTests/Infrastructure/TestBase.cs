@@ -30,6 +30,24 @@ public abstract class TestBase : IAsyncLifetime
         {
             PropertyNameCaseInsensitive = true
         });
-        return settings ?? new TestSettings();
+        settings ??= new TestSettings();
+        // Environment overlay for CI
+        var baseUrl = Environment.GetEnvironmentVariable("SELENIUM_BASE_URL");
+        if (!string.IsNullOrWhiteSpace(baseUrl)) settings.BaseUrl = baseUrl;
+
+        var headless = Environment.GetEnvironmentVariable("SELENIUM_HEADLESS");
+        if (bool.TryParse(headless, out var hl)) settings.Headless = hl;
+
+        var culture = Environment.GetEnvironmentVariable("SELENIUM_CULTURE");
+        if (!string.IsNullOrWhiteSpace(culture)) settings.Culture = culture;
+
+        var username = Environment.GetEnvironmentVariable("SELENIUM_USERNAME");
+        var password = Environment.GetEnvironmentVariable("SELENIUM_PASSWORD");
+        if (!string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(password))
+        {
+            settings.Credentials = new Credentials(username ?? settings.Credentials.Username, password ?? settings.Credentials.Password);
+        }
+
+        return settings;
     }
 }

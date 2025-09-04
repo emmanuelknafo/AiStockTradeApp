@@ -46,6 +46,10 @@ public class DashboardPage
     public IReadOnlyCollection<string> GetSymbols()
     {
         var cards = _driver.FindElements(WatchlistCards);
-        return cards.Select(c => c.GetAttribute("data-testid").Replace("stock-card-", "")).ToArray();
+        return cards
+            .Select(c => c.GetAttribute("data-testid"))
+            .Where(v => !string.IsNullOrEmpty(v))
+            .Select(v => v!.Replace("stock-card-", ""))
+            .ToArray();
     }
 }

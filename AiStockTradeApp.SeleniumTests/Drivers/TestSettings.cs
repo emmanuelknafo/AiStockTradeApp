@@ -4,11 +4,11 @@ public record Credentials(string Username, string Password);
 
 public class TestSettings
 {
-    public string BaseUrl { get; init; } = "https://localhost:5001";
-    public string Browser { get; init; } = "Chrome";
-    public bool Headless { get; init; } = true;
-    public int ImplicitWaitMs { get; init; } = 2000;
-    public int PageLoadTimeoutSec { get; init; } = 60;
-    public Credentials Credentials { get; init; } = new("", "");
-    public string Culture { get; init; } = "en";
+    public string BaseUrl { get; set; } = "https://localhost:5001";
+    public string Browser { get; set; } = "Chrome";
+    public bool Headless { get; set; } = true;
+    public int ImplicitWaitMs { get; set; } = 2000;
+    public int PageLoadTimeoutSec { get; set; } = 60;
+    public Credentials Credentials { get; set; } = new("", "");
+    public string Culture { get; set; } = "en";
 }
