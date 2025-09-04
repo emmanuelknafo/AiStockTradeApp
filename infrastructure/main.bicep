@@ -293,13 +293,12 @@ resource sqlServerFirewallRuleAzure 'Microsoft.Sql/servers/firewallRules@2024-11
 }
 
 // Store SQL connection info in Key Vault
-resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = {
-  parent: keyVault
-  name: 'SqlConnectionString'
-  properties: {
-  value: 'Server=tcp:${sqlServerFqdnValue},1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;User Id=${userAssignedIdentity.properties.clientId};Encrypt=true;TrustServerCertificate=false;Connection Timeout=60;Command Timeout=120;'
-  }
-}
+// NOTE (Approach A - Managed Identity): We intentionally do NOT store the SQL connection string
+// in Key Vault any longer to avoid partial @Microsoft.KeyVault expansion issues inside
+// the application. If a secret is ever required again, re‑introduce this resource and
+// wire it only if absolutely needed – but keep the app’s connection string pointing
+// directly to the Managed Identity form in the Web App connectionStrings collection.
+// (Previous secret resource removed: SqlConnectionString)
 
 // Store API keys in Key Vault
 resource alphaVantageSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = if (!empty(alphaVantageApiKey)) {
@@ -410,10 +409,8 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'TwelveData__ApiKey'
           value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
         }
-        {
-          name: 'ConnectionStrings__DefaultConnection'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=SqlConnectionString)'
-        }
+  // ConnectionStrings__DefaultConnection setting removed (Approach A – MI). The
+  // platform connectionStrings section below already injects the full MI string.
         {
           name: 'APP_VERSION'
           value: empty(appVersion) ? '' : appVersion
@@ -524,10 +521,8 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
           name: 'TwelveData__ApiKey'
           value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
         }
-        {
-          name: 'ConnectionStrings__DefaultConnection'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=SqlConnectionString)'
-        }
+  // (MI) Removed Key Vault reference for DefaultConnection – using direct
+  // managed identity connection string via connectionStrings block.
         {
           name: 'APP_VERSION'
           value: empty(appVersion) ? '' : appVersion
@@ -626,10 +621,8 @@ resource webMcp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'TwelveData__ApiKey'
           value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
         }
-        {
-          name: 'ConnectionStrings__DefaultConnection'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=SqlConnectionString)'
-        }
+  // (MI) Removed Key Vault reference for DefaultConnection – using direct
+  // managed identity connection string via connectionStrings block.
         {
           name: 'APP_VERSION'
           value: empty(appVersion) ? '' : appVersion

@@ -13,8 +13,6 @@ using System.Globalization;
 using System.Text;
 using AiStockTradeApp.Api.Background;
 using Microsoft.AspNetCore.DataProtection;
-using Azure.Identity;
-using Azure.Security.KeyVault.Secrets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,132 +38,16 @@ if (useInMemory)
 }
 else
 {
-    // Resolve connection string with optional Key Vault reference pattern support
-    string ResolveConnectionString()
-    {
+    // Managed Identity only: obtain connection string directly from configuration / app settings
+    var cs = builder.Configuration.GetConnectionString("DefaultConnection")
+             ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+             ?? "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+
     ConnectionStringDiagnostics.Reset();
-        var raw = builder.Configuration.GetConnectionString("DefaultConnection")
-                  ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
-                  ?? Environment.GetEnvironmentVariable("DefaultConnection")
-                  ?? "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+    ConnectionStringDiagnostics.Source = "Plain:Config";
+    ConnectionStringDiagnostics.Resolved = true;
+    ConnectionStringDiagnostics.RawHadKeyVaultToken = cs.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase);
 
-        // Extra detection: sometimes reference is stored with quotes or leading spaces or not at start
-        bool looksLikeKvRef = raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase);
-        if (looksLikeKvRef)
-        {
-            try
-            {
-                var trimmed = raw.Trim().Trim('\"');
-                if (!trimmed.StartsWith("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
-                {
-                    // If reference not at start (unlikely) return raw
-                    Console.WriteLine("[ConnString] Detected '@Microsoft.KeyVault' substring but not at start; attempting parse anyway.");
-                }
-
-                var inner = raw.Substring(raw.IndexOf('(') + 1).TrimEnd(')', ' ');
-                string? secretUri = null;
-                string? secretName = null;
-                string? vaultName = null;
-
-                foreach (var part in inner.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                {
-                    var kvp = part.Split('=', 2);
-                    if (kvp.Length != 2) continue;
-                    var key = kvp[0].Trim();
-                    var val = kvp[1].Trim();
-                    if (key.Equals("SecretUri", StringComparison.OrdinalIgnoreCase)) secretUri = val;
-                    else if (key.Equals("SecretName", StringComparison.OrdinalIgnoreCase)) secretName = val;
-                    else if (key.Equals("VaultName", StringComparison.OrdinalIgnoreCase)) vaultName = val;
-                }
-
-                string? secretValue = null;
-                if (secretUri != null)
-                {
-                    // SecretUri format: https://<vault>.vault.azure.net/secrets/<name>/<version?>
-                    var client = new SecretClient(new Uri(secretUri.Split("/secrets/")[0]), new DefaultAzureCredential());
-                    var namePart = secretUri.Substring(secretUri.IndexOf("/secrets/") + 9);
-                    var name = namePart.Split('/', StringSplitOptions.RemoveEmptyEntries)[0];
-                    var version = namePart.Contains('/') ? namePart.Split('/', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault() : null;
-                    KeyVaultSecret secret = version == null
-                        ? client.GetSecret(name)
-                        : client.GetSecret(name, version);
-                    secretValue = secret.Value;
-                }
-                else if (secretName != null && vaultName != null)
-                {
-                    var vaultUri = new Uri($"https://{vaultName}.vault.azure.net/");
-                    var client = new SecretClient(vaultUri, new DefaultAzureCredential());
-                    secretValue = client.GetSecret(secretName).Value.Value;
-                }
-
-                if (!string.IsNullOrWhiteSpace(secretValue))
-                {
-                    Console.WriteLine("Resolved SQL connection string from Key Vault secret reference.");
-                    ConnectionStringDiagnostics.Resolved = true;
-                    ConnectionStringDiagnostics.Source = secretUri != null ? "KeyVault:SecretUri" : "KeyVault:NameVault";
-                    ConnectionStringDiagnostics.AttemptedKeyVault = true;
-                    ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
-                    return secretValue;
-                }
-
-                Console.WriteLine("Warning: Failed to resolve Key Vault reference in connection string; falling back to raw value.");
-                ConnectionStringDiagnostics.AttemptedKeyVault = true;
-                ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
-                return raw;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error resolving Key Vault connection string reference: {ex.Message}");
-                ConnectionStringDiagnostics.AttemptedKeyVault = true;
-                ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
-                return raw; // Fall back so app still starts (will likely fail later but logs are clearer)
-            }
-        }
-
-        // Alternate path: environment variables providing vault + secret names (if reference unsupported in connection strings)
-        var envVault = Environment.GetEnvironmentVariable("AZURE_KEY_VAULT_NAME");
-        var envSecretName = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTION_SECRET")
-                            ?? Environment.GetEnvironmentVariable("SQL_CONNECTION_SECRET_NAME");
-        if (!string.IsNullOrWhiteSpace(envVault) && !string.IsNullOrWhiteSpace(envSecretName) && raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                var client = new SecretClient(new Uri($"https://{envVault}.vault.azure.net/"), new DefaultAzureCredential());
-                var secret = client.GetSecret(envSecretName);
-                if (!string.IsNullOrWhiteSpace(secret.Value.Value))
-                {
-                    Console.WriteLine("Resolved SQL connection string via explicit AZURE_KEY_VAULT_NAME + AZURE_SQL_CONNECTION_SECRET env vars.");
-                    ConnectionStringDiagnostics.Source = "EnvFallback:KeyVault";
-                    ConnectionStringDiagnostics.EnvFallbackUsed = true;
-                    ConnectionStringDiagnostics.Resolved = true;
-                    ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
-                    return secret.Value.Value;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Fallback env var Key Vault secret resolution failed: {ex.Message}");
-                ConnectionStringDiagnostics.EnvFallbackUsed = true;
-                ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
-            }
-        }
-
-        if (raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
-        {
-            Console.WriteLine("Warning: Connection string still contains unresolved @Microsoft.KeyVault reference AFTER resolution attempts.");
-            ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
-            ConnectionStringDiagnostics.Source ??= "Unresolved:KeyVaultReference";
-        }
-        else
-        {
-            ConnectionStringDiagnostics.Source ??= "Plain:Config";
-            ConnectionStringDiagnostics.Resolved = true;
-        }
-
-        return raw;
-    }
-
-    var cs = ResolveConnectionString();
     builder.Services.AddDbContext<StockDataContext>(options =>
     {
         options.UseSqlServer(cs, sql =>
@@ -175,7 +57,6 @@ else
         });
     });
 
-    // Startup diagnostic log (sanitized) to help verify which connection string form is being used in Azure.
     try
     {
         static string SanitizeForLog(string connectionString)
@@ -190,7 +71,6 @@ else
                     if (!string.IsNullOrEmpty(uid) && uid!.Length > 1)
                         b["User ID"] = uid[0] + "***";
                 }
-                // Mask AccessToken if present (rare in raw string)
                 if (b.TryGetValue("Access Token", out var _))
                 {
                     b["Access Token"] = "***";
@@ -208,10 +88,10 @@ else
         Console.WriteLine($"[ConnString] Final (sanitized) connection string selected. UnresolvedKeyVaultRef={unresolvedRef}. Value='{sanitized}'");
         if (unresolvedRef)
         {
-            Console.WriteLine("[ConnString][Warning] Connection string still contains @Microsoft.KeyVault token. Ensure reference is placed in an App Setting (ConnectionStrings__DefaultConnection) or env fallback variables are set.");
+            Console.WriteLine("[ConnString][Warning] Connection string still contains @Microsoft.KeyVault token. Ensure it is replaced with the full Managed Identity connection string.");
         }
-    ConnectionStringDiagnostics.Sanitized = sanitized;
-    ConnectionStringDiagnostics.Unresolved = unresolvedRef;
+        ConnectionStringDiagnostics.Sanitized = sanitized;
+        ConnectionStringDiagnostics.Unresolved = unresolvedRef;
     }
     catch (Exception ex)
     {

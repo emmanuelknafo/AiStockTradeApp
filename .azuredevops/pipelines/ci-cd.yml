@@ -2219,47 +2219,20 @@ stages:
                       echo "🗄️ Checking database migration options..."
                       echo "Resource Group: ${RG_NAME}"
 
-                      # Try to get connection string from Key Vault, but don't fail if access is denied
-                      KEY_VAULT_NAME="kv-aistock-prod-$(instanceNum)"
-                      echo "Attempting to retrieve connection string from Key Vault: ${KEY_VAULT_NAME}"
-
-                      CONNECTION_STRING=$(az keyvault secret show --vault-name "${KEY_VAULT_NAME}" --name "SqlConnectionString" --query "value" --output tsv 2>/dev/null || echo "")
-
-                      if [ -z "${CONNECTION_STRING}" ]; then
-                        echo "ℹ️ Could not retrieve connection string from Key Vault."
-                        echo "This is expected for first-time deployments or when pipeline doesn't have Key Vault access."
-                        echo ""
-                        echo "🚀 Database migrations will run automatically on first app startup."
-                        echo "The application is configured to:"
-                        echo "  1. Use Azure AD managed identity authentication"
-                        echo "  2. Run Entity Framework migrations automatically"
-                        echo "  3. Create necessary database schema"
-                        echo ""
-                        echo "✅ Skipping manual migration - letting app handle it during startup"
-                      else
-                        echo "✅ Retrieved connection string from Key Vault"
-                        echo "Connection string type: $(echo "${CONNECTION_STRING}" | grep -o 'Authentication=[^;]*' || echo 'SQL Authentication')"
-                        
-                        if echo "${CONNECTION_STRING}" | grep -q "Authentication=Active Directory Default"; then
-                          echo "🔐 Using Azure AD authentication for migrations"
-                        else
-                          echo "🔑 Using SQL authentication for migrations"
+                      echo "🔐 Managed Identity mode: skipping Key Vault SqlConnectionString secret (Approach A)."
+                      echo "EF migrations will be applied by application startup if needed."
+                      echo "Adding post-deploy health polling to verify MI connection."
+                      API_URL="https://api-aistock-prod-$(instanceNum).azurewebsites.net"
+                      for i in $(seq 1 12); do
+                        CODE=$(curl -s -o health.json -w "%{http_code}" "$API_URL/health/db" || true)
+                        echo "Health attempt $i HTTP=$CODE"
+                        if [ "$CODE" = "200" ]; then
+                          if grep -q '@Microsoft.KeyVault' health.json; then echo "❌ Unresolved KeyVault token found"; exit 1; fi
+                          if grep -q '"dbConnection"\s*:\s*true' health.json; then echo "✅ API reports DB connection via MI"; break; fi
                         fi
-                        
-                        echo "Running database migrations manually..."
-                        cd AiStockTradeApp
-                        export ConnectionStrings__DefaultConnection="${CONNECTION_STRING}"
-                        
-                        # Run with verbose output
-                        echo "Starting Entity Framework migration..."
-                        dotnet ef database update --verbose
-                        
-                        if [ $? -eq 0 ]; then
-                          echo "✅ Database migrations completed successfully"
-                        else
-                          echo "⚠️ Migration failed, but this may be handled during app startup"
-                        fi
-                      fi
+                        sleep 10
+                      done
+                      echo "Health snapshot:"; cat health.json || true
 
                 - task: AzureCLI@2
                   displayName: "Update Web App Container"

@@ -140,6 +140,16 @@ jobs:
           echo "InformationalVersion=${{ steps.gitversion.outputs.informationalVersion }}"
           echo "Version for downstream usage set"
 
+      - name: Validate no legacy KeyVault connection string (Approach A enforcement)
+        run: |
+          echo "Scanning repository for legacy SqlConnectionString secret references..."
+          if grep -R "SqlConnectionString" -n infrastructure/main.bicep | grep -v "Previous secret resource removed"; then
+            echo "❌ Found unexpected SqlConnectionString secret reference. Failing."; exit 1; else echo "✅ No legacy SqlConnectionString secret resource present."; fi
+          echo "Ensuring no app setting injects ConnectionStrings__DefaultConnection via @Microsoft.KeyVault..."
+          if grep -R "ConnectionStrings__DefaultConnection" infrastructure/main.bicep | grep "@Microsoft.KeyVault"; then
+            echo "❌ Found KeyVault reference for ConnectionStrings__DefaultConnection."; exit 1; else echo "✅ No KeyVault reference for ConnectionStrings__DefaultConnection."; fi
+          echo "Finished MI enforcement pre-check."
+
       - name: Restore dependencies
         run: dotnet restore AiStockTradeApp.sln
 
@@ -1508,6 +1518,17 @@ jobs:
             echo "✅ SQL Server is reachable on port 1433"
           fi
 
+          echo "🌐 Polling API health endpoint for Managed Identity DB connectivity (pre-user-create)"
+          API_URL="https://api-aistock-prod-${INSTANCE_NUM}.azurewebsites.net"
+          for i in $(seq 1 8); do
+            CODE=$(curl -s -o health_pre.json -w "%{http_code}" "$API_URL/health/db" || true)
+            echo "Health attempt $i HTTP=$CODE"
+            if [ "$CODE" = "200" ]; then
+              if grep -q '@Microsoft.KeyVault' health_pre.json; then echo "❌ Unresolved KeyVault token detected (pre-user-create)"; exit 1; fi
+              break
+            fi
+            sleep 8
+          done
           echo "Attempting to create managed identity user in SQL database (UAMI-aware)..."
 
           # Use resolved PRINCIPAL_NAME (UAMI display name when present) for SQL principal
@@ -1551,6 +1572,16 @@ jobs:
             else
               echo "Connection test failed, but user creation may have succeeded"
             fi
+            echo "🔁 Polling API health endpoint post user creation to confirm DB connection via MI"
+            for i in $(seq 1 12); do
+              CODE=$(curl -s -o health_post.json -w "%{http_code}" "$API_URL/health/db" || true)
+              echo "Post-create health attempt $i HTTP=$CODE"
+              if [ "$CODE" = "200" ]; then
+                if grep -q '@Microsoft.KeyVault' health_post.json; then echo "❌ Unresolved KeyVault token detected post user creation"; exit 1; fi
+                if grep -q '"dbConnection"\s*:\s*true' health_post.json; then echo "✅ API reports successful DB connection via Managed Identity"; break; fi
+              fi
+              sleep 10
+            done
           else
             echo "⚠️ All $MAX_RETRIES attempts to create the managed identity user failed."
             echo "Manual Steps Required:"
