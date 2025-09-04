@@ -18,6 +18,7 @@
   <!-- Added for Key Vault secret retrieval at runtime -->
   <PackageReference Include="Azure.Identity" Version="1.15.0" />
   <PackageReference Include="Azure.Security.KeyVault.Secrets" Version="4.8.0" />
+  <PackageReference Include="Azure.Extensions.AspNetCore.Configuration.Secrets" Version="1.3.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -403,11 +403,13 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
         }
         {
           name: 'AlphaVantage__ApiKey'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
+          // Only inject Key Vault reference when a value was provided (secret created). Otherwise leave blank
+          value: empty(alphaVantageApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
         }
         {
           name: 'TwelveData__ApiKey'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
+          // Only inject Key Vault reference when a value was provided (secret created). Otherwise leave blank
+          value: empty(twelveDataApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
         }
   // ConnectionStrings__DefaultConnection setting removed (Approach A – MI). The
   // platform connectionStrings section below already injects the full MI string.
@@ -515,11 +517,13 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
         }
         {
           name: 'AlphaVantage__ApiKey'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
+          // Conditional Key Vault reference to avoid unresolved-keyvault status when param empty
+          value: empty(alphaVantageApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
         }
         {
           name: 'TwelveData__ApiKey'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
+          // Conditional Key Vault reference to avoid unresolved-keyvault status when param empty
+          value: empty(twelveDataApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
         }
   // (MI) Removed Key Vault reference for DefaultConnection – using direct
   // managed identity connection string via connectionStrings block.
@@ -615,11 +619,13 @@ resource webMcp 'Microsoft.Web/sites@2024-11-01' = {
         }
         {
           name: 'AlphaVantage__ApiKey'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
+          // Conditional Key Vault reference to avoid unresolved-keyvault status when param empty
+          value: empty(alphaVantageApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
         }
         {
           name: 'TwelveData__ApiKey'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
+          // Conditional Key Vault reference to avoid unresolved-keyvault status when param empty
+          value: empty(twelveDataApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
         }
   // (MI) Removed Key Vault reference for DefaultConnection – using direct
   // managed identity connection string via connectionStrings block.

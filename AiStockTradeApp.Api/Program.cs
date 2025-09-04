@@ -6,6 +6,12 @@ using AiStockTradeApp.Services.Implementations;
 using AiStockTradeApp.Services.Interfaces;
 using AiStockTradeApp.Services;
 using AiStockTradeApp.Api.Middleware;
+using Azure.Identity;
+using Azure.Core;
+using AiStockTradeApp.Api; // diagnostics helpers
+// AddAzureKeyVault extension lives in Azure.Extensions.AspNetCore.Configuration.Secrets
+// Guard usage in case package isn't restored yet during early build pipeline phases.
+// Note: Azure.Extensions.AspNetCore.Configuration.Secrets package not reliably available here; implementing manual bootstrap.
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
@@ -15,6 +21,73 @@ using AiStockTradeApp.Api.Background;
 using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Manual Key Vault secret bootstrap (best practice adaptation) with user-assigned managed identity support
+try
+{
+    var kvUri = builder.Configuration["KeyVault:Uri"] ?? Environment.GetEnvironmentVariable("KEYVAULT_URI");
+    var kvName = builder.Configuration["KeyVault:Name"] ?? Environment.GetEnvironmentVariable("KEYVAULT_NAME");
+    if (string.IsNullOrWhiteSpace(kvUri) && !string.IsNullOrWhiteSpace(kvName)) kvUri = $"https://{kvName}.vault.azure.net/";
+    if (!string.IsNullOrWhiteSpace(kvUri))
+    {
+        var userAssignedClientId = builder.Configuration["ManagedIdentity:ClientId"] ?? Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+        var credOpts = new DefaultAzureCredentialOptions();
+        if (!string.IsNullOrWhiteSpace(userAssignedClientId)) credOpts.ManagedIdentityClientId = userAssignedClientId;
+        var credential = new DefaultAzureCredential(credOpts);
+        builder.Services.AddSingleton<TokenCredential>(credential);
+
+        var secretClient = new Azure.Security.KeyVault.Secrets.SecretClient(new Uri(kvUri), credential);
+        // Determine which secrets to pull. Allow explicit list via KeyVault:Secrets:0..n else default to known keys.
+        var secretsList = new List<string>();
+        for (int i = 0; i < 20; i++)
+        {
+            var name = builder.Configuration[$"KeyVault:Secrets:{i}"]; if (string.IsNullOrWhiteSpace(name)) break; secretsList.Add(name.Trim());
+        }
+        if (secretsList.Count == 0)
+        {
+            // Default expected secrets using double-hyphen mapping convention (SecretName AlphaVantage--ApiKey => config AlphaVantage:ApiKey)
+            secretsList.AddRange(new[] { "AlphaVantage--ApiKey", "TwelveData--ApiKey" });
+        }
+        var loaded = 0;
+        var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var secretName in secretsList.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var secret = secretClient.GetSecret(secretName);
+                var value = secret.Value.Value;
+                if (value != null)
+                {
+                    // Map double-dash to colon for configuration key normalization
+                    var key = secretName.Replace("--", ":");
+                    dict[key] = value;
+                    loaded++;
+                }
+            }
+            catch (Exception exSecret)
+            {
+                Console.WriteLine($"[KeyVault][Info] Unable to load secret '{secretName}': {exSecret.Message}");
+            }
+        }
+        if (loaded > 0)
+        {
+            builder.Configuration.AddInMemoryCollection(dict!);
+            Console.WriteLine($"[KeyVault] Bootstrapped {loaded} secrets into configuration (UserAssigned={(string.IsNullOrWhiteSpace(userAssignedClientId)?"false":"true")}).");
+        }
+        else
+        {
+            Console.WriteLine("[KeyVault] No secrets loaded (check access policies / secret names).");
+        }
+    }
+    else
+    {
+        Console.WriteLine("[KeyVault] No KeyVault:Uri / KEYVAULT_URI provided; skipping manual bootstrap.");
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[KeyVault][Warn] Manual bootstrap failed: {ex.Message}");
+}
 
 // Enhanced logging configuration
 builder.Logging.ClearProviders();
@@ -342,43 +415,11 @@ app.MapGet("/health/db", async (IServiceProvider sp) =>
 .Produces(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status503ServiceUnavailable);
 
-// API key diagnostic (masked). Provides visibility into whether keys are present, placeholder, demo, or unresolved KeyVault tokens.
-app.MapGet("/health/api-keys", (IConfiguration config) =>
+// API key diagnostics with runtime Key Vault reference resolution
+app.MapGet("/health/api-keys", async (IConfiguration config, ILogger<Program> logger, TokenCredential? credential) =>
 {
-    static string Classify(string? raw, string placeholder, bool treatDemo = false)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return "missing";
-        if (raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase)) return "unresolved-keyvault";
-        if (raw == placeholder) return "placeholder";
-        if (treatDemo && string.Equals(raw, "demo", StringComparison.OrdinalIgnoreCase)) return "demo";
-        return "configured";
-    }
-
-    static string Mask(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw) || raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase)) return ""; // don't echo tokens
-        if (raw.Length <= 4) return "***";
-        return raw[..2] + new string('*', Math.Max(0, raw.Length - 4)) + raw[^2..];
-    }
-
-    var alphaRaw = config["AlphaVantage:ApiKey"];
-    var twelveRaw = config["TwelveData:ApiKey"];
-
-    var result = new
-    {
-        alphaVantage = new
-        {
-            status = Classify(alphaRaw, "YOUR_ALPHA_VANTAGE_API_KEY"),
-            masked = Mask(alphaRaw)
-        },
-        twelveData = new
-        {
-            status = Classify(twelveRaw, "YOUR_TWELVE_DATA_API_KEY", treatDemo: true),
-            masked = Mask(twelveRaw)
-        }
-    };
-
-    return Results.Json(result);
+    var payload = await ApiKeyDiagnostics.GetStatusAsync(config, logger, credential);
+    return Results.Json(payload);
 })
 .WithName("GetApiKeyHealth")
 .Produces(StatusCodes.Status200OK);
