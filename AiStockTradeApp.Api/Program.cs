@@ -342,6 +342,47 @@ app.MapGet("/health/db", async (IServiceProvider sp) =>
 .Produces(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status503ServiceUnavailable);
 
+// API key diagnostic (masked). Provides visibility into whether keys are present, placeholder, demo, or unresolved KeyVault tokens.
+app.MapGet("/health/api-keys", (IConfiguration config) =>
+{
+    static string Classify(string? raw, string placeholder, bool treatDemo = false)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "missing";
+        if (raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase)) return "unresolved-keyvault";
+        if (raw == placeholder) return "placeholder";
+        if (treatDemo && string.Equals(raw, "demo", StringComparison.OrdinalIgnoreCase)) return "demo";
+        return "configured";
+    }
+
+    static string Mask(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw) || raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase)) return ""; // don't echo tokens
+        if (raw.Length <= 4) return "***";
+        return raw[..2] + new string('*', Math.Max(0, raw.Length - 4)) + raw[^2..];
+    }
+
+    var alphaRaw = config["AlphaVantage:ApiKey"];
+    var twelveRaw = config["TwelveData:ApiKey"];
+
+    var result = new
+    {
+        alphaVantage = new
+        {
+            status = Classify(alphaRaw, "YOUR_ALPHA_VANTAGE_API_KEY"),
+            masked = Mask(alphaRaw)
+        },
+        twelveData = new
+        {
+            status = Classify(twelveRaw, "YOUR_TWELVE_DATA_API_KEY", treatDemo: true),
+            masked = Mask(twelveRaw)
+        }
+    };
+
+    return Results.Json(result);
+})
+.WithName("GetApiKeyHealth")
+.Produces(StatusCodes.Status200OK);
+
 // Configure the HTTP request pipeline - ONLY add Swagger UI if not testing AND has swagger services
 if (app.Environment.IsDevelopment() && !isTesting)
 {

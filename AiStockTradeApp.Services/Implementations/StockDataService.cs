@@ -57,7 +57,12 @@ namespace AiStockTradeApp.Services.Implementations
                 
                 await ApplyRateLimitAsync();
 
-                var apiKey = _configuration["AlphaVantage:ApiKey"];
+                var apiKey = _configuration["AlphaVantage:ApiKey"]; // May be plain value, placeholder, or unresolved @Microsoft.KeyVault token
+                if (!string.IsNullOrWhiteSpace(apiKey) && apiKey.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("Alpha Vantage API key appears to be an unresolved KeyVault reference. Treating as missing so fallback providers engage.");
+                    apiKey = string.Empty; // Force fallback chain
+                }
                 
                 // Try Alpha Vantage first if API key is available
                 if (!string.IsNullOrEmpty(apiKey) && apiKey != "YOUR_ALPHA_VANTAGE_API_KEY")
@@ -240,7 +245,12 @@ namespace AiStockTradeApp.Services.Implementations
 
         private async Task<StockQuoteResponse> FetchFromTwelveDataAsync(string symbol)
         {
-            var apiKey = _configuration["TwelveData:ApiKey"];
+            var apiKey = _configuration["TwelveData:ApiKey"]; // Could be direct value or unresolved KeyVault token
+            if (!string.IsNullOrWhiteSpace(apiKey) && apiKey.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Twelve Data API key appears to be an unresolved KeyVault reference. Falling back to demo key.");
+                apiKey = string.Empty; // trigger demo fallback logic
+            }
             
             // Use demo key as fallback if no API key is configured
             if (string.IsNullOrEmpty(apiKey) || apiKey == "YOUR_TWELVE_DATA_API_KEY")
@@ -366,7 +376,12 @@ namespace AiStockTradeApp.Services.Implementations
                 await ApplyRateLimitAsync();
 
                 // Try Alpha Vantage first if API key is available
-                var apiKey = _configuration["AlphaVantage:ApiKey"];
+                var apiKey = _configuration["AlphaVantage:ApiKey"]; // May contain unresolved KV token
+                if (!string.IsNullOrWhiteSpace(apiKey) && apiKey.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("Alpha Vantage API key unresolved KeyVault reference detected during historical fetch for {Symbol}; skipping Alpha Vantage.", symbol);
+                    apiKey = string.Empty;
+                }
                 _logger.LogInformation("Alpha Vantage API key configured: {HasKey}", !string.IsNullOrEmpty(apiKey) && apiKey != "YOUR_ALPHA_VANTAGE_API_KEY");
                 
                 if (!string.IsNullOrEmpty(apiKey) && apiKey != "YOUR_ALPHA_VANTAGE_API_KEY")
