@@ -51,39 +51,58 @@ public class StockDashboardPage
     {
         await TickerInput.FillAsync(symbol);
         await AddButton.ClickAsync();
-        
-        // Wait for notification to appear (either success or error)
-        await _page.WaitForTimeoutAsync(3000);
-        
-        // Check for notifications
-        var notifications = await _page.Locator(".notification").AllAsync();
-        if (notifications.Count > 0)
+
+        // Robust wait: any of (notification, stock card, input cleared + network idle) within timeout
+        var timeoutMs = 10000;
+        var end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var cardSelector = $"#card-{symbol}";
+        bool success = false;
+        while (DateTime.UtcNow < end)
         {
-            var notificationText = await notifications[0].TextContentAsync();
-            if (notificationText?.Contains("Added") == true || notificationText?.Contains("Success") == true)
+            // Check notification first
+            var notif = await _page.Locator(".notification").AllAsync();
+            if (notif.Count > 0)
             {
-                // Wait for input to be cleared (JavaScript clears it before reload)
-                try
+                var txt = (await notif[0].TextContentAsync()) ?? string.Empty;
+                if (txt.Contains("Added", StringComparison.OrdinalIgnoreCase) || txt.Contains("Success", StringComparison.OrdinalIgnoreCase))
                 {
-                    await _page.WaitForFunctionAsync("() => document.getElementById('ticker-input').value === ''", new PageWaitForFunctionOptions { Timeout = 3000 });
+                    success = true;
                 }
-                catch (TimeoutException)
+                // Break regardless—we captured notification for test logic to evaluate
+                break;
+            }
+
+            // If stock card already present (maybe notification was very fast and disappeared)
+            if (await _page.Locator(cardSelector).IsVisibleAsync())
+            {
+                success = true;
+                break;
+            }
+
+            // If input cleared, give chance for reload / card to appear
+            try
+            {
+                var inputValue = await TickerInput.InputValueAsync(new LocatorInputValueOptions { Timeout = 500 });
+                if (string.IsNullOrEmpty(inputValue))
                 {
-                    // Input might not be cleared if there was an error, continue anyway
-                }
-                
-                // Wait for page reload to complete (JavaScript triggers reload after 1 second)
-                try
-                {
-                    await _page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 15000 });
-                    // Additional wait to ensure stock card rendering is complete
-                    await _page.WaitForTimeoutAsync(2000);
-                }
-                catch (TimeoutException)
-                {
-                    // Page might not reload if there was an error, continue anyway
+                    // Wait briefly for potential reload/render
+                    await _page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 3000 });
                 }
             }
+            catch { /* ignore transient */ }
+
+            await Task.Delay(300);
+        }
+
+        if (success)
+        {
+            // Ensure final load & rendering
+            try
+            {
+                await _page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 5000 });
+                await _page.WaitForTimeoutAsync(500);
+            }
+            catch { }
         }
     }
 
