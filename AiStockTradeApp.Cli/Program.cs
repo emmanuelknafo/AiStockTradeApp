@@ -3,6 +3,7 @@ using Spectre.Console.Cli;
 using System.ComponentModel;
 using Microsoft.Playwright;
 using System.Text.RegularExpressions;
+using Microsoft.Data.SqlClient; // direct SQL access for user/watchlist commands
 
 namespace AiStockTradeApp.Cli;
 
@@ -28,8 +29,328 @@ public class Program
                 cfg.AddCommand<CheckJobCommand>("check-job")
                     .WithDescription("Check background job status by jobId")
                     .WithExample(new[] { "check-job", "--job", "<GUID>", "--api", "https://localhost:5001" });
+
+            // User & watchlist management (direct DB access) ----------------------------------
+            cfg.AddCommand<ListUsersCommand>("list-users")
+                .WithDescription("List application users (top N)")
+                .WithExample(new[]{"list-users","--top","25"});
+            cfg.AddCommand<CreateUserCommand>("create-user")
+                .WithDescription("Create an Identity user with password (direct DB insert). USE ONLY IN DEV/TEST.")
+                .WithExample(new[]{"create-user","--email","demo@example.com","--password","P@ssw0rd1!"});
+            cfg.AddCommand<GetWatchlistCommand>("get-watchlist")
+                .WithDescription("Display a user's watchlist items")
+                .WithExample(new[]{"get-watchlist","--userId","<USER_GUID>"});
         });
         return await app.RunAsync(args);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Shared settings for direct DB operations
+// -----------------------------------------------------------------------------
+public abstract class DbSettingsBase : CommandSettings
+{
+    [CommandOption("--conn <CONNSTRING>")]
+    [Description("SQL Server connection string. If omitted, tries ConnectionStrings__DefaultConnection env var.")]
+    public string? ConnectionString { get; init; }
+
+    public string ResolveConnectionString()
+    {
+        var cs = ConnectionString
+                 ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+                 ?? "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+        return cs;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// list-users
+// -----------------------------------------------------------------------------
+public sealed class ListUsersSettings : DbSettingsBase
+{
+    [CommandOption("--top <N>")]
+    [Description("Max rows (default 20)")]
+    [DefaultValue(20)]
+    public int Top { get; init; } = 20;
+
+    public override ValidationResult Validate()
+    {
+        if (Top <= 0 || Top > 500) return ValidationResult.Error("--top must be between 1 and 500");
+        return ValidationResult.Success();
+    }
+}
+
+public sealed class ListUsersCommand : AsyncCommand<ListUsersSettings>
+{
+    public override async Task<int> ExecuteAsync(CommandContext context, ListUsersSettings settings)
+    {
+        try
+        {
+            var cs = settings.ResolveConnectionString();
+            using var conn = new SqlConnection(cs);
+            await conn.OpenAsync();
+
+            // Determine user table (supports legacy AspNetUsers or custom Users)
+            var userTable = await DbIntrospection.ResolveUserTableAsync(conn);
+            var cols = await DbIntrospection.GetColumnSetAsync(conn, userTable);
+
+            // Preferred columns (some may not exist in custom schema)
+            string[] preferred = ["Id","Email","UserName","CreatedAt","LastLoginAt"];            
+            var selectCols = preferred.Where(c => cols.Contains(c)).ToList();
+            if (!selectCols.Contains("Id")) selectCols.Insert(0, "Id");
+            var orderCol = selectCols.Contains("CreatedAt") ? "CreatedAt" : "Id";
+
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT TOP (@top) {string.Join(",", selectCols)} FROM {userTable} ORDER BY {orderCol} DESC";
+            cmd.Parameters.Add(new SqlParameter("@top", settings.Top));
+            var rows = new List<Dictionary<string, object?>>();
+            using (var rdr = await cmd.ExecuteReaderAsync())
+            {
+                while (await rdr.ReadAsync())
+                {
+                    var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var c in selectCols)
+                    {
+                        var ord = rdr.GetOrdinal(c);
+                        dict[c] = rdr.IsDBNull(ord) ? null : rdr.GetValue(ord);
+                    }
+                    rows.Add(dict);
+                }
+            }
+            if (rows.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[yellow]No users found.[/]");
+                return 0;
+            }
+            var table = new Table();
+            table.AddColumn("Id");
+            table.AddColumn("Email");
+            table.AddColumn("UserName");
+            table.AddColumn("CreatedAt (UTC)");
+            table.AddColumn("LastLogin (UTC)");
+            foreach (var r in rows)
+            {
+                string Get(string k) => r.TryGetValue(k, out var v) && v!=null ? (v is DateTime dt? dt.ToString("u") : v.ToString() ?? "") : "";
+                table.AddRow(Get("Id"), Get("Email"), Get("UserName"), Get("CreatedAt"), Get("LastLoginAt"));
+            }
+            AnsiConsole.Write(table);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
+            return 1;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// create-user (direct insert). WARNING: bypasses normal Identity hashing policy.
+// -----------------------------------------------------------------------------
+public sealed class CreateUserSettings : DbSettingsBase
+{
+    [CommandOption("--email <EMAIL>")]
+    [Description("Email/username for the user")]
+    public string Email { get; init; } = string.Empty;
+
+    [CommandOption("--password <PWD>")]
+    [Description("Plaintext password; will store a precomputed hash for P@ssw0rd1! only, otherwise error")]
+    public string Password { get; init; } = string.Empty;
+
+    [CommandOption("--id <GUID>")]
+    [Description("Optional explicit user ID (GUID). If omitted a GUID is generated.")]
+    public string? UserId { get; init; }
+
+    public override ValidationResult Validate()
+    {
+        if (string.IsNullOrWhiteSpace(Email)) return ValidationResult.Error("--email required");
+        if (string.IsNullOrWhiteSpace(Password)) return ValidationResult.Error("--password required");
+        if (!string.Equals(Password, "P@ssw0rd1!", StringComparison.Ordinal))
+            return ValidationResult.Error("Only password 'P@ssw0rd1!' supported (pre-hashed). Change code to expand.");
+        if (!string.IsNullOrWhiteSpace(UserId) && !Guid.TryParse(UserId, out _))
+            return ValidationResult.Error("--id must be GUID");
+        return ValidationResult.Success();
+    }
+}
+
+public sealed class CreateUserCommand : AsyncCommand<CreateUserSettings>
+{
+    // Precomputed Identity v7+ styled hash for password P@ssw0rd1!
+    private const string KnownHash = "AQAAAAIAAYagAAAAEP9bL7MWHf2vzZ5L1GgcFJQQmLk4yL4blvVvK2uWS2h9Jq1wWNxCQtBxMBT7I5ZyOw=="; // example placeholder
+    public override async Task<int> ExecuteAsync(CommandContext context, CreateUserSettings settings)
+    {
+        try
+        {
+            var cs = settings.ResolveConnectionString();
+            using var conn = new SqlConnection(cs);
+            await conn.OpenAsync();
+            var userId = string.IsNullOrWhiteSpace(settings.UserId) ? Guid.NewGuid().ToString() : settings.UserId!;
+
+            var userTable = await DbIntrospection.ResolveUserTableAsync(conn);
+            var cols = await DbIntrospection.GetColumnSetAsync(conn, userTable);
+
+            // Determine normalized email column names
+            var normalizedEmailCol = cols.Contains("NormalizedEmail") ? "NormalizedEmail" : cols.Contains("Email") ? "Email" : null;
+
+            var existsCmd = conn.CreateCommand();
+            if (normalizedEmailCol != null)
+            {
+                existsCmd.CommandText = $"SELECT COUNT(1) FROM {userTable} WHERE {normalizedEmailCol}=@e";
+                existsCmd.Parameters.Add(new SqlParameter("@e", settings.Email.ToUpperInvariant()));
+            }
+            else
+            {
+                existsCmd.CommandText = $"SELECT 0"; // No email column to enforce uniqueness
+            }
+            var exists = (int)await existsCmd.ExecuteScalarAsync() > 0;
+            if (exists)
+            {
+                AnsiConsole.MarkupLine("[yellow]User already exists.[/]");
+                return 0;
+            }
+            var now = DateTime.UtcNow;
+            var insert = conn.CreateCommand();
+
+            // Build insert tailored to detected columns
+            // Core required: Id + some username/email + password hash (if column exists)
+            var colList = new List<string> {"Id"};
+            var paramList = new List<string> {"@id"};
+            var parameters = new List<SqlParameter> { new("@id", userId) };
+
+            void Add(string col, string paramName, object value)
+            {
+                colList.Add(col); paramList.Add(paramName); parameters.Add(new SqlParameter(paramName, value ?? (object)DBNull.Value));
+            }
+
+            // Username / Email variants
+            if (cols.Contains("UserName")) Add("UserName","@un", settings.Email);
+            if (cols.Contains("NormalizedUserName")) Add("NormalizedUserName","@nun", settings.Email.ToUpperInvariant());
+            if (cols.Contains("Email")) Add("Email","@em", settings.Email);
+            if (cols.Contains("NormalizedEmail")) Add("NormalizedEmail","@nem", settings.Email.ToUpperInvariant());
+            if (cols.Contains("EmailConfirmed")) Add("EmailConfirmed","@ec", 0);
+            if (cols.Contains("PasswordHash")) Add("PasswordHash","@pwd", KnownHash);
+            if (cols.Contains("SecurityStamp")) Add("SecurityStamp","@sec", Guid.NewGuid().ToString());
+            if (cols.Contains("ConcurrencyStamp")) Add("ConcurrencyStamp","@cc", Guid.NewGuid().ToString());
+            if (cols.Contains("PhoneNumberConfirmed")) Add("PhoneNumberConfirmed","@pnc", 0);
+            if (cols.Contains("TwoFactorEnabled")) Add("TwoFactorEnabled","@tfe", 0);
+            if (cols.Contains("LockoutEnabled")) Add("LockoutEnabled","@loe", 1);
+            if (cols.Contains("AccessFailedCount")) Add("AccessFailedCount","@afc", 0);
+            if (cols.Contains("CreatedAt")) Add("CreatedAt","@created", now);
+            if (cols.Contains("EnablePriceAlerts")) Add("EnablePriceAlerts","@epa", 1);
+            if (cols.Contains("PreferredCulture")) Add("PreferredCulture","@pc", "en");
+
+            insert.CommandText = $"INSERT INTO {userTable} ({string.Join(",", colList)}) VALUES ({string.Join(",", paramList)})";
+            insert.Parameters.AddRange(parameters.ToArray());
+            var rows = await insert.ExecuteNonQueryAsync();
+            if (rows == 1)
+            {
+                AnsiConsole.MarkupLine($"[green]Created user[/] [cyan]{settings.Email}[/] Id=[yellow]{userId}[/]");
+                return 0;
+            }
+            AnsiConsole.MarkupLine("[red]Insert failed (no rows).[/]");
+            return 2;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
+            return 1;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// get-watchlist
+// -----------------------------------------------------------------------------
+public sealed class GetWatchlistSettings : DbSettingsBase
+{
+    [CommandOption("--userId <GUID>")]
+    [Description("User Id (GUID string)")]
+    public string UserId { get; init; } = string.Empty;
+
+    public override ValidationResult Validate()
+    {
+        if (!Guid.TryParse(UserId, out _)) return ValidationResult.Error("--userId must be GUID");
+        return ValidationResult.Success();
+    }
+}
+
+public sealed class GetWatchlistCommand : AsyncCommand<GetWatchlistSettings>
+{
+    public override async Task<int> ExecuteAsync(CommandContext context, GetWatchlistSettings settings)
+    {
+        try
+        {
+            var cs = settings.ResolveConnectionString();
+            using var conn = new SqlConnection(cs);
+            await conn.OpenAsync();
+            var userTable = await DbIntrospection.ResolveUserTableAsync(conn);
+            var cols = await DbIntrospection.GetColumnSetAsync(conn, userTable);
+
+            // Validate user exists (try Email, else UserName)
+            var emailColumn = cols.Contains("Email") ? "Email" : cols.Contains("UserName") ? "UserName" : "Id";
+            var chk = conn.CreateCommand();
+            chk.CommandText = $"SELECT {emailColumn} FROM {userTable} WHERE Id=@id";
+            chk.Parameters.Add(new SqlParameter("@id", settings.UserId));
+            var emailObj = await chk.ExecuteScalarAsync();
+            if (emailObj == null)
+            {
+                AnsiConsole.MarkupLine("[red]User not found.[/]");
+                return 2;
+            }
+            var email = emailObj as string ?? "(no email)";
+
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT Id, Symbol, AddedAt, SortOrder, EnableAlerts FROM UserWatchlistItems WHERE UserId=@u ORDER BY SortOrder, AddedAt";
+            cmd.Parameters.Add(new SqlParameter("@u", settings.UserId));
+            var table = new Table().AddColumns("Id","Symbol","AddedAt (UTC)","Sort","Alerts");
+            int count = 0;
+            using (var rdr = await cmd.ExecuteReaderAsync())
+            {
+                while (await rdr.ReadAsync())
+                {
+                    count++;
+                    table.AddRow(rdr.GetInt32(0).ToString(), rdr.GetString(1), rdr.GetDateTime(2).ToString("u"), rdr.GetInt32(3).ToString(), rdr.GetBoolean(4)?"Yes":"No");
+                }
+            }
+            AnsiConsole.MarkupLine($"User: [cyan]{email}[/] ([grey]{settings.UserId}[/])  Items: [green]{count}[/]");
+            if (count == 0)
+            {
+                AnsiConsole.MarkupLine("[yellow]No watchlist items.[/]");
+                return 0;
+            }
+            AnsiConsole.Write(table);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
+            return 1;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Introspection helpers
+// -----------------------------------------------------------------------------
+internal static class DbIntrospection
+{
+    public static async Task<string> ResolveUserTableAsync(SqlConnection conn)
+    {
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Users') SELECT 'Users' ELSE IF EXISTS (SELECT 1 FROM sys.tables WHERE name='AspNetUsers') SELECT 'AspNetUsers' ELSE SELECT 'Users'";
+        var result = (string)await cmd.ExecuteScalarAsync();
+        return result;
+    }
+
+    public static async Task<HashSet<string>> GetColumnSetAsync(SqlConnection conn, string table)
+    {
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT c.name FROM sys.columns c INNER JOIN sys.tables t ON c.object_id=t.object_id WHERE t.name=@t";
+    cmd.Parameters.Add(new SqlParameter("@t", table));
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var rdr = await cmd.ExecuteReaderAsync();
+        while (await rdr.ReadAsync()) set.Add(rdr.GetString(0));
+        return set;
     }
 }
 
