@@ -321,6 +321,29 @@ jobs:
         run: |
           docker rm -f sql 2>/dev/null || true
 
+      - name: Job Summary (Unit Tests)
+        if: always()
+        run: |
+          {
+            echo "## ✅ Unit Test Job Summary";
+            echo "**Overall Job Status:** ${{ job.status }}";
+            echo "**Commit:** $GITHUB_SHA";
+            echo "**Ref:** $GITHUB_REF";
+            TOTAL_TRX=$(find unit-test-results -type f -name '*.trx' 2>/dev/null | wc -l | tr -d ' ' || echo 0);
+            echo "**TRX Files:** ${TOTAL_TRX}";
+            if [ -f unit-test-results/coverage-report/Summary.txt ]; then
+              LINE_COV=$(grep -E 'Line coverage' unit-test-results/coverage-report/Summary.txt | head -1 | sed 's/^ *//');
+              BRANCH_COV=$(grep -E 'Branch coverage' unit-test-results/coverage-report/Summary.txt | head -1 | sed 's/^ *//');
+              echo "**Coverage:** ${LINE_COV:-Line N/A}; ${BRANCH_COV:-Branch N/A}";
+            else
+              echo "**Coverage:** (summary file not generated)";
+            fi
+            echo "\n### Key Indicators";
+            if grep -R "SqlConnectionString" infrastructure/main.bicep | grep -v "Previous secret resource removed" >/dev/null 2>&1; then
+              echo "- ❌ Legacy KeyVault SQL secret reference detected"; else echo "- ✅ No legacy SQL secret reference"; fi
+            echo "- Test artifacts uploaded as: unit-test-results, unit-test-coverage";
+          } >> "$GITHUB_STEP_SUMMARY"
+
   ui-test:
     runs-on: [self-hosted, linux, x64]
     needs: test
@@ -568,6 +591,26 @@ jobs:
         if: always()
         run: |
           docker rm -f sql 2>/dev/null || true
+
+      - name: Job Summary (UI Tests)
+        if: always()
+        run: |
+          {
+            echo "## 🎭 UI Test Job Summary";
+            echo "**Overall Job Status:** ${{ job.status }}";
+            echo "**Commit:** $GITHUB_SHA";
+            echo "**Ref:** $GITHUB_REF";
+            UI_TRX_COUNT=$(find . -type f -name 'ui-test-results.trx' 2>/dev/null | wc -l | tr -d ' ' || echo 0);
+            SHOT_COUNT=$(find ui-test-artifacts/screenshots -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ' || echo 0);
+            TRACE_COUNT=$(find ui-test-artifacts/traces -type f -name '*.zip' 2>/dev/null | wc -l | tr -d ' ' || echo 0);
+            echo "**TRX Files:** ${UI_TRX_COUNT}";
+            echo "**Screenshots:** ${SHOT_COUNT}";
+            echo "**Traces:** ${TRACE_COUNT}";
+            echo "\n### Notes";
+            if [ "$SHOT_COUNT" -gt 0 ]; then echo "- Inconclusive or diagnostic screenshots captured."; else echo "- No screenshots captured."; fi
+            if [ "$TRACE_COUNT" -gt 0 ]; then echo "- Playwright traces available."; else echo "- No Playwright traces."; fi
+            echo "- Artifacts uploaded as: ui-test-artifacts, ui-test-results";
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     runs-on: [self-hosted, linux, x64]
@@ -1036,6 +1079,20 @@ jobs:
           echo "image: ${{ steps.final-output.outputs.image }}"
           echo "test_output: ${{ steps.final-output.outputs.test_output }}"
 
+      - name: Job Summary (Build)
+        if: always()
+        run: |
+          {
+            echo "## 🏗️ Build Job Summary";
+            echo "**Overall Job Status:** ${{ job.status }}";
+            echo "**Version:** ${{ steps.gitversion.outputs.fullSemVer }}";
+            echo "**Primary Image:** ${{ steps.final-output.outputs.image }}";
+            echo "**API Image:** ${{ steps.final-output-api.outputs.image }}";
+            echo "**MCP Image:** ${{ steps.final-output-mcp.outputs.image }}";
+            echo "\n### Security Scan Artifacts";
+            echo "- Trivy SARIF uploaded (ui/api/mcp if present)";
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy-dev:
     runs-on: [self-hosted, linux, x64]
     needs: build
@@ -1321,6 +1378,45 @@ jobs:
             sleep 30
           done
           echo "❌ API Health check failed (Dev)"; exit 1
+
+      - name: Validate External Stock API Keys (Dev)
+        if: success() # Only run if prior health checks passed
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          API_APP="api-aistock-dev-${INSTANCE_NUM}"
+          API_KEYS_URL="https://${API_APP}.azurewebsites.net/health/api-keys"
+          echo "🔐 Validating external stock API key configuration via ${API_KEYS_URL}"          
+          HTTP_CODE=$(curl -s -o api_keys_dev.json -w "%{http_code}" "${API_KEYS_URL}" || true)
+          echo "HTTP Status: ${HTTP_CODE}"
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "❌ Unable to retrieve API key status (expected 200)."; cat api_keys_dev.json || true; exit 1; fi
+          echo "Raw response:"; cat api_keys_dev.json
+          echo "Evaluating key states (fail on unresolved-keyvault / placeholder; warn on missing)..."
+          if grep -q '"status"[[:space:]]*:[[:space:]]*"unresolved-keyvault"' api_keys_dev.json; then
+            echo "❌ Found disallowed status 'unresolved-keyvault'"; exit 1; fi
+          if grep -q '"status"[[:space:]]*:[[:space:]]*"placeholder"' api_keys_dev.json; then
+            echo "❌ Found disallowed status 'placeholder'"; exit 1; fi
+          if grep -q '"status"[[:space:]]*:[[:space:]]*"missing"' api_keys_dev.json; then
+            echo "⚠️  One or more keys are missing (allowed but degraded fallback will be used)"; fi
+          echo "✅ API key configuration validation completed."
+
+      - name: Job Summary (Deploy Dev)
+        if: always()
+        run: |
+          {
+            echo "## 🚀 Deploy Dev Job Summary";
+            echo "**Overall Job Status:** ${{ job.status }}";
+            echo "**Image:** ${{ steps.load-image.outputs.container_image }}";
+            echo "**API Image:** ${{ steps.load-image-api.outputs.container_image_api }}";
+            echo "**MCP Image:** ${{ steps.load-image-mcp.outputs.container_image_mcp }}";
+            if [ -f api_keys_dev.json ]; then
+              echo "\n### API Key Status (raw excerpt)";
+              cat api_keys_dev.json | head -100;
+            else
+              echo "\n_No API key status file captured._";
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-prod:
     runs-on: [self-hosted, linux, x64]
@@ -1883,6 +1979,45 @@ jobs:
           done
           echo "❌ API Health check failed"; exit 1
 
+      - name: Validate External Stock API Keys (Prod)
+        if: success()
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          API_APP="api-aistock-prod-${INSTANCE_NUM}"
+          API_KEYS_URL="https://${API_APP}.azurewebsites.net/health/api-keys"
+          echo "🔐 Validating external stock API key configuration (Prod) via ${API_KEYS_URL}"          
+          HTTP_CODE=$(curl -s -o api_keys_prod.json -w "%{http_code}" "${API_KEYS_URL}" || true)
+          echo "HTTP Status: ${HTTP_CODE}"
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "❌ Unable to retrieve API key status (expected 200)."; cat api_keys_prod.json || true; exit 1; fi
+          echo "Raw response:"; cat api_keys_prod.json
+          echo "Evaluating key states (fail on unresolved-keyvault / placeholder; warn on missing)..."
+          if grep -q '"status"[[:space:]]*:[[:space:]]*"unresolved-keyvault"' api_keys_prod.json; then
+            echo "❌ Found disallowed status 'unresolved-keyvault'"; exit 1; fi
+          if grep -q '"status"[[:space:]]*:[[:space:]]*"placeholder"' api_keys_prod.json; then
+            echo "❌ Found disallowed status 'placeholder'"; exit 1; fi
+          if grep -q '"status"[[:space:]]*:[[:space:]]*"missing"' api_keys_prod.json; then
+            echo "⚠️  One or more keys are missing (allowed but degraded fallback will be used)"; fi
+          echo "✅ API key configuration validation (Prod) completed."
+
+      - name: Job Summary (Deploy Prod)
+        if: always()
+        run: |
+          {
+            echo "## 🚀 Deploy Prod Job Summary";
+            echo "**Overall Job Status:** ${{ job.status }}";
+            echo "**Image:** ${{ steps.load-image.outputs.container_image }}";
+            echo "**API Image:** ${{ steps.load-image-api.outputs.container_image_api }}";
+            echo "**MCP Image:** ${{ steps.load-image-mcp.outputs.container_image_mcp }}";
+            if [ -f api_keys_prod.json ]; then
+              echo "\n### API Key Status (raw excerpt)";
+              cat api_keys_prod.json | head -100;
+            else
+              echo "\n_No API key status file captured._";
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   security-scan:
     runs-on: [self-hosted, linux, x64]
     needs: build
@@ -1967,3 +2102,16 @@ jobs:
         with:
           sarif_file: build-outputs/trivy-mcp.sarif
           category: trivy-mcp
+
+      - name: Job Summary (Security Scan)
+        if: always()
+        run: |
+          {
+            echo "## 🔒 Security Scan Job Summary";
+            echo "**Overall Job Status:** ${{ job.status }}";
+            echo "**Images Scanned:** ${{ needs.build.outputs.image }} (plus API & MCP)";
+            if [ -f build-outputs/trivy-ui.sarif ]; then echo "- UI SARIF present"; else echo "- UI SARIF missing"; fi
+            if [ -f build-outputs/trivy-api.sarif ]; then echo "- API SARIF present"; else echo "- API SARIF missing"; fi
+            if [ -f build-outputs/trivy-mcp.sarif ]; then echo "- MCP SARIF present"; else echo "- MCP SARIF missing"; fi
+            echo "\n> Review SARIF results in the Security tab for detailed vulnerability information.";
+          } >> "$GITHUB_STEP_SUMMARY"

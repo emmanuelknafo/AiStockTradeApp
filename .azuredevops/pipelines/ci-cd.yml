@@ -819,6 +819,46 @@ stages:
               targetPath: "$(Pipeline.Workspace)/test-results/ui"
               artifactName: "ui-test-results"
 
+          - task: Bash@3
+            displayName: "Collect UI Inconclusive Screenshots & Traces"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                DEST="$(Pipeline.Workspace)/ui-inconclusive"
+                mkdir -p "$DEST"
+                echo "Scanning for inconclusive screenshots and Playwright traces..."
+                # Collect specifically named inconclusive screenshots
+                find $(System.DefaultWorkingDirectory) -type f -iname '*inconclusive*.png' -print -exec cp {} "$DEST/" \; 2>/dev/null || true
+                # Collect all screenshots from UITests project (may include failing tests w/ different pattern)
+                find AiStockTradeApp.UITests -type f -name '*.png' -print -exec cp {} "$DEST/" \; 2>/dev/null || true
+                # Collect Playwright trace archives if produced
+                find $(System.DefaultWorkingDirectory) -type f \( -iname 'trace.zip' -o -iname '*trace*.zip' -o -iname '*playwright*.zip' \) -print -exec cp {} "$DEST/" \; 2>/dev/null || true
+                # Zip any raw trace folders to include them (limit to first 20 to avoid size explosion)
+                i=0
+                while IFS= read -r d; do
+                  base=$(basename "$d")
+                  zip -r "$DEST/${base}.zip" "$d" >/dev/null 2>&1 || true
+                  i=$((i+1)); [ $i -ge 20 ] && break
+                done < <(find AiStockTradeApp.UITests -type d -iname '*trace*' 2>/dev/null | head -20)
+                # Directory listings for forensic debugging
+                find AiStockTradeApp.UITests -maxdepth 4 -type d -iname '*trace*' -print > "$DEST/trace-directories.txt" 2>/dev/null || true
+                find AiStockTradeApp.UITests -type f -name '*.png' -print > "$DEST/screenshots-list.txt" 2>/dev/null || true
+                echo "Contents collected:"; ls -la "$DEST" || true
+                COUNT=$(find "$DEST" -type f | wc -l || echo 0)
+                if [ "$COUNT" -eq 0 ]; then
+                  echo "No inconclusive artifacts found; creating marker file."
+                  echo "No inconclusive screenshots or traces were produced" > "$DEST/NO-INCONCLUSIVE-FILES.txt"
+                fi
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Upload UI Inconclusive Artifacts"
+            condition: always()
+            inputs:
+              targetPath: "$(Pipeline.Workspace)/ui-inconclusive"
+              artifactName: "ui-inconclusive-artifacts"
+
           - script: |
               echo "Capturing application logs for debugging..."
               if [ -f "AiStockTradeApp/app.log" ]; then
@@ -1667,6 +1707,29 @@ stages:
                       done
                       echo "❌ MCP Health check failed"; exit 1
 
+                - task: Bash@3
+                  displayName: "Validate External Stock API Keys (Dev)"
+                  condition: succeeded()
+                  inputs:
+                    targetType: inline
+                    script: |
+                      set -e
+                      API_HEALTH_URL="https://api-aistock-dev-$(instanceNum).azurewebsites.net/health/api-keys"
+                      echo "🔍 Fetching API key health (Dev): $API_HEALTH_URL"
+                      HTTP_CODE=$(curl -s -o api_keys_dev.json -w "%{http_code}" "$API_HEALTH_URL" || true)
+                      echo "HTTP Status: $HTTP_CODE"
+                      echo "Response JSON:"; sed -n '1,200p' api_keys_dev.json || echo "(empty)"
+                      if [ "$HTTP_CODE" != "200" ]; then
+                        echo "⚠️ API key health endpoint did not return 200 (got $HTTP_CODE). Treating as warning, continuing."; exit 0; fi
+                      # Fail on explicit bad statuses
+                      for bad in unresolved-keyvault placeholder; do
+                        if grep -q "\"status\":\"$bad\"" api_keys_dev.json; then
+                          echo "❌ Failing pipeline: found disallowed API key status '$bad' in Dev."; exit 1; fi
+                      done
+                      if grep -q '"status":"missing"' api_keys_dev.json; then
+                        echo "⚠️ Warning: At least one API key is missing in Dev (allowed but reduces functionality)."; fi
+                      echo "✅ External stock API key validation (Dev) passed."
+
   - stage: DeployProd
     displayName: "Deploy to Production"
     dependsOn:
@@ -2504,6 +2567,28 @@ stages:
                         sleep 30
                       done
                       echo "❌ MCP Health check failed"; exit 1
+
+                - task: Bash@3
+                  displayName: "Validate External Stock API Keys (Prod)"
+                  condition: succeeded()
+                  inputs:
+                    targetType: inline
+                    script: |
+                      set -e
+                      API_HEALTH_URL="https://api-aistock-prod-$(instanceNum).azurewebsites.net/health/api-keys"
+                      echo "🔍 Fetching API key health (Prod): $API_HEALTH_URL"
+                      HTTP_CODE=$(curl -s -o api_keys_prod.json -w "%{http_code}" "$API_HEALTH_URL" || true)
+                      echo "HTTP Status: $HTTP_CODE"
+                      echo "Response JSON:"; sed -n '1,200p' api_keys_prod.json || echo "(empty)"
+                      if [ "$HTTP_CODE" != "200" ]; then
+                        echo "❌ API key health endpoint unavailable in Prod (HTTP $HTTP_CODE). Failing deployment."; exit 1; fi
+                      for bad in unresolved-keyvault placeholder; do
+                        if grep -q "\"status\":\"$bad\"" api_keys_prod.json; then
+                          echo "❌ Failing pipeline: found disallowed API key status '$bad' in Prod."; exit 1; fi
+                      done
+                      if grep -q '"status":"missing"' api_keys_prod.json; then
+                        echo "⚠️ Warning: At least one API key is missing in Prod. (Pipeline continues but consider configuring it.)"; fi
+                      echo "✅ External stock API key validation (Prod) passed."
 
   - stage: SecurityScan
     displayName: "Security Scan"
