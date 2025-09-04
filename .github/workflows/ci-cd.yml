@@ -228,10 +228,14 @@ jobs:
           set -e
           RESULTS_DIR=unit-test-results
           COVERAGE_DIR="$RESULTS_DIR/coverage"
-          mkdir -p "$RESULTS_DIR" "$COVERAGE_DIR"
+            mkdir -p "$RESULTS_DIR" "$COVERAGE_DIR"
           echo "Running unit tests with coverage (XPlat collector)..."
+          echo "Excluding Playwright UI tests and Selenium tests from this run."
+          # Exclude:
+          #  - UITests (Playwright) -> executed in separate ui-test job
+          #  - SeleniumTests        -> executed only in dedicated selenium-tests workflow when enabled
           dotnet test AiStockTradeApp.sln --no-build --configuration Release --verbosity normal \
-            --filter "FullyQualifiedName!~UITests" \
+            --filter "FullyQualifiedName!~UITests&FullyQualifiedName!~SeleniumTests" \
             --logger "trx;LogFileName=unit-test-results.trx" \
             --results-directory "$RESULTS_DIR" \
             --collect "XPlat Code Coverage"

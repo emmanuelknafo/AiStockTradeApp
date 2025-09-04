@@ -23,6 +23,7 @@ trigger:
       - "LICENSE"
       - "data/**"
       - "AiStockTradeApp.Cli/**"
+      - "AiStockTradeApp.SeleniumTests/**"  # Exclude Selenium tests from triggering CI
       - ".azuredevops/pipelines/cli-ci.yml"
       - ".azuredevops/pipelines/load-tests.yml"
       - ".azuredevops/pipelines/alt-load-tests.yml"
@@ -55,6 +56,7 @@ pr:
       - "LICENSE"
       - "data/**"
       - "AiStockTradeApp.Cli/**"
+      - "AiStockTradeApp.SeleniumTests/**"  # Exclude Selenium tests from triggering PR validation
       - ".azuredevops/pipelines/cli-ci.yml"
       - ".azuredevops/pipelines/load-tests.yml"
       - ".azuredevops/pipelines/alt-load-tests.yml"
