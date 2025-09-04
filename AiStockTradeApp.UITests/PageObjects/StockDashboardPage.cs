@@ -15,10 +15,11 @@ public class StockDashboardPage
 
     // Locators
     public ILocator Header => _page.Locator("h1");
-    public ILocator TickerInput => _page.Locator("#ticker-input");
-    public ILocator AddButton => _page.Locator("#add-button");
-    public ILocator ClearAllButton => _page.Locator("#clear-all");
-    public ILocator Watchlist => _page.Locator("#watchlist");
+    // Prefer data-testid attributes (added to Razor views) with fallback to legacy IDs
+    public ILocator TickerInput => _page.Locator("[data-testid='ticker-input'], #ticker-input");
+    public ILocator AddButton => _page.Locator("[data-testid='add-button'], #add-button");
+    public ILocator ClearAllButton => _page.Locator("[data-testid='clear-all'], #clear-all");
+    public ILocator Watchlist => _page.Locator("[data-testid='watchlist'], #watchlist");
     public ILocator ThemeToggle => _page.Locator("#theme-toggle");
     public ILocator SettingsToggle => _page.Locator("#settings-toggle");
     public ILocator AlertsToggle => _page.Locator("#alerts-toggle");
@@ -27,7 +28,7 @@ public class StockDashboardPage
     public ILocator AlertsPanel => _page.Locator("#alerts-panel");
     public ILocator PortfolioSummary => _page.Locator("#portfolio-summary");
     public ILocator NotificationContainer => _page.Locator("#notification-container");
-    public ILocator SearchSuggestions => _page.Locator("#search-suggestions");
+    public ILocator SearchSuggestions => _page.Locator("[data-testid='search-suggestions'], #search-suggestions");
 
     // Navigation
     public async Task NavigateTo()
@@ -199,7 +200,7 @@ public class StockDashboardPage
     // Getters
     public ILocator GetStockCard(string symbol)
     {
-        return _page.Locator($"#card-{symbol}");
+    return _page.Locator($"[data-testid='stock-card-{symbol}'], #card-{symbol}");
     }
 
     public async Task<int> GetStockCardCount()

@@ -23,13 +23,13 @@
         @Localizer["Api_Status"]
     </div>
 
-    <div class="search-bar">
-        <div class="search-container">
-            <input type="text" id="ticker-input" placeholder="@Localizer["Search_Placeholder"]" autocomplete="off" />
-            <div id="search-suggestions" class="search-suggestions"></div>
+    <div class="search-bar" data-testid="search-bar">
+        <div class="search-container" data-testid="search-container">
+            <input type="text" id="ticker-input" data-testid="ticker-input" placeholder="@Localizer["Search_Placeholder"]" autocomplete="off" />
+            <div id="search-suggestions" data-testid="search-suggestions" class="search-suggestions"></div>
         </div>
-    <button id="add-button">@Localizer["Btn_AddStock"]</button>
-    <button id="clear-all" class="danger-btn">@Localizer["Btn_ClearAll"]</button>
+    <button id="add-button" data-testid="add-button">@Localizer["Btn_AddStock"]</button>
+    <button id="clear-all" data-testid="clear-all" class="danger-btn">@Localizer["Btn_ClearAll"]</button>
     </div>
 
     <!-- Settings Panel -->
@@ -59,13 +59,13 @@
     </div>
 
     <!-- Watchlist -->
-    <div id="watchlist" class="watchlist">
+    <div id="watchlist" class="watchlist" data-testid="watchlist">
         @foreach (var item in Model.Watchlist)
         {
-            <div class="stock-card" id="card-@item.Symbol">
+        <div class="stock-card" id="card-@item.Symbol" data-testid="stock-card-@item.Symbol">
                 <div class="card-header">
                     <h2>@item.Symbol</h2>
-                    <button class="remove-button" data-ticker="@item.Symbol" title="Remove @item.Symbol">&times;</button>
+            <button class="remove-button" data-ticker="@item.Symbol" data-testid="remove-stock-@item.Symbol" title="Remove @item.Symbol">&times;</button>
                 </div>
                 <div class="card-body">
                     @if (item.StockData != null)
