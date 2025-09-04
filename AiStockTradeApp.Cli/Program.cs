@@ -4,6 +4,8 @@ using System.ComponentModel;
 using Microsoft.Playwright;
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient; // direct SQL access for user/watchlist commands
+using System.Security.Cryptography;
+using System.Buffers.Binary;
 
 namespace AiStockTradeApp.Cli;
 
@@ -40,6 +42,9 @@ public class Program
             cfg.AddCommand<GetWatchlistCommand>("get-watchlist")
                 .WithDescription("Display a user's watchlist items")
                 .WithExample(new[]{"get-watchlist","--userId","<USER_GUID>"});
+            cfg.AddCommand<AddWatchlistItemCommand>("add-watchlist-item")
+                .WithDescription("Add a symbol to a user's watchlist (direct DB insert)")
+                .WithExample(new[]{"add-watchlist-item","--userId","<USER_GUID>","--symbol","AAPL"});
         });
         return await app.RunAsync(args);
     }
@@ -165,8 +170,10 @@ public sealed class CreateUserSettings : DbSettingsBase
     {
         if (string.IsNullOrWhiteSpace(Email)) return ValidationResult.Error("--email required");
         if (string.IsNullOrWhiteSpace(Password)) return ValidationResult.Error("--password required");
-        if (!string.Equals(Password, "P@ssw0rd1!", StringComparison.Ordinal))
-            return ValidationResult.Error("Only password 'P@ssw0rd1!' supported (pre-hashed). Change code to expand.");
+        if (Password.Length < 6) return ValidationResult.Error("--password must be at least 6 chars");
+        if (!Regex.IsMatch(Password, @"[A-Z]")) return ValidationResult.Error("--password must contain an uppercase letter");
+        if (!Regex.IsMatch(Password, @"[a-z]")) return ValidationResult.Error("--password must contain a lowercase letter");
+        if (!Regex.IsMatch(Password, @"[0-9]")) return ValidationResult.Error("--password must contain a digit");
         if (!string.IsNullOrWhiteSpace(UserId) && !Guid.TryParse(UserId, out _))
             return ValidationResult.Error("--id must be GUID");
         return ValidationResult.Success();
@@ -175,8 +182,28 @@ public sealed class CreateUserSettings : DbSettingsBase
 
 public sealed class CreateUserCommand : AsyncCommand<CreateUserSettings>
 {
-    // Precomputed Identity v7+ styled hash for password P@ssw0rd1!
-    private const string KnownHash = "AQAAAAIAAYagAAAAEP9bL7MWHf2vzZ5L1GgcFJQQmLk4yL4blvVvK2uWS2h9Jq1wWNxCQtBxMBT7I5ZyOw=="; // example placeholder
+    // Generate Identity v3-compatible hash (version 1 format) dynamically
+    private static string HashPassword(string password)
+    {
+        const int iterCount = 10000; // Identity default
+        const int saltSize = 16;     // bytes
+        const int subKeyLength = 32; // bytes
+        Span<byte> salt = stackalloc byte[saltSize];
+        RandomNumberGenerator.Fill(salt);
+        byte[] subkey;
+        using (var derive = new Rfc2898DeriveBytes(password, salt.ToArray(), iterCount, HashAlgorithmName.SHA256))
+        {
+            subkey = derive.GetBytes(subKeyLength);
+        }
+        var outputBytes = new byte[1 + 1 + 4 + 4 + saltSize + subKeyLength];
+        outputBytes[0] = 0x01;               // format marker
+        outputBytes[1] = 0x00;               // PRF = HMACSHA256
+        BinaryPrimitives.WriteInt32LittleEndian(outputBytes.AsSpan(2,4), iterCount);
+        BinaryPrimitives.WriteInt32LittleEndian(outputBytes.AsSpan(6,4), saltSize);
+        salt.CopyTo(outputBytes.AsSpan(10, saltSize));
+        Buffer.BlockCopy(subkey, 0, outputBytes, 10 + saltSize, subKeyLength);
+        return Convert.ToBase64String(outputBytes);
+    }
     public override async Task<int> ExecuteAsync(CommandContext context, CreateUserSettings settings)
     {
         try
@@ -202,7 +229,8 @@ public sealed class CreateUserCommand : AsyncCommand<CreateUserSettings>
             {
                 existsCmd.CommandText = $"SELECT 0"; // No email column to enforce uniqueness
             }
-            var exists = (int)await existsCmd.ExecuteScalarAsync() > 0;
+            var existsScalar = await existsCmd.ExecuteScalarAsync();
+            var exists = Convert.ToInt32(existsScalar ?? 0) > 0;
             if (exists)
             {
                 AnsiConsole.MarkupLine("[yellow]User already exists.[/]");
@@ -228,7 +256,7 @@ public sealed class CreateUserCommand : AsyncCommand<CreateUserSettings>
             if (cols.Contains("Email")) Add("Email","@em", settings.Email);
             if (cols.Contains("NormalizedEmail")) Add("NormalizedEmail","@nem", settings.Email.ToUpperInvariant());
             if (cols.Contains("EmailConfirmed")) Add("EmailConfirmed","@ec", 0);
-            if (cols.Contains("PasswordHash")) Add("PasswordHash","@pwd", KnownHash);
+            if (cols.Contains("PasswordHash")) Add("PasswordHash","@pwd", HashPassword(settings.Password));
             if (cols.Contains("SecurityStamp")) Add("SecurityStamp","@sec", Guid.NewGuid().ToString());
             if (cols.Contains("ConcurrencyStamp")) Add("ConcurrencyStamp","@cc", Guid.NewGuid().ToString());
             if (cols.Contains("PhoneNumberConfirmed")) Add("PhoneNumberConfirmed","@pnc", 0);
@@ -338,19 +366,131 @@ internal static class DbIntrospection
     {
         var cmd = conn.CreateCommand();
         cmd.CommandText = "IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Users') SELECT 'Users' ELSE IF EXISTS (SELECT 1 FROM sys.tables WHERE name='AspNetUsers') SELECT 'AspNetUsers' ELSE SELECT 'Users'";
-        var result = (string)await cmd.ExecuteScalarAsync();
-        return result;
+        var scalar = await cmd.ExecuteScalarAsync();
+        return scalar as string ?? "Users";
     }
 
     public static async Task<HashSet<string>> GetColumnSetAsync(SqlConnection conn, string table)
     {
         var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT c.name FROM sys.columns c INNER JOIN sys.tables t ON c.object_id=t.object_id WHERE t.name=@t";
-    cmd.Parameters.Add(new SqlParameter("@t", table));
+        cmd.Parameters.Add(new SqlParameter("@t", table));
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         using var rdr = await cmd.ExecuteReaderAsync();
         while (await rdr.ReadAsync()) set.Add(rdr.GetString(0));
         return set;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// add-watchlist-item
+// -----------------------------------------------------------------------------
+public sealed class AddWatchlistItemSettings : DbSettingsBase
+{
+    [CommandOption("--userId <GUID>")]
+    [Description("User Id (GUID)")]
+    public string UserId { get; init; } = string.Empty;
+
+    [CommandOption("--symbol <SYMBOL>")]
+    [Description("Stock symbol (e.g., AAPL)")]
+    public string Symbol { get; init; } = string.Empty;
+
+    [CommandOption("--alias <ALIAS>")]
+    [Description("Optional user alias / nickname for the symbol")]
+    public string? Alias { get; init; }
+
+    [CommandOption("--alerts <BOOL>")]
+    [Description("Enable price alerts (default true)")]
+    [DefaultValue(true)]
+    public bool Alerts { get; init; } = true;
+
+    public override ValidationResult Validate()
+    {
+        if (!Guid.TryParse(UserId, out _)) return ValidationResult.Error("--userId must be GUID");
+        if (string.IsNullOrWhiteSpace(Symbol)) return ValidationResult.Error("--symbol required");
+        if (!Regex.IsMatch(Symbol, "^[A-Za-z0-9-.]{1,15}$")) return ValidationResult.Error("--symbol invalid format");
+        return ValidationResult.Success();
+    }
+}
+
+public sealed class AddWatchlistItemCommand : AsyncCommand<AddWatchlistItemSettings>
+{
+    public override async Task<int> ExecuteAsync(CommandContext context, AddWatchlistItemSettings settings)
+    {
+        try
+        {
+            var cs = settings.ResolveConnectionString();
+            using var conn = new SqlConnection(cs);
+            await conn.OpenAsync();
+
+            // Ensure user exists
+            var userTable = await DbIntrospection.ResolveUserTableAsync(conn);
+            var userChk = conn.CreateCommand();
+            userChk.CommandText = $"SELECT 1 FROM {userTable} WHERE Id=@u";
+            userChk.Parameters.Add(new SqlParameter("@u", settings.UserId));
+            var userExists = Convert.ToInt32(await userChk.ExecuteScalarAsync() ?? 0) == 1;
+            if (!userExists)
+            {
+                AnsiConsole.MarkupLine("[red]User not found.[/]");
+                return 2;
+            }
+
+            var symbol = settings.Symbol.ToUpperInvariant();
+            // Check duplicate
+            var dup = conn.CreateCommand();
+            dup.CommandText = "SELECT COUNT(1) FROM UserWatchlistItems WHERE UserId=@u AND Symbol=@s";
+            dup.Parameters.Add(new SqlParameter("@u", settings.UserId));
+            dup.Parameters.Add(new SqlParameter("@s", symbol));
+            var exists = Convert.ToInt32(await dup.ExecuteScalarAsync() ?? 0) > 0;
+            if (exists)
+            {
+                AnsiConsole.MarkupLine("[yellow]Symbol already on watchlist.[/]");
+                return 0;
+            }
+
+            // Determine next sort order
+            var sortCmd = conn.CreateCommand();
+            sortCmd.CommandText = "SELECT ISNULL(MAX(SortOrder),0) FROM UserWatchlistItems WHERE UserId=@u";
+            sortCmd.Parameters.Add(new SqlParameter("@u", settings.UserId));
+            var nextSort = Convert.ToInt32(await sortCmd.ExecuteScalarAsync() ?? 0) + 1;
+
+            // Introspect watchlist columns (make insert resilient)
+            var wlCols = await DbIntrospection.GetColumnSetAsync(conn, "UserWatchlistItems");
+            var now = DateTime.UtcNow;
+            var colList = new List<string>();
+            var paramList = new List<string>();
+            var sqlParams = new List<SqlParameter>();
+            void Add(string col, string pname, object? val){ if (wlCols.Contains(col)) { colList.Add(col); paramList.Add(pname); sqlParams.Add(new SqlParameter(pname, val ?? (object)DBNull.Value)); } }
+
+            Add("UserId","@uid", settings.UserId);
+            Add("Symbol","@sym", symbol);
+            Add("AddedAt","@added", now);
+            Add("SortOrder","@sort", nextSort);
+            Add("EnableAlerts","@alerts", settings.Alerts ? 1 : 0);
+            Add("UserAlias","@alias", string.IsNullOrWhiteSpace(settings.Alias)? DBNull.Value : settings.Alias);
+
+            if (colList.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]Watchlist table has no expected columns; aborting.[/]");
+                return 3;
+            }
+            var insert = conn.CreateCommand();
+            insert.CommandText = $"INSERT INTO UserWatchlistItems ({string.Join(',', colList)}) VALUES ({string.Join(',', paramList)})";
+            insert.Parameters.AddRange(sqlParams.ToArray());
+            var rows = await insert.ExecuteNonQueryAsync();
+            if (rows == 1)
+            {
+                AnsiConsole.MarkupLine($"[green]Added[/] {symbol} (sort {nextSort}) to user [cyan]{settings.UserId}[/]");
+                return 0;
+            }
+            AnsiConsole.MarkupLine("[red]Insert failed.[/]");
+            return 4;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
+            return 1;
+        }
     }
 }
 
