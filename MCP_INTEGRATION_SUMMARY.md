@@ -11,7 +11,7 @@ The start script now launches **three services** in separate PowerShell windows:
 
 1. **API Server** - `https://localhost:7032` (HTTPS) / `http://localhost:5256` (HTTP)
 2. **UI Application** - `https://localhost:7043` (HTTPS) / `http://localhost:5259` (HTTP)  
-3. **MCP Server** - `http://localhost:5000/mcp` (HTTP mode for testing)
+3. **MCP Server** - `http://localhost:5000/mcp` (Local) / `http://localhost:5500/mcp` (Docker)
 
 ### **Usage Examples**
 
@@ -78,7 +78,8 @@ aistockmcpserver:
 External Access:
 - UI: http://localhost:8080
 - API: http://localhost:8082  
-- MCP: http://localhost:5000/mcp
+- MCP (Local): http://localhost:5000/mcp
+- MCP (Docker): http://localhost:5500/mcp
 - SQL: localhost:1433
 ```
 
@@ -108,7 +109,7 @@ ENTRYPOINT ["dotnet", "AiStockTradeApp.McpServer.dll"]
 |---------|------------|-------------|---------|
 | **UI Application** | https://localhost:7043 | http://localhost:8080 | Web interface |
 | **API Server** | https://localhost:7032 | http://localhost:8082 | REST API backend |
-| **MCP Server** | http://localhost:5000/mcp | http://localhost:5000/mcp | Model Context Protocol |
+| **MCP Server** | http://localhost:5500/mcp (Docker) | http://localhost:5000/mcp (Local) | Model Context Protocol |
 | **SQL Server** | localhost:1433 (local instance) | localhost:1433 | Database |
 
 ## 🧪 **Testing the Integration**
@@ -119,7 +120,7 @@ ENTRYPOINT ["dotnet", "AiStockTradeApp.McpServer.dll"]
 .\scripts\start.ps1 -Mode Local
 
 # Test MCP Server
-curl -X POST http://localhost:5000/mcp \
+curl -X POST http://localhost:5500/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
@@ -130,7 +131,7 @@ curl -X POST http://localhost:5000/mcp \
 .\scripts\start.ps1 -Mode Docker
 
 # Test MCP Server in container
-curl -X POST http://localhost:5000/mcp \
+curl -X POST http://localhost:5500/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```

@@ -284,7 +284,7 @@ To avoid conflicts with existing services on your host machine, the Docker confi
 |---------|---------------|-----------|------------|
 | Web UI | 8080 | 8080 | <http://localhost:8080> |
 | REST API | 8080 | 8082 | <http://localhost:8082> |
-| MCP Server | 8080 | 5000 | <http://localhost:5000/mcp> |
+| MCP Server | 8080 | 5500 (Docker) / 5000 (Local) | <http://localhost:5500/mcp> (Docker) / <http://localhost:5000/mcp> (Local) |
 | SQL Server | 1433 | **14330** | localhost,14330 |
 
 > **Note**: SQL Server uses port **14330** on the host (instead of the default 1433) to avoid conflicts with existing SQL Server installations.

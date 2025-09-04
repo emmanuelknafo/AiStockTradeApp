@@ -72,7 +72,7 @@ info: Program[0] Starting AI Stock Trade MCP Server
 info: Program[0] Transport Mode: HTTP  
 info: Program[0] API Base URL: https://app-aistock-dev-002.azurewebsites.net
 info: Program[0] Available tools: StockTradingTools, RandomNumberTools
-info: Program[0] HTTP MCP Server running at: http://localhost:5000/mcp
+info: Program[0] HTTP MCP Server running at: http://localhost:5500/mcp (Docker) / http://localhost:5000/mcp (Local)
 info: Microsoft.Hosting.Lifetime[14] Now listening on: http://[::]:5000
 info: Microsoft.Hosting.Lifetime[0] Application started. Press Ctrl+C to shut down.
 ```
@@ -128,7 +128,7 @@ aistockmcpserver:
 .\scripts\start.ps1 -Mode Docker
 # ✅ All 4 services start successfully
 # ✅ MCP server container runs without runtime errors
-# ✅ HTTP endpoint accessible at http://localhost:5000/mcp
+# ✅ HTTP endpoint accessible at http://localhost:5500/mcp (Docker) / http://localhost:5000/mcp (Local)
 ```
 
 ### **2. MCP Endpoint Tests**

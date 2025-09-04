@@ -101,7 +101,7 @@ DOCKER MODE:
     - Use -RemoveVolumes to force removal of volumes and start completely fresh
     - Rebuilds all images from scratch (no cache)
     - Starts services and waits for SQL Server to be healthy
-    - Services available at: UI (http://localhost:8080), API (http://localhost:8082), MCP Server (http://localhost:5000)
+  - Services available at: UI (http://localhost:8080), API (http://localhost:8082), MCP Server (http://localhost:5500) (Docker uses 5500; Local uses 5000)
     - SQL Server available at: localhost:14330 (mapped to avoid conflict with host SQL Server on 1433)
     - Automatically opens browser windows to both UI and API
 
@@ -110,7 +110,7 @@ LOCAL MODE:
     - Uses local SQL Server instance (default: "." for default instance)
     - API available at: https://localhost:7032 (HTTP: 5256)
     - UI available at: https://localhost:7043 (HTTP: 5259)
-    - MCP Server available at: http://localhost:5000/mcp (HTTP mode for testing)
+  - MCP Server available at: http://localhost:5000/mcp (HTTP mode for testing; Docker uses 5500)
     - Requires SQL Server to be running and accessible
     - Automatically opens browser windows to both UI and API
 
@@ -263,16 +263,16 @@ function Invoke-DockerCleanUpAndUp {
   
   # Open browser windows for Docker mode
   if (-not $NoBrowser) {
-    Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8082" -McpUrl "http://localhost:5000/mcp" -Mode "Docker"
+    Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8082" -McpUrl "http://localhost:5500/mcp" -Mode "Docker"
   } else {
     Write-Host "`n✅ Services started successfully!" -ForegroundColor Green
     Write-Host "UI Application: http://localhost:8080" -ForegroundColor Cyan
     Write-Host "API Endpoint:   http://localhost:8082" -ForegroundColor Cyan
-    Write-Host "MCP Server:     http://localhost:5000/mcp" -ForegroundColor Cyan
+    Write-Host "MCP Server:     http://localhost:5500/mcp" -ForegroundColor Cyan
   }
 
   # Run a smoke test against the MCP server to validate it's responding to JSON-RPC requests
-  if (Test-McpEndpoint -Url 'http://localhost:5000/mcp' -TimeoutSec 60 -PollIntervalSec 2) {
+  if (Test-McpEndpoint -Url 'http://localhost:5500/mcp' -TimeoutSec 60 -PollIntervalSec 2) {
     Write-Host 'MCP server smoke test: PASSED' -ForegroundColor Green
   } else {
     Write-Warning 'MCP server smoke test: FAILED (endpoint did not respond as expected)'

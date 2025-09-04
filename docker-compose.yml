@@ -59,7 +59,7 @@ services:
       context: .
       dockerfile: AiStockTradeApp.McpServer/Dockerfile
     ports:
-      - "5000:8080" # MCP Server available on http://localhost:5000/mcp (external:internal)
+      - "5500:8080" # MCP Server available on http://localhost:5500/mcp (external:internal) - distinct from Local mode (5000)
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: "http://+:8080"

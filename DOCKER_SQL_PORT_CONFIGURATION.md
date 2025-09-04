@@ -25,7 +25,7 @@ Modified the Docker configuration to use port **14330** on the host instead of 1
 |---------|---------------|-----------|------------|
 | Web UI | 8080 | 8080 | http://localhost:8080 |
 | REST API | 8080 | 8082 | http://localhost:8082 |
-| MCP Server | 8080 | 5000 | http://localhost:5000/mcp |
+| MCP Server | 8080 | 5500 | http://localhost:5500/mcp |
 | **SQL Server** | **1433** | **14330** | **localhost,14330** |
 
 ## Database Connection Details
