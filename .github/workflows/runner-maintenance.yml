@@ -59,6 +59,10 @@ jobs:
     name: Maintain Runner (${{ matrix.number }})
     needs: prepare-matrix
     runs-on: [self-hosted, controller]
+    # Provide GitHub token(s). If GH_TOKEN secret exists it will populate GITHUB_TOKEN; otherwise we fallback to the default github.token.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      FALLBACK_GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
@@ -84,6 +88,19 @@ jobs:
           $hostname   = "${{ matrix.hostName }}"
           $prettyName = "${{ matrix.prettyName }}"
 
+          # If custom PAT not provided, fallback to default token
+          if (-not $env:GITHUB_TOKEN -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+            $env:GITHUB_TOKEN = $env:FALLBACK_GITHUB_TOKEN
+            Write-Host 'Using fallback github.token.'
+          } else {
+            Write-Host 'Using GH_TOKEN secret.'
+          }
+
+          if (-not $env:GITHUB_TOKEN -or [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+            Write-Error 'No usable GitHub token available.'
+            exit 1
+          }
+
           if (-not (Test-Path $scriptPath)) {
             Write-Error "Script not found at path: $scriptPath"; exit 1
           }
@@ -91,8 +108,20 @@ jobs:
             Write-Warning "Golden image path does not exist: $golden"
           }
 
-          Write-Host "Invoking: & $scriptPath -VMName '$vmName' -GoldenImagePath '$golden' -NewHostname '$hostname' -NewPrettyName '$prettyName'"
-          & $scriptPath -VMName $vmName -GoldenImagePath $golden -NewHostname $hostname -NewPrettyName $prettyName -ErrorAction Stop
+          # Determine if script supports -GitHubToken parameter and include dynamically
+          $supportsToken = $false
+          try {
+            $cmd = Get-Command -LiteralPath $scriptPath -ErrorAction Stop
+            if ($cmd.Parameters.ContainsKey('GitHubToken')) { $supportsToken = $true }
+          } catch { Write-Warning 'Unable to inspect script parameters.' }
+
+          if ($supportsToken) {
+            Write-Host "Invoking (with token): & $scriptPath -VMName '$vmName' -GoldenImagePath '$golden' -NewHostname '$hostname' -NewPrettyName '$prettyName' -GitHubToken ***"
+            & $scriptPath -VMName $vmName -GoldenImagePath $golden -NewHostname $hostname -NewPrettyName $prettyName -GitHubToken $env:GITHUB_TOKEN -ErrorAction Stop
+          } else {
+            Write-Host "Invoking (without explicit token param): & $scriptPath -VMName '$vmName' -GoldenImagePath '$golden' -NewHostname '$hostname' -NewPrettyName '$prettyName'"
+            & $scriptPath -VMName $vmName -GoldenImagePath $golden -NewHostname $hostname -NewPrettyName $prettyName -ErrorAction Stop
+          }
 
       - name: Dry run notice
         if: ${{ github.event.inputs.dry_run == 'true' }}
