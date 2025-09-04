@@ -416,6 +416,38 @@ stages:
               failIfCoverageEmpty: true
               # additionalCodeCoverageFiles can be added if multiple assemblies produce separate files
 
+          - task: Bash@3
+            displayName: "Publish Unit Test Job Summary"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                set +e
+                SUMMARY_FILE="$(Agent.TempDirectory)/summary-testjob.md"
+                echo "# ✅ Unit Test Stage Summary" > "$SUMMARY_FILE"
+                echo "Build ID: $(Build.BuildId)  " >> "$SUMMARY_FILE"
+                echo "Source Branch: $(Build.SourceBranchName)  " >> "$SUMMARY_FILE"
+                echo >> "$SUMMARY_FILE"
+                TOTAL_TRX=$(find "$(Agent.TempDirectory)" -maxdepth 1 -type f -name '*.trx' 2>/dev/null | wc -l | tr -d ' ')
+                PASS_COUNT=$(grep -hro 'outcome=\"Passed\"' $(Agent.TempDirectory)/*.trx 2>/dev/null | wc -l | tr -d ' ')
+                FAIL_COUNT=$(grep -hro 'outcome=\"Failed\"' $(Agent.TempDirectory)/*.trx 2>/dev/null | wc -l | tr -d ' ')
+                SKIP_COUNT=$(grep -hro 'outcome=\"NotExecuted\"' $(Agent.TempDirectory)/*.trx 2>/dev/null | wc -l | tr -d ' ')
+                COVERAGE_STATUS="None"
+                if [ -n "$(CoverageFile)" ]; then
+                  if [ -f "$(CoverageFile)" ]; then COVERAGE_STATUS="Published"; else COVERAGE_STATUS="Configured (file missing)"; fi
+                fi
+                echo "| Metric | Value |" >> "$SUMMARY_FILE"
+                echo "| ------ | ----- |" >> "$SUMMARY_FILE"
+                echo "| TRX Files | $TOTAL_TRX |" >> "$SUMMARY_FILE"
+                echo "| Passed | $PASS_COUNT |" >> "$SUMMARY_FILE"
+                echo "| Failed | $FAIL_COUNT |" >> "$SUMMARY_FILE"
+                echo "| Skipped | $SKIP_COUNT |" >> "$SUMMARY_FILE"
+                echo "| Coverage | $COVERAGE_STATUS |" >> "$SUMMARY_FILE"
+                if [ "$FAIL_COUNT" -gt 0 ]; then
+                  echo >> "$SUMMARY_FILE"; echo "**Failures detected. Review published test results for details.**" >> "$SUMMARY_FILE"
+                fi
+                echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Unit Test Summary;]$SUMMARY_FILE"
+
       - job: UITestJob
         displayName: "UI Tests with Playwright"
         dependsOn: TestJob
@@ -897,6 +929,35 @@ stages:
             displayName: "Stop API"
             condition: always()
 
+          - task: Bash@3
+            displayName: "Publish UI Test Job Summary"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                set +e
+                SUMMARY_FILE="$(Agent.TempDirectory)/summary-uitestjob.md"
+                echo "# 🧪 UI Test Stage Summary" > "$SUMMARY_FILE"
+                echo "Build ID: $(Build.BuildId)  " >> "$SUMMARY_FILE"
+                echo "Source Branch: $(Build.SourceBranchName)  " >> "$SUMMARY_FILE"
+                echo >> "$SUMMARY_FILE"
+                UI_TRX=$(find "$(Agent.TempDirectory)" -maxdepth 1 -type f -name '*ui-test-results.trx' 2>/dev/null | wc -l | tr -d ' ')
+                PASS_COUNT=$(grep -hro 'outcome=\"Passed\"' $(Agent.TempDirectory)/*ui-test-results.trx 2>/dev/null | wc -l | tr -d ' ')
+                FAIL_COUNT=$(grep -hro 'outcome=\"Failed\"' $(Agent.TempDirectory)/*ui-test-results.trx 2>/dev/null | wc -l | tr -d ' ')
+                INCONCLUSIVE_COUNT=$(grep -hro 'outcome=\"Inconclusive\"' $(Agent.TempDirectory)/*ui-test-results.trx 2>/dev/null | wc -l | tr -d ' ')
+                SCREENSHOT_COUNT=$(find "$(Pipeline.Workspace)/ui-inconclusive" -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
+                TRACE_COUNT=$(find "$(Pipeline.Workspace)/ui-inconclusive" -type f -name '*trace*.zip' 2>/dev/null | wc -l | tr -d ' ')
+                echo "| Metric | Value |" >> "$SUMMARY_FILE"
+                echo "| ------ | ----- |" >> "$SUMMARY_FILE"
+                echo "| UI TRX Files | $UI_TRX |" >> "$SUMMARY_FILE"
+                echo "| Passed | $PASS_COUNT |" >> "$SUMMARY_FILE"
+                echo "| Failed | $FAIL_COUNT |" >> "$SUMMARY_FILE"
+                echo "| Inconclusive | $INCONCLUSIVE_COUNT |" >> "$SUMMARY_FILE"
+                echo "| Inconclusive Screenshots | $SCREENSHOT_COUNT |" >> "$SUMMARY_FILE"
+                echo "| Trace Archives | $TRACE_COUNT |" >> "$SUMMARY_FILE"
+                if [ "$FAIL_COUNT" -gt 0 ]; then echo "\n**Failures detected. Review artifacts (screenshots/traces) for details.**" >> "$SUMMARY_FILE"; fi
+                echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=UI Test Summary;]$SUMMARY_FILE"
+
           # No SQL container used; cleanup not required
 
   - stage: Build
@@ -1362,6 +1423,28 @@ stages:
               targetPath: "$(Pipeline.Workspace)/build-outputs"
               artifactName: "build-outputs"
 
+          - task: Bash@3
+            displayName: "Publish Build Job Summary"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                set +e
+                SUMMARY_FILE="$(Agent.TempDirectory)/summary-buildjob.md"
+                echo "# 🏗️ Build Stage Summary" > "$SUMMARY_FILE"
+                echo "Build ID: $(Build.BuildId)  " >> "$SUMMARY_FILE"
+                echo "Source Branch: $(Build.SourceBranchName)  " >> "$SUMMARY_FILE"
+                echo >> "$SUMMARY_FILE"
+                echo "| Item | Value |" >> "$SUMMARY_FILE"
+                echo "| ---- | ----- |" >> "$SUMMARY_FILE"
+                echo "| UI Deploy Tag | $(deployTagUI) |" >> "$SUMMARY_FILE"
+                echo "| API Deploy Tag | $(deployTagAPI) |" >> "$SUMMARY_FILE"
+                echo "| MCP Deploy Tag | $(deployTagMCP) |" >> "$SUMMARY_FILE"
+                echo "| Registry | $(registryName).azurecr.io |" >> "$SUMMARY_FILE"
+                echo "| GitVersion | $(GitVersion.FullSemVer) |" >> "$SUMMARY_FILE"
+                if [ "$(GitVersion.FullSemVer)" = "0.0.0-local" ]; then echo "\n**Warning:** GitVersion fallback used. Tags may not reflect semantic versioning." >> "$SUMMARY_FILE"; fi
+                echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Build Summary;]$SUMMARY_FILE"
+
   - stage: DeployDev
     displayName: "Deploy to Development"
     dependsOn: Build
@@ -1729,6 +1812,40 @@ stages:
                       if grep -q '"status":"missing"' api_keys_dev.json; then
                         echo "⚠️ Warning: At least one API key is missing in Dev (allowed but reduces functionality)."; fi
                       echo "✅ External stock API key validation (Dev) passed."
+
+                - task: Bash@3
+                  displayName: "Publish DeployDev Stage Summary"
+                  condition: always()
+                  inputs:
+                    targetType: inline
+                    script: |
+                      set +e
+                      SUMMARY_FILE="$(Agent.TempDirectory)/summary-deploydev.md"
+                      echo "# 🚀 DeployDev Stage Summary" > "$SUMMARY_FILE"
+                      echo "Environment: dev  " >> "$SUMMARY_FILE"
+                      echo "Instance: $(instanceNum)  " >> "$SUMMARY_FILE"
+                      echo "Build ID: $(Build.BuildId)  " >> "$SUMMARY_FILE"
+                      echo >> "$SUMMARY_FILE"
+                      UI_STATUS="UNKNOWN"; API_STATUS="UNKNOWN"; MCP_STATUS="UNKNOWN"
+                      if [ -f /tmp/health_ui_dev.txt ]; then UI_STATUS=$(head -1 /tmp/health_ui_dev.txt | tr -d '\n' | cut -c1-3); fi
+                      if [ -f /tmp/health_api_dev.txt ]; then API_STATUS=$(head -1 /tmp/health_api_dev.txt | tr -d '\n' | cut -c1-3); fi
+                      if [ -f /tmp/health_mcp_dev.txt ]; then MCP_STATUS=$(head -1 /tmp/health_mcp_dev.txt | tr -d '\n' | cut -c1-3); fi
+                      API_KEYS_SUMMARY="(not collected)"
+                      if [ -f api_keys_dev.json ]; then
+                        BAD=$(grep -Eo '"status":"(unresolved-keyvault|placeholder)"' api_keys_dev.json | wc -l | tr -d ' ')
+                        MISSING=$(grep -Eo '"status":"missing"' api_keys_dev.json | wc -l | tr -d ' ')
+                        API_KEYS_SUMMARY="bad=$BAD missing=$MISSING"
+                      fi
+                      echo "| Item | Value |" >> "$SUMMARY_FILE"
+                      echo "| ---- | ----- |" >> "$SUMMARY_FILE"
+                      echo "| UI Health HTTP | $UI_STATUS |" >> "$SUMMARY_FILE"
+                      echo "| API Health HTTP | $API_STATUS |" >> "$SUMMARY_FILE"
+                      echo "| MCP Health HTTP | $MCP_STATUS |" >> "$SUMMARY_FILE"
+                      echo "| Dev API Keys | $API_KEYS_SUMMARY |" >> "$SUMMARY_FILE"
+                      echo "| Image (UI) | $(containerImage) |" >> "$SUMMARY_FILE"
+                      echo "| Image (API) | $(containerImageApi) |" >> "$SUMMARY_FILE"
+                      echo "| Image (MCP) | $(containerImageMcp) |" >> "$SUMMARY_FILE"
+                      echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=DeployDev Summary;]$SUMMARY_FILE"
 
   - stage: DeployProd
     displayName: "Deploy to Production"
@@ -2590,6 +2707,35 @@ stages:
                         echo "⚠️ Warning: At least one API key is missing in Prod. (Pipeline continues but consider configuring it.)"; fi
                       echo "✅ External stock API key validation (Prod) passed."
 
+                - task: Bash@3
+                  displayName: "Publish DeployProd Stage Summary"
+                  condition: always()
+                  inputs:
+                    targetType: inline
+                    script: |
+                      set +e
+                      SUMMARY_FILE="$(Agent.TempDirectory)/summary-deployprod.md"
+                      echo "# 🚀 DeployProd Stage Summary" > "$SUMMARY_FILE"
+                      echo "Environment: prod  " >> "$SUMMARY_FILE"
+                      echo "Instance: $(instanceNum)  " >> "$SUMMARY_FILE"
+                      echo "Build ID: $(Build.BuildId)  " >> "$SUMMARY_FILE"
+                      echo >> "$SUMMARY_FILE"
+                      API_KEYS_SUMMARY="(not collected)"
+                      if [ -f api_keys_prod.json ]; then
+                        BAD=$(grep -Eo '"status":"(unresolved-keyvault|placeholder)"' api_keys_prod.json | wc -l | tr -d ' ')
+                        MISSING=$(grep -Eo '"status":"missing"' api_keys_prod.json | wc -l | tr -d ' ')
+                        API_KEYS_SUMMARY="bad=$BAD missing=$MISSING"
+                      fi
+                      echo "| Item | Value |" >> "$SUMMARY_FILE"
+                      echo "| ---- | ----- |" >> "$SUMMARY_FILE"
+                      echo "| UI Image | $(containerImage) |" >> "$SUMMARY_FILE"
+                      echo "| API Image | $(containerImageApi) |" >> "$SUMMARY_FILE"
+                      echo "| MCP Image | $(containerImageMcp) |" >> "$SUMMARY_FILE"
+                      echo "| API Keys | $API_KEYS_SUMMARY |" >> "$SUMMARY_FILE"
+                      echo "| SQL AD Admin Set | $(azureAdAdminLogin) |" >> "$SUMMARY_FILE"
+                      echo "| GitVersion | $(GitVersion.FullSemVer) |" >> "$SUMMARY_FILE"
+                      echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=DeployProd Summary;]$SUMMARY_FILE"
+
   - stage: SecurityScan
     displayName: "Security Scan"
     dependsOn: Build
@@ -2660,3 +2806,24 @@ stages:
                 echo "MCP container image to scan: $(containerImageMcp)"
                 echo "In a real implementation, this would run Trivy or similar security scanner"
                 echo "Results would be published to Azure DevOps security dashboard"
+
+          - task: Bash@3
+            displayName: "Publish Security Scan Summary"
+            condition: always()
+            inputs:
+              targetType: inline
+              script: |
+                set +e
+                SUMMARY_FILE="$(Agent.TempDirectory)/summary-securityscan.md"
+                echo "# 🔐 Security Scan Stage Summary" > "$SUMMARY_FILE"
+                echo "Build ID: $(Build.BuildId)  " >> "$SUMMARY_FILE"
+                echo "Source Branch: $(Build.SourceBranchName)  " >> "$SUMMARY_FILE"
+                echo >> "$SUMMARY_FILE"
+                echo "| Image | Tag |" >> "$SUMMARY_FILE"
+                echo "| ----- | --- |" >> "$SUMMARY_FILE"
+                echo "| UI | $(containerImage) |" >> "$SUMMARY_FILE"
+                echo "| API | $(containerImageApi) |" >> "$SUMMARY_FILE"
+                echo "| MCP | $(containerImageMcp) |" >> "$SUMMARY_FILE"
+                echo >> "$SUMMARY_FILE"
+                echo "_Placeholder scan executed. Integrate Trivy/Defender for DevOps for real findings._" >> "$SUMMARY_FILE"
+                echo "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Security Scan Summary;]$SUMMARY_FILE"
