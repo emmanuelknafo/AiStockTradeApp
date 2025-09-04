@@ -484,6 +484,52 @@ jobs:
           ConnectionStrings__DefaultConnection: "Server=localhost;Database=StockTrackerTestUI;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true;Encrypt=false"
           USE_INMEMORY_DB: "true" # In-memory DB accelerates UI tests and avoids local SQL dependency
 
+      - name: Collect UI Inconclusive Screenshots & Traces
+        if: always()
+        run: |
+          set -e
+          ARTIFACT_ROOT="ui-test-artifacts"
+          echo "Collecting UI test artifacts into ${ARTIFACT_ROOT}..."
+          mkdir -p "${ARTIFACT_ROOT}/screenshots" "${ARTIFACT_ROOT}/traces" "${ARTIFACT_ROOT}/raw-workdirs"
+
+          echo "Searching for inconclusive screenshots..."
+          FOUND_SHOTS=$(find . -type f -name 'inconclusive-*.png' | wc -l || echo 0)
+          if [ "$FOUND_SHOTS" -gt 0 ]; then
+            find . -type f -name 'inconclusive-*.png' -exec cp {} "${ARTIFACT_ROOT}/screenshots/" \;
+          else
+            echo "No inconclusive screenshots found."
+          fi
+
+          echo "Searching for generic Playwright screenshots..."
+          find . -type f -name 'screenshot-*.png' -exec cp {} "${ARTIFACT_ROOT}/screenshots/" \; 2>/dev/null || true
+
+          echo "Searching for Playwright trace zips..."
+          # Common naming: trace.zip or *_trace.zip; copy & rename uniquely
+            i=0
+            while IFS= read -r trace; do
+              base=$(basename "$trace")
+              cp "$trace" "${ARTIFACT_ROOT}/traces/${i}-${base}" || true
+              i=$((i+1))
+            done < <(find . -type f -name 'trace.zip' -o -name '*_trace.zip' 2>/dev/null || true)
+
+          echo "Capturing minimal directory listings for diagnostics..."
+          (find AiStockTradeApp.UITests/bin -maxdepth 4 -type d -name 'net9.0' -print 2>/dev/null | head -10 | while read d; do
+             echo "Listing for $d"; ls -la "$d" | head -50; echo "----"; done) > "${ARTIFACT_ROOT}/raw-workdirs/directory-listings.txt" 2>/dev/null || true
+
+          echo "Artifact root contents:"; ls -R "${ARTIFACT_ROOT}" || true
+          echo "Summary:"
+          echo "  Inconclusive screenshots: $(ls ${ARTIFACT_ROOT}/screenshots 2>/dev/null | wc -l || echo 0)"
+          echo "  Trace files: $(ls ${ARTIFACT_ROOT}/traces 2>/dev/null | wc -l || echo 0)"
+          echo "Collection complete."
+
+      - name: Upload UI Test Artifacts (Screenshots & Traces)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-artifacts
+          path: ui-test-artifacts
+          retention-days: 7
+
       - name: Upload UI Test Results
         uses: actions/upload-artifact@v4
         if: always()
