@@ -1,10 +1,10 @@
-using AiStockTradeApp.UITests.PageObjects;
+using AiStockTradeApp.PlaywrightUITests.PageObjects;
 using FluentAssertions;
 using Microsoft.Playwright;
 using NUnit.Framework;
-using AiStockTradeApp.UITests.Helpers;
+using AiStockTradeApp.PlaywrightUITests.Helpers;
 
-namespace AiStockTradeApp.UITests.Tests;
+namespace AiStockTradeApp.PlaywrightUITests.Tests;
 
 [TestFixture]
 public class StockDashboardPageObjectTests : BaseUITest

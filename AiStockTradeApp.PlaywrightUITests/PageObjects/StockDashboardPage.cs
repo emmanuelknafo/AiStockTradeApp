@@ -1,6 +1,6 @@
 using Microsoft.Playwright;
 
-namespace AiStockTradeApp.UITests.PageObjects;
+namespace AiStockTradeApp.PlaywrightUITests.PageObjects;
 
 public class StockDashboardPage
 {

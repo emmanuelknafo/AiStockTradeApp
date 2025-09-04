@@ -8,6 +8,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Playwright" Version="1.55.0" />
     <PackageReference Include="Spectre.Console.Cli" Version="0.50.0" />
-  <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+  <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.1" />
   </ItemGroup>
 </Project>

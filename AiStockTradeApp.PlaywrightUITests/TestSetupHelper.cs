@@ -3,7 +3,7 @@ using NUnit.Framework;
 using System.Net.Http;
 using System.Diagnostics;
 
-namespace AiStockTradeApp.UITests;
+namespace AiStockTradeApp.PlaywrightUITests;
 
 /// <summary>
 /// Helper class to ensure the application (UI) and API are running before tests execute

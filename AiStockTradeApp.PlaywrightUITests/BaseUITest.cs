@@ -2,7 +2,7 @@ using Microsoft.Playwright;
 using Microsoft.Playwright.NUnit;
 using NUnit.Framework;
 
-namespace AiStockTradeApp.UITests;
+namespace AiStockTradeApp.PlaywrightUITests;
 
 [Parallelizable(ParallelScope.None)] // Disable parallelization to prevent Playwright concurrency issues
 [TestFixture]

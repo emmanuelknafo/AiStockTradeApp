@@ -3,7 +3,7 @@ using NUnit.Framework;
 using System;
 using System.IO;
 
-namespace AiStockTradeApp.UITests.Helpers;
+namespace AiStockTradeApp.PlaywrightUITests.Helpers;
 
 public static class StockAdditionHelper
 {

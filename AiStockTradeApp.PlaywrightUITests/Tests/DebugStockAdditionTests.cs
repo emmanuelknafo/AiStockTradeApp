@@ -1,9 +1,9 @@
 using Microsoft.Playwright;
 using FluentAssertions;
 using NUnit.Framework;
-using AiStockTradeApp.UITests.PageObjects;
+using AiStockTradeApp.PlaywrightUITests.PageObjects;
 
-namespace AiStockTradeApp.UITests.Tests;
+namespace AiStockTradeApp.PlaywrightUITests.Tests;
 
 [TestFixture]
 public class DebugStockAdditionTests : BaseUITest

@@ -2,7 +2,7 @@ using Microsoft.Playwright;
 using FluentAssertions;
 using NUnit.Framework;
 
-namespace AiStockTradeApp.UITests.Tests;
+namespace AiStockTradeApp.PlaywrightUITests.Tests;
 
 [TestFixture]
 public class AccessibilityTests : BaseUITest
