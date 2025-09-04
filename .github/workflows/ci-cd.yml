@@ -30,6 +30,7 @@ on:
       - "**/*.mcp.json"
       - 'AiStockTradeApp.SeleniumTests/**'
       - '.github/workflows/selenium-tests.yml'
+      - '.github/workflows/runner-maintenance.yml'  # Exclude runner maintenance workflow changes
   pull_request:
     branches: [main]
     paths-ignore:
@@ -59,6 +60,7 @@ on:
       - "**/*.mcp.json"
       - 'AiStockTradeApp.SeleniumTests/**'
       - '.github/workflows/selenium-tests.yml'
+      - '.github/workflows/runner-maintenance.yml'  # Exclude runner maintenance workflow changes
       
   # CI triggers temporarily disabled; manual runs only
   workflow_dispatch:

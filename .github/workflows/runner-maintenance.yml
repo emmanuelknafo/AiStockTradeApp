@@ -1,0 +1,107 @@
+name: Runner Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent_numbers:
+        description: "Comma-separated agent numbers to process (choices: 005,006,007)"
+        required: true
+        default: "006"
+      golden_image_path:
+        description: "Override golden image path (optional)"
+        required: false
+        default: "F:\\_GOLDEN_IMAGES\\DevOps Shield LIN24-CAD-000\\Virtual Hard Disks\\DevOps Shield LIN24-CAD-000.vhdx"
+      dry_run:
+        description: "If true, only log actions without executing script"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+# Prevent overlapping maintenance runs for same set of agents
+concurrency:
+  group: runner-maintenance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare-matrix:
+    name: Prepare Matrix
+    runs-on: [self-hosted, controller]
+    outputs:
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+    steps:
+      - name: Parse agent numbers & build matrix
+        id: build-matrix
+        shell: pwsh
+        run: |
+          $raw = "${{ github.event.inputs.agent_numbers }}"
+          if (-not $raw) { $raw = '007' }
+          # Normalize, dedupe, validate allowed set
+          $allowed = @('005','006','007')
+          $list = $raw -split '[,;\s]+' | Where-Object { $_ } | ForEach-Object { $_.PadLeft(3,'0') } | Select-Object -Unique
+          $invalid = $list | Where-Object { $_ -notin $allowed }
+          if ($invalid) {
+            Write-Error "Invalid agent numbers supplied: $($invalid -join ', '). Allowed: $($allowed -join ', ')"; exit 1
+          }
+          $json = @{ include = @() }
+          foreach ($num in $list) {
+            $vmName = "DevOps Shield LIN24-CAD-$num"
+            $hostName = "ubuntu24040$num"  # pattern: ubuntu24040 + 3-digit agent id (e.g., 007)
+            $pretty  = "Ubuntu 24.04 DevOps Agent $num"
+            $json.include += @{ number=$num; vmName=$vmName; hostName=$hostName; prettyName=$pretty }
+          }
+          $out = ($json | ConvertTo-Json -Compress)
+          Write-Host "Matrix: $out"
+          echo "matrix=$out" >> $env:GITHUB_OUTPUT
+
+  runner-maintenance:
+    name: Maintain Runner (${{ matrix.number }})
+    needs: prepare-matrix
+    runs-on: [self-hosted, controller]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - name: Show context
+        shell: pwsh
+        run: |
+          Write-Host "Processing agent number: ${{ matrix.number }}"
+          Write-Host "VM Name: ${{ matrix.vmName }}"
+          Write-Host "Hostname: ${{ matrix.hostName }}"
+          Write-Host "Pretty Name: ${{ matrix.prettyName }}"
+          Write-Host "Golden Image Path (input): ${{ github.event.inputs.golden_image_path }}"
+          Write-Host "Dry Run: ${{ github.event.inputs.dry_run }}"
+
+      - name: Execute maintenance script
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        shell: pwsh
+        run: |
+          $scriptPath = "F:\src\cad4devops\Cad4devops\hv-packer\scripts\New-GitHubRunner.ps1"
+          $vmName     = "${{ matrix.vmName }}"
+            # Golden image path may be overridden by workflow_dispatch input
+          $golden     = "${{ github.event.inputs.golden_image_path }}"
+          $hostname   = "${{ matrix.hostName }}"
+          $prettyName = "${{ matrix.prettyName }}"
+
+          if (-not (Test-Path $scriptPath)) {
+            Write-Error "Script not found at path: $scriptPath"; exit 1
+          }
+          if (-not (Test-Path $golden)) {
+            Write-Warning "Golden image path does not exist: $golden"
+          }
+
+          Write-Host "Invoking: & $scriptPath -VMName '$vmName' -GoldenImagePath '$golden' -NewHostname '$hostname' -NewPrettyName '$prettyName'"
+          & $scriptPath -VMName $vmName -GoldenImagePath $golden -NewHostname $hostname -NewPrettyName $prettyName -ErrorAction Stop
+
+      - name: Dry run notice
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        shell: pwsh
+        run: |
+          Write-Host "Dry run enabled - would have executed New-GitHubRunner.ps1 for agent ${{ matrix.number }}"
+
+      - name: Completion summary
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "Completed maintenance for agent ${{ matrix.number }} (DryRun=${{ github.event.inputs.dry_run }})"
