@@ -43,17 +43,25 @@ else
     // Resolve connection string with optional Key Vault reference pattern support
     string ResolveConnectionString()
     {
+    ConnectionStringDiagnostics.Reset();
         var raw = builder.Configuration.GetConnectionString("DefaultConnection")
                   ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
                   ?? Environment.GetEnvironmentVariable("DefaultConnection")
                   ?? "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
 
-        // If the connection string starts with a Key Vault reference that wasn't expanded by App Service, attempt manual resolution.
-        // Supported patterns (case-insensitive): @Microsoft.KeyVault(SecretUri=<uri>) or @Microsoft.KeyVault(SecretName=name;VaultName=vault)
-        if (raw.TrimStart().StartsWith("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
+        // Extra detection: sometimes reference is stored with quotes or leading spaces or not at start
+        bool looksLikeKvRef = raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase);
+        if (looksLikeKvRef)
         {
             try
             {
+                var trimmed = raw.Trim().Trim('\"');
+                if (!trimmed.StartsWith("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
+                {
+                    // If reference not at start (unlikely) return raw
+                    Console.WriteLine("[ConnString] Detected '@Microsoft.KeyVault' substring but not at start; attempting parse anyway.");
+                }
+
                 var inner = raw.Substring(raw.IndexOf('(') + 1).TrimEnd(')', ' ');
                 string? secretUri = null;
                 string? secretName = null;
@@ -93,17 +101,65 @@ else
                 if (!string.IsNullOrWhiteSpace(secretValue))
                 {
                     Console.WriteLine("Resolved SQL connection string from Key Vault secret reference.");
+                    ConnectionStringDiagnostics.Resolved = true;
+                    ConnectionStringDiagnostics.Source = secretUri != null ? "KeyVault:SecretUri" : "KeyVault:NameVault";
+                    ConnectionStringDiagnostics.AttemptedKeyVault = true;
+                    ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
                     return secretValue;
                 }
 
                 Console.WriteLine("Warning: Failed to resolve Key Vault reference in connection string; falling back to raw value.");
+                ConnectionStringDiagnostics.AttemptedKeyVault = true;
+                ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
                 return raw;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error resolving Key Vault connection string reference: {ex.Message}");
+                ConnectionStringDiagnostics.AttemptedKeyVault = true;
+                ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
                 return raw; // Fall back so app still starts (will likely fail later but logs are clearer)
             }
+        }
+
+        // Alternate path: environment variables providing vault + secret names (if reference unsupported in connection strings)
+        var envVault = Environment.GetEnvironmentVariable("AZURE_KEY_VAULT_NAME");
+        var envSecretName = Environment.GetEnvironmentVariable("AZURE_SQL_CONNECTION_SECRET")
+                            ?? Environment.GetEnvironmentVariable("SQL_CONNECTION_SECRET_NAME");
+        if (!string.IsNullOrWhiteSpace(envVault) && !string.IsNullOrWhiteSpace(envSecretName) && raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var client = new SecretClient(new Uri($"https://{envVault}.vault.azure.net/"), new DefaultAzureCredential());
+                var secret = client.GetSecret(envSecretName);
+                if (!string.IsNullOrWhiteSpace(secret.Value.Value))
+                {
+                    Console.WriteLine("Resolved SQL connection string via explicit AZURE_KEY_VAULT_NAME + AZURE_SQL_CONNECTION_SECRET env vars.");
+                    ConnectionStringDiagnostics.Source = "EnvFallback:KeyVault";
+                    ConnectionStringDiagnostics.EnvFallbackUsed = true;
+                    ConnectionStringDiagnostics.Resolved = true;
+                    ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
+                    return secret.Value.Value;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Fallback env var Key Vault secret resolution failed: {ex.Message}");
+                ConnectionStringDiagnostics.EnvFallbackUsed = true;
+                ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
+            }
+        }
+
+        if (raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine("Warning: Connection string still contains unresolved @Microsoft.KeyVault reference AFTER resolution attempts.");
+            ConnectionStringDiagnostics.RawHadKeyVaultToken = true;
+            ConnectionStringDiagnostics.Source ??= "Unresolved:KeyVaultReference";
+        }
+        else
+        {
+            ConnectionStringDiagnostics.Source ??= "Plain:Config";
+            ConnectionStringDiagnostics.Resolved = true;
         }
 
         return raw;
@@ -118,6 +174,49 @@ else
             sql.MigrationsAssembly(typeof(StockDataContext).Assembly.FullName);
         });
     });
+
+    // Startup diagnostic log (sanitized) to help verify which connection string form is being used in Azure.
+    try
+    {
+        static string SanitizeForLog(string connectionString)
+        {
+            try
+            {
+                var b = new SqlConnectionStringBuilder(connectionString);
+                if (b.ContainsKey("Password")) b.Password = "***";
+                if (b.ContainsKey("User ID"))
+                {
+                    var uid = b["User ID"]?.ToString();
+                    if (!string.IsNullOrEmpty(uid) && uid!.Length > 1)
+                        b["User ID"] = uid[0] + "***";
+                }
+                // Mask AccessToken if present (rare in raw string)
+                if (b.TryGetValue("Access Token", out var _))
+                {
+                    b["Access Token"] = "***";
+                }
+                return b.ConnectionString;
+            }
+            catch
+            {
+                return "[unparseable-connection-string]";
+            }
+        }
+
+        var unresolvedRef = cs.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase);
+        var sanitized = SanitizeForLog(cs);
+        Console.WriteLine($"[ConnString] Final (sanitized) connection string selected. UnresolvedKeyVaultRef={unresolvedRef}. Value='{sanitized}'");
+        if (unresolvedRef)
+        {
+            Console.WriteLine("[ConnString][Warning] Connection string still contains @Microsoft.KeyVault token. Ensure reference is placed in an App Setting (ConnectionStrings__DefaultConnection) or env fallback variables are set.");
+        }
+    ConnectionStringDiagnostics.Sanitized = sanitized;
+    ConnectionStringDiagnostics.Unresolved = unresolvedRef;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ConnString][Error] Failed to log sanitized connection string: {ex.Message}");
+    }
 }
 
 // Data access + domain services
@@ -260,6 +359,108 @@ app.UseCors("StockUi");
 
 // Health check
 app.MapGet("/health", () => Results.Ok("OK"));
+
+// Extended database / configuration health
+app.MapGet("/health/db", async (IServiceProvider sp) =>
+{
+    var response = new Dictionary<string, object?>();
+    var overallStatus = "Healthy";
+
+    bool useInMemoryDb = false;
+    bool dbConnectionOk = false;
+    int pendingMigrations = -1;
+    string? dbError = null;
+    TimeSpan? connectTime = null;
+    long? listedStocks = null;
+    long? historicalPrices = null;
+    long? stockData = null;
+
+    try
+    {
+        using var scope = sp.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<StockDataContext>();
+        useInMemoryDb = ctx.Database.IsInMemory();
+
+        if (!useInMemoryDb)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                await ctx.Database.OpenConnectionAsync();
+                dbConnectionOk = true;
+            }
+            catch (Exception ex)
+            {
+                dbError = ex.GetBaseException().Message;
+                overallStatus = "Unhealthy";
+            }
+            finally
+            {
+                sw.Stop();
+                connectTime = sw.Elapsed;
+                try { await ctx.Database.CloseConnectionAsync(); } catch { }
+            }
+
+            try
+            {
+                var pending = await ctx.Database.GetPendingMigrationsAsync();
+                pendingMigrations = pending.Count();
+                if (pendingMigrations > 0 && overallStatus == "Healthy") overallStatus = "Degraded";
+            }
+            catch (Exception ex)
+            {
+                dbError ??= $"Pending migrations check failed: {ex.GetBaseException().Message}";
+                if (overallStatus == "Healthy") overallStatus = "Degraded";
+            }
+
+            // Lightweight row counts (may be large; consider approximate future). Only run if connection succeeded.
+            if (dbConnectionOk)
+            {
+                try { listedStocks = await ctx.ListedStocks.CountAsync(); } catch (Exception ex) { dbError ??= $"ListedStocks count failed: {ex.GetBaseException().Message}"; overallStatus = overallStatus == "Unhealthy" ? overallStatus : "Degraded"; }
+                try { historicalPrices = await ctx.HistoricalPrices.Take(1).AnyAsync() ? await ctx.HistoricalPrices.CountAsync() : 0; } catch (Exception ex) { dbError ??= $"HistoricalPrices count failed: {ex.GetBaseException().Message}"; overallStatus = overallStatus == "Unhealthy" ? overallStatus : "Degraded"; }
+                try { stockData = await ctx.StockData.CountAsync(); } catch (Exception ex) { dbError ??= $"StockData count failed: {ex.GetBaseException().Message}"; overallStatus = overallStatus == "Unhealthy" ? overallStatus : "Degraded"; }
+            }
+        }
+        else
+        {
+            dbConnectionOk = true; // in-memory assumed healthy
+            // In-memory: counts are cheap
+            try { listedStocks = await ctx.ListedStocks.CountAsync(); } catch { }
+            try { historicalPrices = await ctx.HistoricalPrices.CountAsync(); } catch { }
+            try { stockData = await ctx.StockData.CountAsync(); } catch { }
+        }
+    }
+    catch (Exception ex)
+    {
+        dbError = ex.GetBaseException().Message;
+        overallStatus = "Unhealthy";
+    }
+
+    response["status"] = overallStatus;
+    response["inMemory"] = useInMemoryDb;
+    response["dbConnection"] = dbConnectionOk;
+    response["connectMs"] = connectTime?.TotalMilliseconds;
+    response["pendingMigrations"] = pendingMigrations;
+    response["error"] = dbError;
+    response["rowCounts"] = new {
+        listedStocks,
+        historicalPrices,
+        stockData
+    };
+    response["connectionDiagnostics"] = new {
+        ConnectionStringDiagnostics.Source,
+        ConnectionStringDiagnostics.Resolved,
+        ConnectionStringDiagnostics.Unresolved,
+        ConnectionStringDiagnostics.AttemptedKeyVault,
+        ConnectionStringDiagnostics.EnvFallbackUsed,
+        ConnectionStringDiagnostics.RawHadKeyVaultToken
+    };
+
+    return Results.Json(response, statusCode: overallStatus == "Unhealthy" ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status200OK);
+})
+.WithName("GetDatabaseHealth")
+.Produces(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status503ServiceUnavailable);
 
 // Configure the HTTP request pipeline - ONLY add Swagger UI if not testing AND has swagger services
 if (app.Environment.IsDevelopment() && !isTesting)
@@ -703,4 +904,27 @@ static async Task SeedListedStocksIfEmptyAsync(IServiceProvider services)
         return int.TryParse(s.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : null;
     }
     static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+}
+
+// Structured diagnostics helper for connection string resolution
+static class ConnectionStringDiagnostics
+{
+    public static string? Sanitized { get; set; }
+    public static bool Unresolved { get; set; }
+    public static bool AttemptedKeyVault { get; set; }
+    public static bool EnvFallbackUsed { get; set; }
+    public static bool Resolved { get; set; }
+    public static bool RawHadKeyVaultToken { get; set; }
+    public static string? Source { get; set; }
+
+    public static void Reset()
+    {
+        Sanitized = null;
+        Unresolved = false;
+        AttemptedKeyVault = false;
+        EnvFallbackUsed = false;
+        Resolved = false;
+        RawHadKeyVaultToken = false;
+        Source = null;
+    }
 }
