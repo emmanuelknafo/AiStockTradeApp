@@ -47,7 +47,7 @@ jobs:
           $json = @{ include = @() }
           foreach ($num in $list) {
             $vmName = "DevOps Shield LIN24-CAD-$num"
-            $hostName = "ubuntu24040$num"  # pattern: ubuntu24040 + 3-digit agent id (e.g., 007)
+            $hostName = "ubuntu2404$num"  # pattern: ubuntu2404 + 3-digit agent id (e.g., 007)
             $pretty  = "Ubuntu 24.04 DevOps Agent $num"
             $json.include += @{ number=$num; vmName=$vmName; hostName=$hostName; prettyName=$pretty }
           }
