@@ -270,7 +270,7 @@ namespace AiStockTradeApp
 
             var app = builder.Build();
 
-            // Ensure database exists and apply migrations for Identity context in local mode
+            // Ensure database exists and apply migrations for Identity + StockData contexts in non-inmemory mode
             if (!useInMemory)
             {
                 using var scope = app.Services.CreateScope();
@@ -286,6 +286,18 @@ namespace AiStockTradeApp
                 catch (Exception ex)
                 {
                     logger.LogWarning(ex, "Failed to apply Identity database migrations.");
+                }
+
+                try
+                {
+                    // Apply StockData migrations to keep Watchlist/Alerts schema in sync
+                    var stockDataContext = scope.ServiceProvider.GetRequiredService<StockDataContext>();
+                    await stockDataContext.Database.MigrateAsync();
+                    logger.LogInformation("StockData database migrations applied successfully.");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to apply StockData database migrations.");
                 }
             }
 
