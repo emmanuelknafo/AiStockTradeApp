@@ -22,71 +22,84 @@ using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Manual Key Vault secret bootstrap (best practice adaptation) with user-assigned managed identity support
-try
-{
-    var kvUri = builder.Configuration["KeyVault:Uri"] ?? Environment.GetEnvironmentVariable("KEYVAULT_URI");
-    var kvName = builder.Configuration["KeyVault:Name"] ?? Environment.GetEnvironmentVariable("KEYVAULT_NAME");
-    if (string.IsNullOrWhiteSpace(kvUri) && !string.IsNullOrWhiteSpace(kvName)) kvUri = $"https://{kvName}.vault.azure.net/";
-    if (!string.IsNullOrWhiteSpace(kvUri))
-    {
-        var userAssignedClientId = builder.Configuration["ManagedIdentity:ClientId"] ?? Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
-        var credOpts = new DefaultAzureCredentialOptions();
-        if (!string.IsNullOrWhiteSpace(userAssignedClientId)) credOpts.ManagedIdentityClientId = userAssignedClientId;
-        var credential = new DefaultAzureCredential(credOpts);
-        builder.Services.AddSingleton<TokenCredential>(credential);
+// Determine early test/dev environment (need before full config composition)
+var earlyEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? builder.Environment.EnvironmentName;
+var earlyIsDevelopment = string.Equals(earlyEnvironment, "Development", StringComparison.OrdinalIgnoreCase);
+var earlyIsTesting = string.Equals(earlyEnvironment, "Testing", StringComparison.OrdinalIgnoreCase);
 
-        var secretClient = new Azure.Security.KeyVault.Secrets.SecretClient(new Uri(kvUri), credential);
-        // Determine which secrets to pull. Allow explicit list via KeyVault:Secrets:0..n else default to known keys.
-        var secretsList = new List<string>();
-        for (int i = 0; i < 20; i++)
+// Azure Key Vault integration (only for non-development & non-testing deployments OR when explicit KV URI provided)
+// Guidance: https://learn.microsoft.com/aspnet/core/security/key-vault-configuration
+// We keep a lightweight manual bootstrap to avoid adding the Azure.Extensions.AspNetCore.Configuration.Secrets
+// package dependency in local dev where Key Vault isn't needed. In Azure, set KEYVAULT_URI or KeyVault:Uri.
+if (!earlyIsDevelopment && !earlyIsTesting)
+{
+    try
+    {
+        var kvUri = builder.Configuration["KeyVault:Uri"] ?? Environment.GetEnvironmentVariable("KEYVAULT_URI");
+        var kvName = builder.Configuration["KeyVault:Name"] ?? Environment.GetEnvironmentVariable("KEYVAULT_NAME");
+        if (string.IsNullOrWhiteSpace(kvUri) && !string.IsNullOrWhiteSpace(kvName)) kvUri = $"https://{kvName}.vault.azure.net/";
+        if (!string.IsNullOrWhiteSpace(kvUri))
         {
-            var name = builder.Configuration[$"KeyVault:Secrets:{i}"]; if (string.IsNullOrWhiteSpace(name)) break; secretsList.Add(name.Trim());
-        }
-        if (secretsList.Count == 0)
-        {
-            // Default expected secrets using double-hyphen mapping convention (SecretName AlphaVantage--ApiKey => config AlphaVantage:ApiKey)
-            secretsList.AddRange(new[] { "AlphaVantage--ApiKey", "TwelveData--ApiKey" });
-        }
-        var loaded = 0;
-        var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var secretName in secretsList.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            try
+            var userAssignedClientId = builder.Configuration["ManagedIdentity:ClientId"] ?? Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+            var credOpts = new DefaultAzureCredentialOptions();
+            if (!string.IsNullOrWhiteSpace(userAssignedClientId)) credOpts.ManagedIdentityClientId = userAssignedClientId;
+            var credential = new DefaultAzureCredential(credOpts);
+            builder.Services.AddSingleton<TokenCredential>(credential);
+
+            var secretClient = new Azure.Security.KeyVault.Secrets.SecretClient(new Uri(kvUri), credential);
+            var secretsList = new List<string>();
+            for (int i = 0; i < 20; i++)
             {
-                var secret = secretClient.GetSecret(secretName);
-                var value = secret.Value.Value;
-                if (value != null)
+                var name = builder.Configuration[$"KeyVault:Secrets:{i}"]; if (string.IsNullOrWhiteSpace(name)) break; secretsList.Add(name.Trim());
+            }
+            if (secretsList.Count == 0)
+            {
+                secretsList.AddRange(new[] { "AlphaVantage--ApiKey", "TwelveData--ApiKey" });
+            }
+            var loaded = 0;
+            var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var secretName in secretsList.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                try
                 {
-                    // Map double-dash to colon for configuration key normalization
-                    var key = secretName.Replace("--", ":");
-                    dict[key] = value;
-                    loaded++;
+                    var secret = secretClient.GetSecret(secretName);
+                    var value = secret.Value.Value;
+                    if (value != null)
+                    {
+                        var key = secretName.Replace("--", ":");
+                        dict[key] = value;
+                        loaded++;
+                    }
+                }
+                catch (Exception exSecret)
+                {
+                    Console.WriteLine($"[KeyVault][Info] Unable to load secret '{secretName}': {exSecret.Message}");
                 }
             }
-            catch (Exception exSecret)
+            if (loaded > 0)
             {
-                Console.WriteLine($"[KeyVault][Info] Unable to load secret '{secretName}': {exSecret.Message}");
+                builder.Configuration.AddInMemoryCollection(dict!);
+                Console.WriteLine($"[KeyVault] Bootstrapped {loaded} secrets into configuration (UserAssigned={(string.IsNullOrWhiteSpace(userAssignedClientId)?"false":"true")}).");
             }
-        }
-        if (loaded > 0)
-        {
-            builder.Configuration.AddInMemoryCollection(dict!);
-            Console.WriteLine($"[KeyVault] Bootstrapped {loaded} secrets into configuration (UserAssigned={(string.IsNullOrWhiteSpace(userAssignedClientId)?"false":"true")}).");
+            else
+            {
+                Console.WriteLine("[KeyVault] No secrets loaded (check access policies / secret names).");
+            }
         }
         else
         {
-            Console.WriteLine("[KeyVault] No secrets loaded (check access policies / secret names).");
+            Console.WriteLine("[KeyVault] No KeyVault:Uri / KEYVAULT_URI provided; skipping bootstrap (non-dev environment).");
         }
     }
-    else
+    catch (Exception ex)
     {
-        Console.WriteLine("[KeyVault] No KeyVault:Uri / KEYVAULT_URI provided; skipping manual bootstrap.");
+        Console.WriteLine($"[KeyVault][Warn] Bootstrap failed: {ex.Message}");
     }
 }
-catch (Exception ex)
+else
 {
-    Console.WriteLine($"[KeyVault][Warn] Manual bootstrap failed: {ex.Message}");
+    // Explicitly skip in Dev/Testing to reduce startup noise
+    Console.WriteLine("[KeyVault] Skipped (Development/Testing environment). Set KEYVAULT_URI to enable.");
 }
 
 // Enhanced logging configuration
@@ -416,8 +429,9 @@ app.MapGet("/health/db", async (IServiceProvider sp) =>
 .Produces(StatusCodes.Status503ServiceUnavailable);
 
 // API key diagnostics with runtime Key Vault reference resolution
-app.MapGet("/health/api-keys", async (IConfiguration config, ILogger<Program> logger, TokenCredential? credential) =>
+app.MapGet("/health/api-keys", async (IConfiguration config, ILogger<Program> logger, [FromServices] TokenCredential? credential) =>
 {
+    // TokenCredential is only registered when Key Vault bootstrap runs (Azure scenario). For local dev we allow null.
     var payload = await ApiKeyDiagnostics.GetStatusAsync(config, logger, credential);
     return Results.Json(payload);
 })
