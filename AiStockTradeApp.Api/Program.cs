@@ -13,6 +13,8 @@ using System.Globalization;
 using System.Text;
 using AiStockTradeApp.Api.Background;
 using Microsoft.AspNetCore.DataProtection;
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,10 +40,78 @@ if (useInMemory)
 }
 else
 {
+    // Resolve connection string with optional Key Vault reference pattern support
+    string ResolveConnectionString()
+    {
+        var raw = builder.Configuration.GetConnectionString("DefaultConnection")
+                  ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+                  ?? Environment.GetEnvironmentVariable("DefaultConnection")
+                  ?? "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
+
+        // If the connection string starts with a Key Vault reference that wasn't expanded by App Service, attempt manual resolution.
+        // Supported patterns (case-insensitive): @Microsoft.KeyVault(SecretUri=<uri>) or @Microsoft.KeyVault(SecretName=name;VaultName=vault)
+        if (raw.TrimStart().StartsWith("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var inner = raw.Substring(raw.IndexOf('(') + 1).TrimEnd(')', ' ');
+                string? secretUri = null;
+                string? secretName = null;
+                string? vaultName = null;
+
+                foreach (var part in inner.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    var kvp = part.Split('=', 2);
+                    if (kvp.Length != 2) continue;
+                    var key = kvp[0].Trim();
+                    var val = kvp[1].Trim();
+                    if (key.Equals("SecretUri", StringComparison.OrdinalIgnoreCase)) secretUri = val;
+                    else if (key.Equals("SecretName", StringComparison.OrdinalIgnoreCase)) secretName = val;
+                    else if (key.Equals("VaultName", StringComparison.OrdinalIgnoreCase)) vaultName = val;
+                }
+
+                string? secretValue = null;
+                if (secretUri != null)
+                {
+                    // SecretUri format: https://<vault>.vault.azure.net/secrets/<name>/<version?>
+                    var client = new SecretClient(new Uri(secretUri.Split("/secrets/")[0]), new DefaultAzureCredential());
+                    var namePart = secretUri.Substring(secretUri.IndexOf("/secrets/") + 9);
+                    var name = namePart.Split('/', StringSplitOptions.RemoveEmptyEntries)[0];
+                    var version = namePart.Contains('/') ? namePart.Split('/', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault() : null;
+                    KeyVaultSecret secret = version == null
+                        ? client.GetSecret(name)
+                        : client.GetSecret(name, version);
+                    secretValue = secret.Value;
+                }
+                else if (secretName != null && vaultName != null)
+                {
+                    var vaultUri = new Uri($"https://{vaultName}.vault.azure.net/");
+                    var client = new SecretClient(vaultUri, new DefaultAzureCredential());
+                    secretValue = client.GetSecret(secretName).Value.Value;
+                }
+
+                if (!string.IsNullOrWhiteSpace(secretValue))
+                {
+                    Console.WriteLine("Resolved SQL connection string from Key Vault secret reference.");
+                    return secretValue;
+                }
+
+                Console.WriteLine("Warning: Failed to resolve Key Vault reference in connection string; falling back to raw value.");
+                return raw;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error resolving Key Vault connection string reference: {ex.Message}");
+                return raw; // Fall back so app still starts (will likely fail later but logs are clearer)
+            }
+        }
+
+        return raw;
+    }
+
+    var cs = ResolveConnectionString();
     builder.Services.AddDbContext<StockDataContext>(options =>
     {
-        var cs = builder.Configuration.GetConnectionString("DefaultConnection")
-                 ?? "Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true";
         options.UseSqlServer(cs, sql =>
         {
             sql.EnableRetryOnFailure();

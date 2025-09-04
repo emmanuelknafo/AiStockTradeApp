@@ -28,6 +28,8 @@ on:
       - "load-tests/**"
       - "infrastructure/**"
       - "**/*.mcp.json"
+      - 'AiStockTradeApp.SeleniumTests/**'
+      - '.github/workflows/selenium-tests.yml'
   pull_request:
     branches: [main]
     paths-ignore:
@@ -55,6 +57,8 @@ on:
       - "load-tests/**"
       - "infrastructure/**"
       - "**/*.mcp.json"
+      - 'AiStockTradeApp.SeleniumTests/**'
+      - '.github/workflows/selenium-tests.yml'
       
   # CI triggers temporarily disabled; manual runs only
   workflow_dispatch:
