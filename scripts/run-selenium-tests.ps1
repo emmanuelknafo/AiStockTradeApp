@@ -330,15 +330,15 @@ finally {
   if ($CI -and -not $SkipStart) {
     Write-Info 'CI cleanup: attempting to stop spawned API/UI processes.'
     try {
-      $isLinux = $PSStyle.Platform -match 'Linux' -or ($env:RUNNER_OS -eq 'Linux')
-    } catch { $isLinux = $false }
+      $cleanupIsLinux = $PSStyle.Platform -match 'Linux' -or ($env:RUNNER_OS -eq 'Linux')
+    } catch { $cleanupIsLinux = $false }
 
-    if ($isLinux) {
+    if ($cleanupIsLinux) {
       try {
         & bash -c "pkill -f AiStockTradeApp.Api || true; pkill -f AiStockTradeApp.dll || true" | Out-Null
         Write-Info 'Issued pkill commands for Api/UI (Linux).'
       } catch { Write-Warn "pkill cleanup failed: $($_.Exception.Message)" }
-    } else {
+  } else {
       # Windows / others: try narrowing to processes whose command line includes project dll names if possible
       try {
         $dotnetProcs = Get-Process -Name dotnet -ErrorAction SilentlyContinue
@@ -355,7 +355,7 @@ finally {
             }
           } catch { }
         }
-      } catch { Write-Warn "Windows cleanup failed: $($_.Exception.Message)" }
+  } catch { Write-Warn "Windows cleanup failed: $($_.Exception.Message)" }
     }
   }
 }
