@@ -2290,7 +2290,7 @@ stages:
                     # NOTE: Do NOT pass azureAdAdminObjectId/login from the DevOps service principal into the ARM deployment.
                     # Many service principals used by pipelines lack Microsoft Graph permissions required to upsert SQL AAD admins
                     # which causes ARM deployments to fail. Instead we set the SQL AAD admin post-deploy via a CLI step (see next).
-                    overrideParameters: "$(PROD_ARM_OVERRIDES)"
+                    overrideParameters: "$(PROD_ARM_OVERRIDES) -alphaVantageApiKey $(ALPHA_VANTAGE_API_KEY) -twelveDataApiKey $(TWELVE_DATA_API_KEY)"
                     deploymentMode: "Incremental"
 
                 - task: AzureCLI@2

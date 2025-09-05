@@ -406,11 +406,12 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
         // Leave API key app settings blank; runtime bootstrap loads real values from Key Vault secrets (double-dash names)
         {
           name: 'AlphaVantage__ApiKey'
-          value: ''
+          // Populate from parameter when supplied; otherwise leave blank so runtime bootstrap can fetch from Key Vault
+          value: empty(alphaVantageApiKey) ? '' : alphaVantageApiKey
         }
         {
           name: 'TwelveData__ApiKey'
-          value: ''
+          value: empty(twelveDataApiKey) ? '' : twelveDataApiKey
         }
         // Provide Key Vault URI + UAMI ClientId so app can proactively bootstrap secrets
         {
@@ -528,11 +529,11 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
         }
         {
           name: 'AlphaVantage__ApiKey'
-          value: ''
+          value: empty(alphaVantageApiKey) ? '' : alphaVantageApiKey
         }
         {
           name: 'TwelveData__ApiKey'
-          value: ''
+          value: empty(twelveDataApiKey) ? '' : twelveDataApiKey
         }
         {
           name: 'KeyVault__Uri'
@@ -636,11 +637,11 @@ resource webMcp 'Microsoft.Web/sites@2024-11-01' = {
         }
         {
           name: 'AlphaVantage__ApiKey'
-          value: ''
+          value: empty(alphaVantageApiKey) ? '' : alphaVantageApiKey
         }
         {
           name: 'TwelveData__ApiKey'
-          value: ''
+          value: empty(twelveDataApiKey) ? '' : twelveDataApiKey
         }
         {
           name: 'KeyVault__Uri'
