@@ -27,17 +27,20 @@ var earlyEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMEN
 var earlyIsDevelopment = string.Equals(earlyEnvironment, "Development", StringComparison.OrdinalIgnoreCase);
 var earlyIsTesting = string.Equals(earlyEnvironment, "Testing", StringComparison.OrdinalIgnoreCase);
 
-// Azure Key Vault integration (only for non-development & non-testing deployments OR when explicit KV URI provided)
-// Guidance: https://learn.microsoft.com/aspnet/core/security/key-vault-configuration
-// We keep a lightweight manual bootstrap to avoid adding the Azure.Extensions.AspNetCore.Configuration.Secrets
-// package dependency in local dev where Key Vault isn't needed. In Azure, set KEYVAULT_URI or KeyVault:Uri.
-if (!earlyIsDevelopment && !earlyIsTesting)
+// Azure Key Vault integration
+// Updated logic: ALWAYS attempt bootstrap if an explicit Key Vault name/URI is provided (even in Development),
+// except in Testing where we intentionally isolate for deterministic tests.
+// This enables "Dev" or "Development" slots in Azure to still hydrate secrets when configured.
+try
 {
-    try
+    var kvUri = builder.Configuration["KeyVault:Uri"] ?? Environment.GetEnvironmentVariable("KEYVAULT_URI");
+    var kvName = builder.Configuration["KeyVault:Name"] ?? Environment.GetEnvironmentVariable("KEYVAULT_NAME");
+    if (string.IsNullOrWhiteSpace(kvUri) && !string.IsNullOrWhiteSpace(kvName)) kvUri = $"https://{kvName}.vault.azure.net/";
+
+    var explicitKvConfig = !string.IsNullOrWhiteSpace(kvUri) || !string.IsNullOrWhiteSpace(kvName);
+
+    if (!earlyIsTesting && ((!earlyIsDevelopment && !earlyIsTesting) || explicitKvConfig))
     {
-        var kvUri = builder.Configuration["KeyVault:Uri"] ?? Environment.GetEnvironmentVariable("KEYVAULT_URI");
-        var kvName = builder.Configuration["KeyVault:Name"] ?? Environment.GetEnvironmentVariable("KEYVAULT_NAME");
-        if (string.IsNullOrWhiteSpace(kvUri) && !string.IsNullOrWhiteSpace(kvName)) kvUri = $"https://{kvName}.vault.azure.net/";
         if (!string.IsNullOrWhiteSpace(kvUri))
         {
             var userAssignedClientId = builder.Configuration["ManagedIdentity:ClientId"] ?? Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
@@ -79,27 +82,26 @@ if (!earlyIsDevelopment && !earlyIsTesting)
             if (loaded > 0)
             {
                 builder.Configuration.AddInMemoryCollection(dict!);
-                Console.WriteLine($"[KeyVault] Bootstrapped {loaded} secrets into configuration (UserAssigned={(string.IsNullOrWhiteSpace(userAssignedClientId)?"false":"true")}).");
+                Console.WriteLine($"[KeyVault] Bootstrapped {loaded} secrets into configuration (Env={earlyEnvironment}, ExplicitConfig={explicitKvConfig}, UserAssigned={(string.IsNullOrWhiteSpace(userAssignedClientId)?"false":"true")}).");
             }
             else
             {
-                Console.WriteLine("[KeyVault] No secrets loaded (check access policies / secret names).");
+                Console.WriteLine($"[KeyVault] Attempted bootstrap but no secrets loaded (Env={earlyEnvironment}). Check access policies / secret names.");
             }
         }
         else
         {
-            Console.WriteLine("[KeyVault] No KeyVault:Uri / KEYVAULT_URI provided; skipping bootstrap (non-dev environment).");
+            Console.WriteLine($"[KeyVault] Explicit bootstrap requested but no KeyVault:Uri / KEYVAULT_URI resolved (Env={earlyEnvironment}).");
         }
     }
-    catch (Exception ex)
+    else
     {
-        Console.WriteLine($"[KeyVault][Warn] Bootstrap failed: {ex.Message}");
+        Console.WriteLine($"[KeyVault] Skipped (Environment={earlyEnvironment}, ExplicitKvConfig={explicitKvConfig}, Testing={earlyIsTesting}). Set KEYVAULT_URI to force load.");
     }
 }
-else
+catch (Exception ex)
 {
-    // Explicitly skip in Dev/Testing to reduce startup noise
-    Console.WriteLine("[KeyVault] Skipped (Development/Testing environment). Set KEYVAULT_URI to enable.");
+    Console.WriteLine($"[KeyVault][Warn] Bootstrap failed: {ex.Message}");
 }
 
 // Enhanced logging configuration

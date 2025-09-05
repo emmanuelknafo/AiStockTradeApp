@@ -16,7 +16,8 @@ internal static class ApiKeyDiagnostics
 
     private static string Mask(string? raw)
     {
-        if (string.IsNullOrWhiteSpace(raw) || raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase)) return string.Empty;
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        if (raw.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase)) return "[unresolved-keyvault]"; // Explicit marker for unresolved references
         if (raw.Length <= 4) return "***";
         return raw[..2] + new string('*', Math.Max(0, raw.Length - 4)) + raw[^2..];
     }
@@ -83,10 +84,21 @@ internal static class ApiKeyDiagnostics
 
     private static string Classify(string? rawOriginal, string? resolved, string placeholder, bool treatDemo = false)
     {
+        var rawHadKv = !string.IsNullOrWhiteSpace(rawOriginal) && rawOriginal.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase);
+        var resolvedStillKv = !string.IsNullOrWhiteSpace(resolved) && resolved.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase);
+
         if (string.IsNullOrWhiteSpace(resolved))
-            return string.IsNullOrWhiteSpace(rawOriginal)
-                ? "missing"
-                : (rawOriginal.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase) ? "unresolved-keyvault" : "missing");
+        {
+            if (string.IsNullOrWhiteSpace(rawOriginal)) return "missing";
+            return rawHadKv ? "unresolved-keyvault" : "missing";
+        }
+
+        if (resolvedStillKv)
+        {
+            // Failed to resolve (we got the same token back)
+            return "unresolved-keyvault";
+        }
+
         if (resolved == placeholder) return "placeholder";
         if (treatDemo && string.Equals(resolved, "demo", StringComparison.OrdinalIgnoreCase)) return "demo";
         return "configured";
