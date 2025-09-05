@@ -1,4 +1,5 @@
 using OpenQA.Selenium;
+using OpenQA.Selenium.Support.UI;
 
 namespace AiStockTradeApp.SeleniumTests.Pages;
 
@@ -12,15 +13,17 @@ public class DashboardPage
     }
 
     // Locators — prefer data-testid from UI guidelines
-    private By StockInput => By.CssSelector("[data-testid='stock-input']");
-    private By AddStockButton => By.CssSelector("[data-testid='add-stock-btn']");
+    // Updated selectors to match current dashboard markup
+    private By StockInput => By.CssSelector("#ticker-input, [data-testid='ticker-input']");
+    private By AddStockButton => By.CssSelector("#add-button, [data-testid='add-button']");
     private By WatchlistCards => By.CssSelector("[data-testid^='stock-card-']");
-    private By EmptyState => By.CssSelector("[data-testid='empty-state']");
-    private By RemoveButton(string symbol) => By.CssSelector($"[data-testid='remove-{symbol}']");
+    private By EmptyState => By.CssSelector("[data-testid='empty-watchlist']");
+    private By RemoveButton(string symbol) => By.CssSelector($"[data-testid='remove-stock-{symbol}']");
 
     public DashboardPage Go(string baseUrl)
     {
-        _driver.Navigate().GoToUrl(baseUrl.TrimEnd('/') + "/");
+    // New dashboard route under UserStock controller
+    _driver.Navigate().GoToUrl(baseUrl.TrimEnd('/') + "/UserStock/Dashboard");
         return this;
     }
 
@@ -38,18 +41,35 @@ public class DashboardPage
 
     public DashboardPage RemoveSymbol(string symbol)
     {
-        var remove = _driver.FindElement(RemoveButton(symbol));
-        remove.Click();
+        var wait = new WebDriverWait(new SystemClock(), _driver, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(200));
+        // Ensure the card exists first
+        wait.Until(drv => drv.FindElements(RemoveButton(symbol)).Any());
+        _driver.FindElement(RemoveButton(symbol)).Click();
+        // Wait for card to disappear
+        wait.Until(drv => !drv.FindElements(RemoveButton(symbol)).Any());
         return this;
     }
 
     public IReadOnlyCollection<string> GetSymbols()
     {
+        // Re-query to avoid stale element references; ignore transient stales
         var cards = _driver.FindElements(WatchlistCards);
-        return cards
-            .Select(c => c.GetAttribute("data-testid"))
-            .Where(v => !string.IsNullOrEmpty(v))
-            .Select(v => v!.Replace("stock-card-", ""))
-            .ToArray();
+        var symbols = new List<string>();
+        foreach (var c in cards)
+        {
+            try
+            {
+                var dt = c.GetAttribute("data-testid");
+                if (!string.IsNullOrEmpty(dt) && dt.StartsWith("stock-card-"))
+                {
+                    symbols.Add(dt.Replace("stock-card-", ""));
+                }
+            }
+            catch (StaleElementReferenceException)
+            {
+                // Skip stale; next call will re-evaluate
+            }
+        }
+        return symbols;
     }
 }

@@ -15,12 +15,33 @@ All tests are currently [Skipped] until you configure the app URL and data; enab
 
 ## Configure
 
-Edit `TestSettings.json`:
+Edit `TestSettings.json` (non‑secret values only):
 
-- `BaseUrl`: UI base URL (e.g., <https://localhost:5001>)
+- `BaseUrl`: UI base URL (default local HTTPS: <https://localhost:7043>)
 - `Headless`: true/false for Chrome headless mode
-- `Credentials`: seeded test user credentials
 - `Culture`: default culture to test (en|fr)
+
+Credentials are supplied via environment variables (preferred for local + CI):
+
+Environment variables consumed:
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `SELENIUM_BASE_URL` | Override BaseUrl | <https://localhost:7043> |
+| `SELENIUM_HEADLESS` | Force headless (true/false) | true |
+| `SELENIUM_CULTURE` | Override culture | fr |
+| `SELENIUM_USERNAME` | Auth username | <testuser@example.com> |
+| `SELENIUM_PASSWORD` | Auth password | (secret) |
+
+Set locally (PowerShell):
+
+```powershell
+$env:SELENIUM_USERNAME = 'testuser@example.com'
+$env:SELENIUM_PASSWORD = 'P@ssw0rd!'
+dotnet test .\AiStockTradeApp.SeleniumTests\AiStockTradeApp.SeleniumTests.csproj --filter "Category=Authenticated"
+```
+
+In GitHub Actions / Azure DevOps put them in secure secret variables.
 
 TestSettings.json is copied to output automatically.
 
@@ -40,7 +61,7 @@ dotnet test .\AiStockTradeApp.SeleniumTests\AiStockTradeApp.SeleniumTests.csproj
 
 ## Enable tests
 
-- Fill in `BaseUrl` and `Credentials`
+- Ensure `BaseUrl` (or set `SELENIUM_BASE_URL`) and provide credentials via `SELENIUM_USERNAME` / `SELENIUM_PASSWORD`
 - Start the app via `./scripts/start.ps1 -Mode Local`
 - Remove the `Skip = "..."` from a test once the prerequisite is ready
 - Prefer data-testid selectors as used in the Page Objects; add them in the UI if missing

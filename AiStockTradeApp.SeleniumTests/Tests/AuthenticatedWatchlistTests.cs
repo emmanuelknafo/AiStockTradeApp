@@ -24,7 +24,13 @@ public class AuthenticatedWatchlistTests : TestBase
         dashboard.Go(Settings.BaseUrl);
 
     var count = dashboard.GetWatchlistCount();
-    Assert.True(count > 0);
+    if (count == 0)
+    {
+        // Self-seed via UI to avoid dependency on external DB state
+        dashboard.AddSymbol("AAPL").AddSymbol("MSFT");
+        count = dashboard.GetWatchlistCount();
+    }
+    Assert.True(count > 0, "Expected at least one watchlist item after optional self-seed.");
     }
 
     [Trait("Category", "Authenticated")]
@@ -72,6 +78,8 @@ public class AuthenticatedWatchlistTests : TestBase
         }
         auth.SignIn(Settings.BaseUrl, Settings.Credentials.Username, Settings.Credentials.Password);
         dashboard.Go(Settings.BaseUrl)
+                 // Ensure symbol exists before attempting removal
+                 .AddSymbol("AAPL")
                  .RemoveSymbol("AAPL");
 
     Assert.DoesNotContain(dashboard.GetSymbols(), s => s.Equals("AAPL", StringComparison.OrdinalIgnoreCase));

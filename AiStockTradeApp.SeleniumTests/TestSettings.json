@@ -1,5 +1,5 @@
 {
-  "BaseUrl": "https://localhost:5001",
+  "BaseUrl": "https://localhost:7043",
   "Browser": "Chrome",
   "Headless": true,
   "ImplicitWaitMs": 2000,
