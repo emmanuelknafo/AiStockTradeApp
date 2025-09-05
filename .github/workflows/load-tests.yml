@@ -144,18 +144,40 @@ jobs:
       - name: Evaluate basic thresholds
         id: eval
         run: |
-          set -e
-          failure_ratio=$(awk -F, 'tolower($1)=="failure_ratio" {print $2}' $RESULTS_DIR/locust_stats.csv || echo 0)
-          avg_response=$(awk -F, 'tolower($1)=="Average response time" {print $2}' $RESULTS_DIR/locust_stats.csv | head -1 || echo 0)
+          set -eo pipefail
+          stats_file="$RESULTS_DIR/locust_stats.csv"
+          if [ ! -f "$stats_file" ]; then
+            echo "locust_stats.csv not found" >&2; exit 1
+          fi
+          # Locust CSV typically: Type,Name,Requests,Failures,Median Response Time,Average Response Time,Min Response Time,Max Response Time,...
+          # Aggregated row often has empty Type, Name='Aggregated'. Compute failure ratio & average response defensively.
+          agg_line=$(grep -i ',Aggregated,' "$stats_file" | tail -1 || true)
+          if [ -z "$agg_line" ]; then
+            echo "No Aggregated row found in stats; falling back to zeros" >&2
+            requests=0; failures=0; avg_response=0
+          else
+            IFS=',' read -r col1 col2 requests failures median avg_response _rest <<< "$agg_line"
+            requests=${requests:-0}; failures=${failures:-0}; avg_response=${avg_response:-0}
+          fi
+          if ! [[ "$requests" =~ ^[0-9]+$ ]]; then requests=0; fi
+            if ! [[ "$failures" =~ ^[0-9]+$ ]]; then failures=0; fi
+            # failure_ratio = failures/requests
+          if [ "$requests" -gt 0 ]; then
+            failure_ratio=$(python -c "req=int('$requests'); fail=int('$failures'); print(f'{fail/req:.6f}')")
+          else
+            failure_ratio=0
+          fi
+          # Average response already captured (ms); ensure numeric
+          if ! [[ "$avg_response" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then avg_response=0; fi
+          echo "Failure ratio: $failure_ratio"; echo "Avg response: $avg_response ms";
           echo "failure_ratio=$failure_ratio" >> $GITHUB_OUTPUT
           echo "avg_response=$avg_response" >> $GITHUB_OUTPUT
-          echo "Failure ratio: $failure_ratio"; echo "Avg response: $avg_response ms"
-          # Simple gates (tunable)
+          # Thresholds
           max_failure=0.05
           max_avg=1500
           pass=true
-          awk "BEGIN {exit !($failure_ratio <= max_failure)}" || pass=false
-          awk "BEGIN {exit !($avg_response <= max_avg)}" || pass=false
+          awk -v fr=$failure_ratio -v maxf=$max_failure 'BEGIN{exit !(fr<=maxf)}' || pass=false
+          awk -v ar=$avg_response -v maxa=$max_avg 'BEGIN{exit !(ar<=maxa)}' || pass=false
           if [ "$pass" != "true" ]; then
             echo "Load test thresholds failed (failure_ratio>$max_failure or avg_response>$max_avg)" >> $GITHUB_STEP_SUMMARY
             exit 1
