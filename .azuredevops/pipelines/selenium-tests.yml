@@ -11,25 +11,39 @@
 ###############################################
 
 parameters:
+  # Mirrors GitHub workflow_dispatch inputs (filterType, filterValue, culture)
   - name: filterType
     displayName: Filter type (None|Category|AdoId)
     type: string
-    default: "None"
+    default: None
     values:
       - None
       - Category
       - AdoId
   - name: filterValue
-    displayName: Filter value (e.g., Authenticated or 1403|1408)
+    displayName: (Optional) Filter value (e.g., Authenticated or 1403|1408)
     type: string
-    default: ""
+    default: ''   # Empty string -> optional (prevents UI showing *Required*)
   - name: culture
     displayName: Culture (en|fr)
     type: string
-    default: "en"
+    default: en
     values:
       - en
       - fr
+  # Advanced (optional) settings mirroring script switches
+  - name: enableTests
+    displayName: "Advanced: Enable tests (remove Skip attributes)"
+    type: boolean
+    default: true
+  - name: headless
+    displayName: "Advanced: Run browser headless"
+    type: boolean
+    default: true
+  - name: configuration
+    displayName: "Advanced: Build configuration"
+    type: string
+    default: Release
 
 # Trigger on changes to Selenium tests, app code, or supporting script
 trigger:
@@ -122,17 +136,28 @@ stages:
               dotnet build AiStockTradeApp.sln -c $(CONFIGURATION) --no-restore
             displayName: "Restore & Build"
 
-          # Run Selenium tests via existing script
+          # Determine filter args (mirrors GitHub Determine Filter step)
           - pwsh: |
-              $filterArgs = ''
-              if ('${{ parameters.filterType }}' -eq 'Category' -and '${{ parameters.filterValue }}') { $filterArgs = "-Category ${{ parameters.filterValue }}" }
-              elseif ('${{ parameters.filterType }}' -eq 'AdoId' -and '${{ parameters.filterValue }}') { $filterArgs = "-AdoId ${{ parameters.filterValue }}" }
-              $cmd = "./scripts/run-selenium-tests.ps1 -CI -Configuration $(CONFIGURATION) -EnableTests -Headless:`$true -Culture ${{ parameters.culture }} $filterArgs"
+              $type = '${{ parameters.filterType }}'
+              $value = '${{ parameters.filterValue }}'
+              $filter = ''
+              if ($type -eq 'Category' -and $value) { $filter = "-Category $value" }
+              elseif ($type -eq 'AdoId' -and $value) { $filter = "-AdoId $value" }
+              Write-Host "Computed filter args: '$filter'"
+              Write-Host "##vso[task.setvariable variable=filterArgs]$filter"
+            displayName: Determine Filter
+
+          # Run Selenium tests via existing script (no -EnableTests if parameter disabled)
+          - pwsh: |
+              $headless = if (${{ parameters.headless }}) { '$true' } else { '$false' }
+              $enableSwitch = if (${{ parameters.enableTests }}) { '-EnableTests' } else { '' }
+              $cmd = "./scripts/run-selenium-tests.ps1 -CI -Configuration ${{ parameters.configuration }} $enableSwitch -Headless:$headless -Culture ${{ parameters.culture }}"
+              if ($(filterArgs)) { $cmd += " $(filterArgs)" }
               if ($env:SELENIUM_USERNAME) { $cmd += " -Username `"$env:SELENIUM_USERNAME`"" }
               if ($env:SELENIUM_PASSWORD) { $cmd += " -Password `"$env:SELENIUM_PASSWORD`"" }
               Write-Host "Executing: $cmd"
               Invoke-Expression $cmd
-            displayName: "Run Selenium Tests"
+            displayName: Run Selenium Tests
             env:
               SELENIUM_USERNAME: $(SELENIUM_USERNAME)
               SELENIUM_PASSWORD: $(SELENIUM_PASSWORD)
