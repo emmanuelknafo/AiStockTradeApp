@@ -1,32 +1,193 @@
-name: Load tests
+name: Load Tests
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - '**'            # run only for branch refs, not tags
-    tags-ignore:
-      - '**'            # ignore all tag pushes (e.g., when creating a release tag)
-    paths:
-      - 'load-tests/**'
-      - '.github/workflows/load-tests.yml'
-      - '!.github/workflows/generate-changelog.yml'
-      - '!**/*.mcp.json'
-  pull_request:
-    paths:
-      - 'load-tests/**'
-      - '.github/workflows/load-tests.yml'
-      - '!.github/workflows/generate-changelog.yml'
-      - '!**/*.mcp.json'
+    inputs:
+      scenario:
+        description: "Test scenario (smoke|quick|normal|stress)"
+        required: false
+        default: smoke
+      users:
+        description: "Number of users (overrides scenario default)"
+        required: false
+        default: ""
+      duration:
+        description: "Duration in seconds (overrides scenario default)"
+        required: false
+        default: ""
+  schedule:
+    # Daily lightweight smoke test (UTC 02:30)
+    - cron: "30 2 * * *"
 
-# Cancel in-progress runs when a new commit is pushed
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: load-tests-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  API_PROJECT: 'AiStockTradeApp.Api/AiStockTradeApp.Api.csproj'
+  API_URL: 'http://localhost:5088'
+  LOCUST_FILE: 'locustfile.py'
+  RESULTS_DIR: 'load-test-results'
 
 jobs:
+  load-test:
+    name: Run Load Tests (${{ github.event.inputs.scenario || 'scheduled-smoke' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+            dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore & Build (Release)
+        run: |
+          dotnet restore AiStockTradeApp.sln
+          dotnet build AiStockTradeApp.sln -c Release --no-restore
+
+      - name: Publish API
+        run: |
+          dotnet publish $API_PROJECT -c Release -o published-api --no-build
+
+      - name: Start API (background)
+        run: |
+          dotnet published-api/AiStockTradeApp.Api.dll --urls $API_URL &
+          echo $! > api.pid
+        shell: bash
+
+      - name: Wait for API healthy
+        run: |
+          set +e
+          echo "Waiting for $API_URL/health (or root fallback)..."
+          for i in {1..40}; do
+            if curl -fsS $API_URL/health > /dev/null 2>&1; then echo "Health endpoint OK"; exit 0; fi
+            if curl -fsS $API_URL/ > /dev/null 2>&1; then echo "Root responded (health missing)"; exit 0; fi
+            sleep 3
+          done
+          echo "API did not become ready in time" >&2
+          cat api.pid || true
+          exit 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install load test dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install locust; fi
+
+      - name: Derive scenario parameters
+        id: params
+        run: |
+          scenario="${{ github.event.inputs.scenario }}"
+          users_override="${{ github.event.inputs.users }}"
+          duration_override="${{ github.event.inputs.duration }}"
+          # Defaults
+          users=5
+          duration=30
+          case "$scenario" in
+            quick) users=10; duration=60;;
+            normal) users=50; duration=300;;
+            stress) users=75; duration=420;;
+            smoke|""|scheduled-smoke) users=5; duration=30;;
+            *) echo "Unknown scenario '$scenario', falling back to smoke";;
+          esac
+          if [ -n "$users_override" ]; then users=$users_override; fi
+            if [ -n "$duration_override" ]; then duration=$duration_override; fi
+          echo "users=$users" >> $GITHUB_OUTPUT
+          echo "duration=$duration" >> $GITHUB_OUTPUT
+          echo "scenario=${scenario:-smoke}" >> $GITHUB_OUTPUT
+          echo "Resolved parameters: scenario=${scenario:-smoke} users=$users duration=$duration"
+
+      - name: Run Locust (headless)
+        run: |
+          mkdir -p $RESULTS_DIR
+          echo "Starting Locust against $API_URL with users=${{ steps.params.outputs.users }} duration=${{ steps.params.outputs.duration }}s"
+          locust -f $LOCUST_FILE \
+            --host $API_URL \
+            --users ${{ steps.params.outputs.users }} \
+            --spawn-rate $(( ${{ steps.params.outputs.users }} / 2 + 1 )) \
+            --run-time ${{ steps.params.outputs.duration }}s \
+            --headless \
+            --stop-timeout 15 \
+            --exit-code-on-error 1 \
+            --csv $RESULTS_DIR/locust \
+            --html $RESULTS_DIR/locust-report.html || echo "LOCUST_EXIT=$?" >> $GITHUB_ENV
+
+      - name: Evaluate basic thresholds
+        id: eval
+        run: |
+          set -e
+          failure_ratio=$(awk -F, 'tolower($1)=="failure_ratio" {print $2}' $RESULTS_DIR/locust_stats.csv || echo 0)
+          avg_response=$(awk -F, 'tolower($1)=="Average response time" {print $2}' $RESULTS_DIR/locust_stats.csv | head -1 || echo 0)
+          echo "failure_ratio=$failure_ratio" >> $GITHUB_OUTPUT
+          echo "avg_response=$avg_response" >> $GITHUB_OUTPUT
+          echo "Failure ratio: $failure_ratio"; echo "Avg response: $avg_response ms"
+          # Simple gates (tunable)
+          max_failure=0.05
+          max_avg=1500
+          pass=true
+          awk "BEGIN {exit !($failure_ratio <= max_failure)}" || pass=false
+          awk "BEGIN {exit !($avg_response <= max_avg)}" || pass=false
+          if [ "$pass" != "true" ]; then
+            echo "Load test thresholds failed (failure_ratio>$max_failure or avg_response>$max_avg)" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "Thresholds passed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-${{ steps.params.outputs.scenario }}
+          path: ${{ env.RESULTS_DIR }}
+          retention-days: 14
+
+      - name: Summarize
+        if: always()
+        run: |
+          echo "### Load Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Scenario: ${{ steps.params.outputs.scenario }}" >> $GITHUB_STEP_SUMMARY
+          echo "Users: ${{ steps.params.outputs.users }}" >> $GITHUB_STEP_SUMMARY
+          echo "Duration (s): ${{ steps.params.outputs.duration }}" >> $GITHUB_STEP_SUMMARY
+          if [ -f $RESULTS_DIR/locust_stats.csv ]; then
+            tail -n 15 $RESULTS_DIR/locust_stats.csv | sed 's/^/`/;s/$/`/' >> $GITHUB_STEP_SUMMARY || true
+          fi
+          echo "Failure Ratio: ${{ steps.eval.outputs.failure_ratio }}" >> $GITHUB_STEP_SUMMARY
+          echo "Average Response (ms): ${{ steps.eval.outputs.avg_response }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f api.pid ]; then kill $(cat api.pid) || true; fi
+          pkill -f AiStockTradeApp.Api || true
   run-jmeter:
-    #runs-on: ubuntu-latest
+    needs: load-test
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Pre-clean leftover artifacts
