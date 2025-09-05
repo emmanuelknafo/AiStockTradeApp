@@ -75,6 +75,7 @@ jobs:
           DISABLE_SELENIUM_TEST_AUTOSTART: true
           # Force HTTP base URL to avoid dev certificate trust on GitHub runners
           SELENIUM_BASE_URL: http://localhost:5259
+          # Note: run-selenium-tests.ps1 now forces UI launch profile 'https' (with -UseHttps:$false) so port 5259 is active
         run: |
           $cmd = "./scripts/run-selenium-tests.ps1 -CI -Configuration Release -EnableTests -Headless:`$true"
           if ('${{ github.event.inputs.culture }}') { $cmd += " -Culture ${{ github.event.inputs.culture }}" }
@@ -93,3 +94,14 @@ jobs:
           path: |
             **/TestResults/**/*.trx
             AiStockTradeApp.SeleniumTests/TestResults/**/*.trx
+
+      - name: Upload Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-screenshots
+          path: |
+            AiStockTradeApp.SeleniumTests/**/Screenshots/**/*.png
+            **/Screenshots/**/*.png
+          if-no-files-found: ignore
+          retention-days: 7

@@ -181,8 +181,9 @@ try {
   if (-not $SkipStart) {
     Write-Info "Starting application via start.ps1 (-Mode $Mode -NoBrowser) ..."
     if ($CI) {
-      # Force HTTP launch profiles to avoid HTTPS redirection + cert trust issues
-      & $startScript -Mode $Mode -NoBrowser -UseHttps:$false -ApiProfile http -UiProfile http | Out-Null
+      # Force API to pure HTTP profile, but use UI 'https' profile (with UseHttps disabled) so it also exposes HTTP on 5259
+      # Launch settings: UI 'https' profile => https://7043;http://5259, API 'http' profile => http://5256
+      & $startScript -Mode $Mode -NoBrowser -UseHttps:$false -ApiProfile http -UiProfile https | Out-Null
     } else {
       & $startScript -Mode $Mode -NoBrowser | Out-Null
     }
