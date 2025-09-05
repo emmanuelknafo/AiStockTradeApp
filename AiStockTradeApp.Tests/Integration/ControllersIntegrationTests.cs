@@ -7,6 +7,7 @@ using AiStockTradeApp.Services.Interfaces;
 
 namespace AiStockTradeApp.Tests.Integration
 {
+    #pragma warning disable CS0618 // Suppress obsolete StockController references in integration tests
     public class ControllersIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
     {
         private readonly WebApplicationFactory<Program> _factory;
@@ -161,4 +162,5 @@ namespace AiStockTradeApp.Tests.Integration
                 HttpStatusCode.InternalServerError);
         }
     }
+    #pragma warning restore CS0618
 }
