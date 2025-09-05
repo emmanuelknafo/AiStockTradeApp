@@ -36,8 +36,8 @@ namespace AiStockTradeApp.Tests.Integration
         [Fact]
         public async Task Get_StockDashboard_ShouldReturnSuccessAndCorrectContentType()
         {
-            // Act
-            var response = await _client.GetAsync("/Stock/Dashboard");
+            // Act - Use the correct UserStock controller
+            var response = await _client.GetAsync("/UserStock/Dashboard");
 
             // Assert
             response.EnsureSuccessStatusCode();
@@ -57,7 +57,7 @@ namespace AiStockTradeApp.Tests.Integration
         }
 
         [Theory]
-        [InlineData("/Stock/Dashboard")]
+        [InlineData("/UserStock/Dashboard")]
         [InlineData("/Home/Privacy")]
         public async Task Get_PublicPages_ShouldReturnSuccess(string url)
         {
@@ -138,8 +138,8 @@ namespace AiStockTradeApp.Tests.Integration
             var json = JsonSerializer.Serialize(requestData);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            // Act
-            var response = await _client.PostAsync("/Stock/AddStock", content);
+            // Act - Use the correct UserStock controller
+            var response = await _client.PostAsync("/UserStock/AddStock", content);
 
             // Assert
             // Should either succeed or return a reasonable error (not UnsupportedMediaType)
@@ -152,8 +152,8 @@ namespace AiStockTradeApp.Tests.Integration
         [Fact]
         public async Task Get_StockSuggestions_ShouldReturnJsonResponse()
         {
-            // Act
-            var response = await _client.GetAsync("/Stock/GetSuggestions?query=A");
+            // Act - Use the correct UserStock controller
+            var response = await _client.GetAsync("/UserStock/GetSuggestions?query=A");
 
             // Assert
             response.EnsureSuccessStatusCode();
@@ -189,10 +189,10 @@ namespace AiStockTradeApp.Tests.Integration
             // Arrange
             var tasks = new List<Task<HttpResponseMessage>>();
             
-            // Act
+            // Act - Use the correct UserStock controller
             for (int i = 0; i < 10; i++)
             {
-                tasks.Add(_client.GetAsync("/Stock/Dashboard"));
+                tasks.Add(_client.GetAsync("/UserStock/Dashboard"));
             }
 
             var responses = await Task.WhenAll(tasks);
@@ -206,8 +206,8 @@ namespace AiStockTradeApp.Tests.Integration
         [Fact]
         public async Task Get_ChartData_ShouldReturnJsonResponse()
         {
-            // Act
-            var response = await _client.GetAsync("/Stock/GetChartData?symbol=AAPL&days=30");
+            // Act - Use the correct UserStock controller
+            var response = await _client.GetAsync("/UserStock/GetChartData?symbol=AAPL&days=30");
 
             // Assert
             response.EnsureSuccessStatusCode();
@@ -222,9 +222,9 @@ namespace AiStockTradeApp.Tests.Integration
             var client = _factory.WithWebHostBuilder(builder => { })
                 .CreateClient();
 
-            // Act
-            var response1 = await client.GetAsync("/Stock/Dashboard");
-            var response2 = await client.GetAsync("/Stock/Dashboard");
+            // Act - Use the correct UserStock controller
+            var response1 = await client.GetAsync("/UserStock/Dashboard");
+            var response2 = await client.GetAsync("/UserStock/Dashboard");
 
             // Assert
             response1.EnsureSuccessStatusCode();
@@ -239,10 +239,10 @@ namespace AiStockTradeApp.Tests.Integration
         }
 
         [Fact]
-        public async Task Get_StockData_ShouldReturnValidJson()
+        public async Task Get_WatchlistData_ShouldReturnValidJson()
         {
-            // Act
-            var response = await _client.GetAsync("/Stock/GetStockData?symbol=AAPL");
+            // Act - Use the GetWatchlist endpoint instead of GetStockData
+            var response = await _client.GetAsync("/UserStock/GetWatchlist");
 
             // Assert
             response.EnsureSuccessStatusCode();
@@ -255,8 +255,8 @@ namespace AiStockTradeApp.Tests.Integration
         [Fact]
         public async Task Post_RemoveStock_ShouldReturnValidResponse()
         {
-            // Act
-            var response = await _client.PostAsync("/Stock/RemoveStock?symbol=AAPL", null);
+            // Act - Use the correct UserStock controller
+            var response = await _client.PostAsync("/UserStock/RemoveStock?symbol=AAPL", null);
 
             // Assert
             response.EnsureSuccessStatusCode();
@@ -266,8 +266,8 @@ namespace AiStockTradeApp.Tests.Integration
         [Fact]
         public async Task Post_ClearWatchlist_ShouldReturnValidResponse()
         {
-            // Act
-            var response = await _client.PostAsync("/Stock/ClearWatchlist", null);
+            // Act - Use the correct UserStock controller
+            var response = await _client.PostAsync("/UserStock/ClearWatchlist", null);
 
             // Assert
             response.EnsureSuccessStatusCode();
