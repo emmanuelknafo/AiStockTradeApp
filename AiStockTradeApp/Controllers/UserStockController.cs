@@ -90,7 +90,8 @@ namespace AiStockTradeApp.Controllers
             try
             {
                 var userId = await GetUserIdAsync();
-                var sessionId = User.Identity?.IsAuthenticated == true ? null : GetSessionId();
+                // Always fall back to session storage when userId could not be resolved
+                var sessionId = userId == null ? GetSessionId() : null;
                 using var op = _logger.BeginScope(new Dictionary<string, object?>
                 {
                     ["UserId"] = userId,
@@ -103,7 +104,7 @@ namespace AiStockTradeApp.Controllers
                 var watchlist = await _userWatchlistService.GetWatchlistAsync(userId, sessionId);
                 var alerts = await _userWatchlistService.GetAlertsAsync(userId, sessionId);
 
-                var errors = new List<string>();
+                var errors = new System.Collections.Concurrent.ConcurrentBag<string>();
                 // Parallel fetch stock quotes to improve p95 performance
                 var fetchTasks = watchlist.Select(async item =>
                 {
@@ -114,9 +115,13 @@ namespace AiStockTradeApp.Controllers
                         {
                             item.StockData = stockQuote.Data;
                         }
-                        else if (!string.IsNullOrEmpty(stockQuote.ErrorMessage))
+                        else
                         {
-                            errors.Add(stockQuote.ErrorMessage);
+                            // Capture error for unsuccessful fetch even if service didn't supply message
+                            var msg = !string.IsNullOrWhiteSpace(stockQuote.ErrorMessage)
+                                ? stockQuote.ErrorMessage
+                                : $"Failed to load {item.Symbol}";
+                            errors.Add(msg);
                         }
                     }
                     catch (Exception ex)
@@ -127,15 +132,22 @@ namespace AiStockTradeApp.Controllers
                 });
                 await Task.WhenAll(fetchTasks);
 
+                // Fallback: if any items failed to populate stock data but no explicit errors were recorded
+                if (!errors.Any() && watchlist.Any(w => w.StockData == null) && watchlist.Count > 0)
+                {
+                    errors.Add(_localizer["Error_PartialData"].Value ?? "Some symbols failed to load");
+                }
+
                 var portfolio = await _userWatchlistService.CalculatePortfolioSummaryAsync(watchlist);
 
+                var distinctErrors = errors.Distinct().Take(3).ToList();
                 var viewModel = new AiStockTradeApp.Entities.ViewModels.DashboardViewModel
                 {
                     Watchlist = watchlist,
                     Alerts = alerts,
                     Portfolio = portfolio,
                     Settings = new AiStockTradeApp.Entities.ViewModels.UserSettings(),
-                    ErrorMessage = errors.Any() ? string.Join("; ", errors.Distinct().Take(3)) : null
+                    ErrorMessage = distinctErrors.Any() ? string.Join("; ", distinctErrors) : null
                 };
 
                 if (viewModel.ErrorMessage != null)

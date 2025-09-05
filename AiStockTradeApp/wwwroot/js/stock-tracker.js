@@ -118,7 +118,8 @@ class StockTracker {
         }
         
         try {
-            const controller = this.config.controller || 'Stock';
+            // Unified controller: legacy 'Stock' routes now redirect; always call UserStock directly
+            const controller = 'UserStock';
             const response = await fetch(`/${controller}/AddStock`, {
                 method: 'POST',
                 headers: {
@@ -155,7 +156,7 @@ class StockTracker {
         if (!symbol) return;
         
         try {
-            const controller = this.config.controller || 'Stock';
+            const controller = 'UserStock';
             const response = await fetch(`/${controller}/RemoveStock?symbol=${encodeURIComponent(symbol)}`, {
                 method: 'POST',
                 headers: {
@@ -195,7 +196,7 @@ class StockTracker {
         }
         
         try {
-            const controller = this.config.controller || 'Stock';
+            const controller = 'UserStock';
             const response = await fetch(`/${controller}/ClearWatchlist`, {
                 method: 'POST',
                 headers: {

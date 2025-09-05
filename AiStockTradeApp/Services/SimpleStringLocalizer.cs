@@ -84,6 +84,7 @@ namespace AiStockTradeApp.Services
                 ["Version_Label"] = "Version:",
                 ["Sector"] = "Sector",
                 ["Industry"] = "Industry",
+                    ["Error_PartialData"] = "Some symbols failed to load",
 
                 // Authentication translations
                 ["Nav_Welcome"] = "Welcome",
@@ -231,6 +232,7 @@ namespace AiStockTradeApp.Services
                 ["Version_Label"] = "Version :",
                 ["Sector"] = "Secteur",
                 ["Industry"] = "Industrie",
+                        ["Error_PartialData"] = "Certaines valeurs n'ont pas pu être chargées",
 
                 // Authentication translations
                 ["Nav_Welcome"] = "Bienvenue",
@@ -309,6 +311,25 @@ namespace AiStockTradeApp.Services
                 ["Success_AlertSet"] = "Alerte configurée : {0} {1} ${2}",
                 ["Success_DataImported"] = "Données importées avec succès : {0} actions ajoutées"
             };
+
+            // Accessibility / ARIA labels (added after initial localization keys)
+            _translations["en"].Add("Aria_ToggleTheme", "Toggle theme");
+            _translations["en"].Add("Aria_ToggleAutoRefresh", "Toggle auto-refresh");
+            _translations["en"].Add("Aria_ToggleAlertsPanel", "Toggle alerts panel");
+            _translations["en"].Add("Aria_ToggleSettingsPanel", "Toggle settings panel");
+            _translations["en"].Add("Aria_RemoveStock", "Remove {0} from watchlist");
+            _translations["en"].Add("Aria_ClearWatchlist", "Clear watchlist");
+            _translations["en"].Add("Aria_AddStock", "Add stock");
+            _translations["en"].Add("Aria_EmptyWatchlist", "Empty watchlist message region");
+
+            _translations["fr"].Add("Aria_ToggleTheme", "Changer le thème");
+            _translations["fr"].Add("Aria_ToggleAutoRefresh", "Basculer l'actualisation auto");
+            _translations["fr"].Add("Aria_ToggleAlertsPanel", "Basculer le panneau d'alertes");
+            _translations["fr"].Add("Aria_ToggleSettingsPanel", "Basculer le panneau des paramètres");
+            _translations["fr"].Add("Aria_RemoveStock", "Retirer {0} de la liste");
+            _translations["fr"].Add("Aria_ClearWatchlist", "Effacer la liste");
+            _translations["fr"].Add("Aria_AddStock", "Ajouter une action");
+            _translations["fr"].Add("Aria_EmptyWatchlist", "Zone du message de liste vide");
         }
 
         public LocalizedString this[string name]
