@@ -15,7 +15,12 @@ if (-not (Test-Path $Script:RunnerPath)) {
 function Invoke-LoadRunner {
     param([string]$ArgsLine)
     Write-Host "→ Invoking runner: $Script:RunnerPath $ArgsLine" -ForegroundColor DarkGray
-    & $Script:RunnerPath @ArgsLine.Split(' ')  # simple split; arguments have no spaces today
+    # Tokenize respecting quoted arguments
+    $nullRef = $null
+    $tokens = [System.Management.Automation.PSParser]::Tokenize($ArgsLine, [ref]$nullRef) |
+        Where-Object { $_.Type -eq 'CommandArgument' } |
+        ForEach-Object { $_.Content }
+    & $Script:RunnerPath @tokens
 }
 
 $ErrorActionPreference = "Stop"
