@@ -19,7 +19,8 @@ namespace AiStockTradeApp.Controllers
     {
         private readonly IUserWatchlistService _userWatchlistService;
         private readonly IStockDataService _stockDataService;
-        private readonly IAIAnalysisService _aiAnalysisService;
+    private readonly IAIAnalysisService _aiAnalysisService;
+    private readonly IWatchlistQuoteAggregator _quoteAggregator;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ILogger<UserStockController> _logger;
         private readonly IStringLocalizer<SharedResource> _localizer;
@@ -28,6 +29,7 @@ namespace AiStockTradeApp.Controllers
             IUserWatchlistService userWatchlistService,
             IStockDataService stockDataService,
             IAIAnalysisService aiAnalysisService,
+            IWatchlistQuoteAggregator quoteAggregator,
             UserManager<ApplicationUser> userManager,
             ILogger<UserStockController> logger,
             IStringLocalizer<SharedResource> localizer)
@@ -35,6 +37,7 @@ namespace AiStockTradeApp.Controllers
             _userWatchlistService = userWatchlistService;
             _stockDataService = stockDataService;
             _aiAnalysisService = aiAnalysisService;
+            _quoteAggregator = quoteAggregator;
             _userManager = userManager;
             _logger = logger;
             _localizer = localizer;
@@ -104,38 +107,15 @@ namespace AiStockTradeApp.Controllers
                 var watchlist = await _userWatchlistService.GetWatchlistAsync(userId, sessionId);
                 var alerts = await _userWatchlistService.GetAlertsAsync(userId, sessionId);
 
-                var errors = new System.Collections.Concurrent.ConcurrentBag<string>();
-                // Parallel fetch stock quotes to improve p95 performance
-                var fetchTasks = watchlist.Select(async item =>
+                List<string> errors;
+                try
                 {
-                    try
-                    {
-                        var stockQuote = await _stockDataService.GetStockQuoteAsync(item.Symbol);
-                        if (stockQuote.Success && stockQuote.Data != null)
-                        {
-                            item.StockData = stockQuote.Data;
-                        }
-                        else
-                        {
-                            // Capture error for unsuccessful fetch even if service didn't supply message
-                            var msg = !string.IsNullOrWhiteSpace(stockQuote.ErrorMessage)
-                                ? stockQuote.ErrorMessage
-                                : $"Failed to load {item.Symbol}";
-                            errors.Add(msg);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        errors.Add($"{item.Symbol}: {ex.Message}");
-                        _logger.LogWarning(ex, "Failed to load stock data for {Symbol}", item.Symbol);
-                    }
-                });
-                await Task.WhenAll(fetchTasks);
-
-                // Fallback: if any items failed to populate stock data but no explicit errors were recorded
-                if (!errors.Any() && watchlist.Any(w => w.StockData == null) && watchlist.Count > 0)
+                    errors = (await _quoteAggregator.PopulateQuotesAsync(watchlist)).ToList();
+                }
+                catch (Exception exAgg)
                 {
-                    errors.Add(_localizer["Error_PartialData"].Value ?? "Some symbols failed to load");
+                    _logger.LogError(exAgg, "Quote aggregation failed");
+                    errors = new List<string> { _localizer["Error_PartialData"].Value ?? "Some symbols failed to load" };
                 }
 
                 var portfolio = await _userWatchlistService.CalculatePortfolioSummaryAsync(watchlist);
@@ -161,8 +141,12 @@ namespace AiStockTradeApp.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading dashboard");
-                ViewBag.ErrorMessage = _localizer["Error_LoadingDashboard"];
-                return View(new AiStockTradeApp.Entities.ViewModels.DashboardViewModel());
+                var errorText = _localizer["Error_LoadingDashboard"].Value ?? "Error_LoadingDashboard";
+                var failedModel = new AiStockTradeApp.Entities.ViewModels.DashboardViewModel
+                {
+                    ErrorMessage = errorText
+                };
+                return View(failedModel);
             }
         }
 

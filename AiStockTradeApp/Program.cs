@@ -251,6 +251,7 @@ namespace AiStockTradeApp
             
             // Register the new user-aware watchlist service that automatically saves for logged-in users
             builder.Services.AddScoped<IUserWatchlistService, UserWatchlistService>();
+            builder.Services.AddScoped<IWatchlistQuoteAggregator, WatchlistQuoteAggregator>();
             
             // Keep the old session-based service for backward compatibility
             builder.Services.AddSingleton<IWatchlistService, WatchlistService>();

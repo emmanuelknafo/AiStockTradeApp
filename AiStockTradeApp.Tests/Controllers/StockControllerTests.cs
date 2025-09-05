@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using AiStockTradeApp.Controllers;
 
+#pragma warning disable CS0618 // Suppress obsolete StockController usage warnings – intentional redirect coverage
+
 namespace AiStockTradeApp.Tests.Controllers;
 
 // The legacy StockController is now a thin redirect layer. These tests verify
@@ -41,3 +43,5 @@ public class StockControllerTests
             .Which.ActionName.Should().Be("ClearWatchlist");
     }
 }
+
+#pragma warning restore CS0618
