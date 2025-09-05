@@ -14,7 +14,7 @@ parameters:
   - name: filterType
     displayName: Filter type (None|Category|AdoId)
     type: string
-    default: 'None'
+    default: "None"
     values:
       - None
       - Category
@@ -22,11 +22,11 @@ parameters:
   - name: filterValue
     displayName: Filter value (e.g., Authenticated or 1403|1408)
     type: string
-    default: ''
+    default: ""
   - name: culture
     displayName: Culture (en|fr)
     type: string
-    default: 'en'
+    default: "en"
     values:
       - en
       - fr
@@ -60,15 +60,21 @@ pr:
       - .azuredevops/pipelines/selenium-tests.yml
 
 variables:
-  DOTNET_VERSION: '9.0.x'
-  CONFIGURATION: 'Release'
+  - group: SeleniumVars
+  - name: DOTNET_VERSION
+    value: "9.0.x"
+  - name: CONFIGURATION
+    value: "Release"
   # Force HTTP base URL to skip dev cert trust prompts in CI
-  SELENIUM_BASE_URL: 'http://localhost:5259'
-  DISABLE_SELENIUM_TEST_AUTOSTART: 'true'
-  HEADLESS: 'true'
+  - name: SELENIUM_BASE_URL
+    value: "http://localhost:5259"
+  - name: DISABLE_SELENIUM_TEST_AUTOSTART
+    value: "true"
+  - name: HEADLESS
+    value: "true"
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: "ubuntu-latest"
 
 stages:
   - stage: SeleniumTests
@@ -82,10 +88,10 @@ stages:
             fetchDepth: 0
 
           - task: UseDotNet@2
-            displayName: 'Install .NET SDK $(DOTNET_VERSION)'
+            displayName: "Install .NET SDK $(DOTNET_VERSION)"
             inputs:
-              packageType: 'sdk'
-              version: '$(DOTNET_VERSION)'
+              packageType: "sdk"
+              version: "$(DOTNET_VERSION)"
               includePreviewVersions: true
 
           # Install Chrome (stable). Ubuntu image may have Chromium, but we ensure consistency.
@@ -99,7 +105,7 @@ stages:
               sudo apt-get update
               sudo apt-get install -y google-chrome-stable
               google-chrome --version
-            displayName: 'Install Chrome'
+            displayName: "Install Chrome"
 
           # (Optional) Display environment info
           - script: |
@@ -108,13 +114,13 @@ stages:
               echo "Parameter filterType: ${{ parameters.filterType }}"
               echo "Parameter filterValue: ${{ parameters.filterValue }}"
               echo "Parameter culture: ${{ parameters.culture }}"
-            displayName: 'Environment Info'
+            displayName: "Environment Info"
 
           # Restore & build solution (script also builds if needed, but we do explicit build for clarity)
           - script: |
               dotnet restore AiStockTradeApp.sln
               dotnet build AiStockTradeApp.sln -c $(CONFIGURATION) --no-restore
-            displayName: 'Restore & Build'
+            displayName: "Restore & Build"
 
           # Run Selenium tests via existing script
           - pwsh: |
@@ -126,7 +132,7 @@ stages:
               if ($env:SELENIUM_PASSWORD) { $cmd += " -Password `"$env:SELENIUM_PASSWORD`"" }
               Write-Host "Executing: $cmd"
               Invoke-Expression $cmd
-            displayName: 'Run Selenium Tests'
+            displayName: "Run Selenium Tests"
             env:
               SELENIUM_USERNAME: $(SELENIUM_USERNAME)
               SELENIUM_PASSWORD: $(SELENIUM_PASSWORD)
@@ -135,31 +141,30 @@ stages:
 
           # Publish test results (TRX)
           - task: PublishTestResults@2
-            displayName: 'Publish TRX Results'
+            displayName: "Publish TRX Results"
             condition: succeededOrFailed()
             inputs:
-              testResultsFormat: 'VSTest'
-              testResultsFiles: '**/TestResults/**/*.trx'
-              searchFolder: '$(System.DefaultWorkingDirectory)'
+              testResultsFormat: "VSTest"
+              testResultsFiles: "**/TestResults/**/*.trx"
+              searchFolder: "$(System.DefaultWorkingDirectory)"
               mergeTestResults: true
               failTaskOnFailedTests: false
-              testRunTitle: 'Selenium UI Tests'
+              testRunTitle: "Selenium UI Tests"
 
           # Publish screenshots if any
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish Screenshots'
+            displayName: "Publish Screenshots"
             condition: succeededOrFailed()
             inputs:
-              PathtoPublish: 'AiStockTradeApp.SeleniumTests'
-              ArtifactName: 'selenium-screenshots'
-              publishLocation: 'Container'
+              PathtoPublish: "AiStockTradeApp.SeleniumTests"
+              ArtifactName: "selenium-screenshots"
+              publishLocation: "Container"
 
           # (Optional) Capture HTML logs or additional artifacts later
           # Placeholder for future enhancement: publish logs directory
 
         # End job
     # End stage
-
 # Secrets setup instructions:
 #   Define pipeline variables (Library -> Variable Groups or Pipeline Variables):
 #     SELENIUM_USERNAME (secret)
