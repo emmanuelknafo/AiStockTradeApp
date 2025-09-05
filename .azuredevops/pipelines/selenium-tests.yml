@@ -11,19 +11,11 @@
 ###############################################
 
 parameters:
-  # Mirrors GitHub workflow_dispatch inputs (filterType, filterValue, culture)
-  - name: filterType
-    displayName: Filter type (None|Category|AdoId)
+  # Simplified inputs: only expression-based filtering (deprecated filterType)
+  - name: filterExpression
+    displayName: "(Optional) Filter expression (examples: Category=Authenticated | AdoId=1403|1408)"
     type: string
-    default: None
-    values:
-      - None
-      - Category
-      - AdoId
-  - name: filterValue
-    displayName: (Optional) Filter value (e.g., Authenticated or 1403|1408)
-    type: string
-    default: ''   # Empty string -> optional (prevents UI showing *Required*)
+    default: ''
   - name: culture
     displayName: Culture (en|fr)
     type: string
@@ -138,11 +130,13 @@ stages:
 
           # Determine filter args (mirrors GitHub Determine Filter step)
           - pwsh: |
-              $type = '${{ parameters.filterType }}'
-              $value = '${{ parameters.filterValue }}'
+              $expr = '${{ parameters.filterExpression }}'
               $filter = ''
-              if ($type -eq 'Category' -and $value) { $filter = "-Category $value" }
-              elseif ($type -eq 'AdoId' -and $value) { $filter = "-AdoId $value" }
+              if ($expr) {
+                if ($expr -match '^Category=(.+)$') { $filter = "-Category $($Matches[1])" }
+                elseif ($expr -match '^AdoId=(.+)$') { $filter = "-AdoId $($Matches[1])" }
+                else { Write-Host "Unrecognized filter expression format: $expr (expected Category=... or AdoId=...)" }
+              }
               Write-Host "Computed filter args: '$filter'"
               Write-Host "##vso[task.setvariable variable=filterArgs]$filter"
             displayName: Determine Filter
