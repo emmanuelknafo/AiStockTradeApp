@@ -23,8 +23,9 @@ public class HomeController : Controller
 
     public IActionResult Index()
     {
-        _logger.LogInformation("Home page accessed, redirecting to Stock Dashboard");
-        return RedirectToAction("Dashboard", "Stock");
+    _logger.LogInformation("Home page accessed, redirecting to unified UserStock Dashboard");
+    // Always route through UserStock controller which handles both authenticated and anonymous flows
+    return RedirectToAction("Dashboard", "UserStock");
     }
 
     public IActionResult Privacy()
@@ -90,7 +91,7 @@ public class HomeController : Controller
         }
         
         _logger.LogDebug("Redirecting to Stock Dashboard after language change");
-        return RedirectToAction("Dashboard", "Stock");
+    return RedirectToAction("Dashboard", "UserStock");
     }
 
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]

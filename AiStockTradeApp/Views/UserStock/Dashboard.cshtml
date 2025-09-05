@@ -8,6 +8,12 @@
 @Html.AntiForgeryToken()
 
 <div class="container">
+    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+    {
+        <div class="alert alert-warning" role="alert" data-testid="partial-error">
+            <strong>@Localizer["Partial_Errors"]:</strong> @Model.ErrorMessage
+        </div>
+    }
     <header class="app-header">
         <h1>@Localizer["Header_Title"]</h1>
         <div class="header-controls">
@@ -60,6 +66,13 @@
 
     <!-- Watchlist -->
     <div id="watchlist" class="watchlist" data-testid="watchlist">
+        @if (!Model.Watchlist.Any())
+        {
+            <div class="empty-state" data-testid="empty-watchlist">
+                <p>@(User?.Identity?.IsAuthenticated == true ? Localizer["Empty_Watchlist"] : Localizer["Empty_Watchlist_Anon"]) </p>
+                <p class="privacy-hint"><small>@Localizer["Privacy_Notice"]</small></p>
+            </div>
+        }
         @foreach (var item in Model.Watchlist)
         {
         <div class="stock-card" id="card-@item.Symbol" data-testid="stock-card-@item.Symbol">

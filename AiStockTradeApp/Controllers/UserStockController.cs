@@ -91,23 +91,41 @@ namespace AiStockTradeApp.Controllers
             {
                 var userId = await GetUserIdAsync();
                 var sessionId = User.Identity?.IsAuthenticated == true ? null : GetSessionId();
+                using var op = _logger.BeginScope(new Dictionary<string, object?>
+                {
+                    ["UserId"] = userId,
+                    ["SessionId"] = sessionId,
+                    ["CorrelationId"] = HttpContext.TraceIdentifier
+                });
+
+                _logger.LogInformation("Loading dashboard for {ContextType} {ContextId}", userId != null ? "User" : "Session", (object?)userId ?? sessionId!);
 
                 var watchlist = await _userWatchlistService.GetWatchlistAsync(userId, sessionId);
                 var alerts = await _userWatchlistService.GetAlertsAsync(userId, sessionId);
 
-                // Load stock data for each watchlist item
-                foreach (var item in watchlist)
+                var errors = new List<string>();
+                // Parallel fetch stock quotes to improve p95 performance
+                var fetchTasks = watchlist.Select(async item =>
                 {
                     try
                     {
                         var stockQuote = await _stockDataService.GetStockQuoteAsync(item.Symbol);
-                        item.StockData = stockQuote.Data;
+                        if (stockQuote.Success && stockQuote.Data != null)
+                        {
+                            item.StockData = stockQuote.Data;
+                        }
+                        else if (!string.IsNullOrEmpty(stockQuote.ErrorMessage))
+                        {
+                            errors.Add(stockQuote.ErrorMessage);
+                        }
                     }
                     catch (Exception ex)
                     {
+                        errors.Add($"{item.Symbol}: {ex.Message}");
                         _logger.LogWarning(ex, "Failed to load stock data for {Symbol}", item.Symbol);
                     }
-                }
+                });
+                await Task.WhenAll(fetchTasks);
 
                 var portfolio = await _userWatchlistService.CalculatePortfolioSummaryAsync(watchlist);
 
@@ -116,9 +134,16 @@ namespace AiStockTradeApp.Controllers
                     Watchlist = watchlist,
                     Alerts = alerts,
                     Portfolio = portfolio,
-                    Settings = new AiStockTradeApp.Entities.ViewModels.UserSettings()
+                    Settings = new AiStockTradeApp.Entities.ViewModels.UserSettings(),
+                    ErrorMessage = errors.Any() ? string.Join("; ", errors.Distinct().Take(3)) : null
                 };
 
+                if (viewModel.ErrorMessage != null)
+                {
+                    _logger.LogWarning("Dashboard loaded with partial errors: {ErrorMessage}", viewModel.ErrorMessage);
+                }
+
+                _logger.LogInformation("Dashboard loaded: WatchlistCount={Count}, Alerts={Alerts}, TotalValue={Value}", watchlist.Count, alerts.Count, portfolio.TotalValue);
                 return View(viewModel);
             }
             catch (Exception ex)

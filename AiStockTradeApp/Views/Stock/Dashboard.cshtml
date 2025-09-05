@@ -60,6 +60,13 @@
 
     <!-- Watchlist -->
     <div id="watchlist" class="watchlist" data-testid="watchlist">
+        @if (!Model.Watchlist.Any())
+        {
+            <div class="empty-state" data-testid="empty-watchlist">
+                <p>@Localizer["Empty_Watchlist_Anon"]</p>
+                <p class="privacy-hint"><small>@Localizer["Privacy_Notice"]</small></p>
+            </div>
+        }
         @foreach (var item in Model.Watchlist)
         {
         <div class="stock-card" id="card-@item.Symbol" data-testid="stock-card-@item.Symbol">
