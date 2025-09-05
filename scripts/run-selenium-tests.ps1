@@ -359,7 +359,10 @@ finally {
   if ($CI -and -not $SkipStart) {
     Write-Info 'CI cleanup: attempting to stop spawned API/UI processes.'
     try {
-      $cleanupIsLinux = $PSStyle.Platform -match 'Linux' -or ($env:RUNNER_OS -eq 'Linux')
+      $cleanupIsLinux = $false
+      if (Get-Variable -Name IsLinux -Scope Global -ErrorAction SilentlyContinue) { $cleanupIsLinux = $IsLinux }
+      elseif ($env:RUNNER_OS -eq 'Linux') { $cleanupIsLinux = $true }
+      elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Linux)) { $cleanupIsLinux = $true }
     } catch { $cleanupIsLinux = $false }
 
     if ($cleanupIsLinux) {

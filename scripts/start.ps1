@@ -40,7 +40,7 @@
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
-  [ValidateSet('Docker','Local')]
+  [ValidateSet('Docker', 'Local')]
   [string]$Mode = 'Local',
 
   # Local mode options
@@ -63,7 +63,7 @@ $ErrorActionPreference = 'Stop'
 
 # Show help if requested or if running with default parameters in an interactive manner
 if ($Help) {
-    Write-Host @'
+  Write-Host @'
 
 AI Stock Trade App - Development Startup Script
 ===============================================
@@ -121,14 +121,14 @@ PREREQUISITES:
 For detailed parameter descriptions, use: Get-Help ./scripts/start.ps1 -Detailed
 
 '@ -ForegroundColor Cyan
-    exit 0
+  exit 0
 }
 
 # Display quick usage hint when running with all defaults (most common beginner scenario)
 if ($PSCmdlet.MyInvocation.BoundParameters.Count -eq 0) {
-    Write-Host "`nAI Stock Trade App Startup" -ForegroundColor Green
-    Write-Host "Running in LOCAL mode with default settings..." -ForegroundColor Cyan
-    Write-Host "For usage examples and Docker mode, run: ./scripts/start.ps1 -Help`n" -ForegroundColor Yellow
+  Write-Host "`nAI Stock Trade App Startup" -ForegroundColor Green
+  Write-Host "Running in LOCAL mode with default settings..." -ForegroundColor Cyan
+  Write-Host "For usage examples and Docker mode, run: ./scripts/start.ps1 -Help`n" -ForegroundColor Yellow
 }
 
 # Compute effective HTTPS setting (defaults to true unless explicitly disabled)
@@ -141,12 +141,55 @@ if ($PSBoundParameters.ContainsKey('UseHttps')) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..') | ForEach-Object { $_.Path }
 $composeFile = Join-Path $repoRoot 'docker-compose.yml'
 $apiProj = Join-Path $repoRoot 'AiStockTradeApp.Api/AiStockTradeApp.Api.csproj'
-$uiProj  = Join-Path $repoRoot 'AiStockTradeApp/AiStockTradeApp.csproj'
+$uiProj = Join-Path $repoRoot 'AiStockTradeApp/AiStockTradeApp.csproj'
 $mcpProj = Join-Path $repoRoot 'AiStockTradeApp.McpServer/AiStockTradeApp.McpServer.csproj'
 
 function Test-CommandExists {
   param([Parameter(Mandatory)][string]$Name)
   return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Invoke-DotnetProcessShutdown {
+  param(
+    [string]$Reason = 'pre-start'
+  )
+  Write-Host "Performing clean shutdown of existing dotnet processes ($Reason)..." -ForegroundColor Yellow
+  try {
+    $dotnetProcesses = Get-Process -Name 'dotnet' -ErrorAction SilentlyContinue
+    if (-not $dotnetProcesses) { Write-Host 'No existing dotnet processes found.' -ForegroundColor Green; return }
+    Write-Host "Found $($dotnetProcesses.Count) dotnet process(es), terminating..." -ForegroundColor Yellow
+    $platformIsLinux = $false
+    $platformIsMac = $false
+    try {
+      if (Get-Variable -Name IsLinux -Scope Global -ErrorAction SilentlyContinue) { $platformIsLinux = $IsLinux }
+      if (Get-Variable -Name IsMacOS -Scope Global -ErrorAction SilentlyContinue) { $platformIsMac = $IsMacOS }
+      if (-not ($platformIsLinux -or $platformIsMac)) {
+        # Fallback to RuntimeInformation if automatic variables not available
+        if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Linux)) { $platformIsLinux = $true }
+        elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)) { $platformIsMac = $true }
+      }
+    } catch { }
+    if ($platformIsLinux -or $platformIsMac) {
+      foreach ($p in $dotnetProcesses) {
+        try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch { }
+      }
+      # Fallback pkill if available
+      if (Test-CommandExists -Name 'pkill') { & pkill -f 'dotnet' 2>$null | Out-Null }
+    }
+    else {
+      if (Test-CommandExists -Name 'taskkill') {
+        & taskkill /f /im dotnet.exe 2>$null | Out-Null
+      }
+      else {
+        foreach ($p in $dotnetProcesses) { try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch { } }
+      }
+    }
+    Start-Sleep -Seconds 2
+    Write-Host 'Existing dotnet processes terminated.' -ForegroundColor Green
+  }
+  catch {
+    Write-Warning "Could not clean up existing dotnet processes: $($_.Exception.Message)"
+  }
 }
 
 function Open-BrowserWindows {
@@ -189,7 +232,8 @@ function Open-BrowserWindows {
       Write-Host "`n💡 Tip: Keep the PowerShell windows open to maintain the services running." -ForegroundColor Yellow
     }
     
-  } catch {
+  }
+  catch {
     Write-Warning "Failed to open browser windows automatically. You can manually navigate to:"
     Write-Host "UI:  $UiUrl" -ForegroundColor Cyan
     Write-Host "API: $ApiUrl" -ForegroundColor Cyan
@@ -204,27 +248,14 @@ function Invoke-DockerCleanUpAndUp {
     throw "Compose file not found at $composeFile"
   }
 
-  # Ensure any local dotnet processes are terminated to avoid file/port locks or file contention
-  Write-Host 'Performing clean shutdown of existing dotnet processes on host to avoid conflicts with Docker...' -ForegroundColor Yellow
-  try {
-    $dotnetProcesses = Get-Process -Name 'dotnet' -ErrorAction SilentlyContinue
-    if ($dotnetProcesses) {
-      Write-Host "Found $($dotnetProcesses.Count) dotnet process(es), terminating them to avoid conflicts..." -ForegroundColor Yellow
-      & taskkill /f /im dotnet.exe | Out-Null
-      Start-Sleep -Seconds 2
-      Write-Host 'Existing dotnet processes terminated.' -ForegroundColor Green
-    } else {
-      Write-Host 'No existing dotnet processes found.' -ForegroundColor Green
-    }
-  } catch {
-    Write-Warning "Could not clean up existing dotnet processes: $($_.Exception.Message)"
-  }
+  Invoke-DotnetProcessShutdown -Reason 'Docker pre-start'
 
   Write-Host 'Stopping containers and removing images and networks...' -ForegroundColor Cyan
   if ($RemoveVolumes) {
     Write-Host 'Also removing volumes (forced via -RemoveVolumes)...' -ForegroundColor Yellow
     & docker compose -f $composeFile down --rmi all --volumes --remove-orphans | Write-Host
-  } else {
+  }
+  else {
     Write-Host 'Preserving volumes for data persistence...' -ForegroundColor Green
     & docker compose -f $composeFile down --rmi all --remove-orphans | Write-Host
   }
@@ -249,7 +280,8 @@ function Invoke-DockerCleanUpAndUp {
     if ($status -eq 'healthy') {
       Write-Host 'SQL Server is healthy.' -ForegroundColor Green
       break
-    } else {
+    }
+    else {
       Write-Host "Current SQL health: $status" -ForegroundColor DarkGray
     }
   } while ((Get-Date) -lt $deadline)
@@ -264,7 +296,8 @@ function Invoke-DockerCleanUpAndUp {
   # Open browser windows for Docker mode
   if (-not $NoBrowser) {
     Open-BrowserWindows -UiUrl "http://localhost:8080" -ApiUrl "http://localhost:8082" -McpUrl "http://localhost:5500/mcp" -Mode "Docker"
-  } else {
+  }
+  else {
     Write-Host "`n✅ Services started successfully!" -ForegroundColor Green
     Write-Host "UI Application: http://localhost:8080" -ForegroundColor Cyan
     Write-Host "API Endpoint:   http://localhost:8082" -ForegroundColor Cyan
@@ -274,7 +307,8 @@ function Invoke-DockerCleanUpAndUp {
   # Run a smoke test against the MCP server to validate it's responding to JSON-RPC requests
   if (Test-McpEndpoint -Url 'http://localhost:5500/mcp' -TimeoutSec 60 -PollIntervalSec 2) {
     Write-Host 'MCP server smoke test: PASSED' -ForegroundColor Green
-  } else {
+  }
+  else {
     Write-Warning 'MCP server smoke test: FAILED (endpoint did not respond as expected)'
   }
 }
@@ -284,7 +318,8 @@ function Enable-DevHttpsCert {
   if (-not (Test-CommandExists -Name 'dotnet')) { return }
   try {
     & dotnet dev-certs https --check | Out-Null
-  } catch {
+  }
+  catch {
     Write-Host 'Trusting .NET developer HTTPS certificate...' -ForegroundColor Cyan
     & dotnet dev-certs https --trust | Write-Host
   }
@@ -295,24 +330,10 @@ function Start-LocalProcesses {
     throw 'dotnet SDK not found. Please install .NET SDK and ensure "dotnet" is on PATH.'
   }
   if (-not (Test-Path $apiProj)) { throw "API project not found: $apiProj" }
-  if (-not (Test-Path $uiProj))  { throw "UI project not found: $uiProj" }
+  if (-not (Test-Path $uiProj)) { throw "UI project not found: $uiProj" }
   if (-not (Test-Path $mcpProj)) { throw "MCP Server project not found: $mcpProj" }
 
-  # Clean shutdown of any existing dotnet processes to avoid file locks
-  Write-Host 'Performing clean shutdown of existing dotnet processes...' -ForegroundColor Yellow
-  try {
-    $dotnetProcesses = Get-Process -Name 'dotnet' -ErrorAction SilentlyContinue
-    if ($dotnetProcesses) {
-      Write-Host "Found $($dotnetProcesses.Count) dotnet process(es), terminating..." -ForegroundColor Yellow
-      & taskkill /f /im dotnet.exe | Out-Null
-      Start-Sleep -Seconds 2  # Wait for processes to fully terminate
-      Write-Host 'Existing dotnet processes terminated.' -ForegroundColor Green
-    } else {
-      Write-Host 'No existing dotnet processes found.' -ForegroundColor Green
-    }
-  } catch {
-    Write-Warning "Could not clean up existing dotnet processes: $($_.Exception.Message)"
-  }
+  Invoke-DotnetProcessShutdown -Reason 'Local pre-start'
 
   Enable-DevHttpsCert
 
@@ -329,11 +350,11 @@ function Start-LocalProcesses {
   # Launch API with environment passed safely via Start-Process -Environment
   $apiEnv = @{
     'ConnectionStrings__DefaultConnection' = $cs;
-    'USE_INMEMORY_DB' = 'false';
-    'ASPNETCORE_ENVIRONMENT' = 'Development'
+    'USE_INMEMORY_DB'                      = 'false';
+    'ASPNETCORE_ENVIRONMENT'               = 'Development'
   }
   # Use --no-build to prevent a second concurrent build
-  $apiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command',"dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") } else { @('-NoExit','-Command',"dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") }
+  $apiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command', "dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") } else { @('-NoExit', '-Command', "dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") }
   Write-Host 'Launching API in a new PowerShell window...' -ForegroundColor Cyan
   Start-Process -FilePath 'pwsh' -ArgumentList $apiArgs -WorkingDirectory $repoRoot -Environment $apiEnv | Out-Null
 
@@ -350,11 +371,13 @@ function Start-LocalProcesses {
       # Prefer HTTP to avoid cert trust issues
       $resp = Invoke-WebRequest -Uri $apiHealthUrlHttp -Method GET -TimeoutSec 5 -ErrorAction Stop
       if ($resp.StatusCode -eq 200) { $apiReady = $true; break }
-    } catch { }
+    }
+    catch { }
     try {
       $resp2 = Invoke-WebRequest -Uri $apiHealthUrlHttps -Method GET -TimeoutSec 5 -SkipCertificateCheck:$true -ErrorAction Stop
       if ($resp2.StatusCode -eq 200) { $apiReady = $true; break }
-    } catch { }
+    }
+    catch { }
     Start-Sleep -Seconds $pollIntervalSec
   }
   if (-not $apiReady) {
@@ -366,13 +389,13 @@ function Start-LocalProcesses {
   # Launch UI with API endpoint pointing to the locally running API
   $uiEnv = @{
     'ConnectionStrings__DefaultConnection' = $cs;
-    'USE_INMEMORY_DB' = 'false';
-    'ASPNETCORE_ENVIRONMENT' = 'Development';
-    'StockApi__BaseUrl' = 'https://localhost:7032';
-    'StockApi__HttpBaseUrl' = 'http://localhost:5256'
+    'USE_INMEMORY_DB'                      = 'false';
+    'ASPNETCORE_ENVIRONMENT'               = 'Development';
+    'StockApi__BaseUrl'                    = 'https://localhost:7032';
+    'StockApi__HttpBaseUrl'                = 'http://localhost:5256'
   }
   # Use --no-build to prevent a second concurrent build
-  $uiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command',"dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") } else { @('-NoExit','-Command',"dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") }
+  $uiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command', "dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") } else { @('-NoExit', '-Command', "dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") }
   Write-Host 'Launching UI in a new PowerShell window...' -ForegroundColor Cyan
   Start-Process -FilePath 'pwsh' -ArgumentList $uiArgs -WorkingDirectory $repoRoot -Environment $uiEnv | Out-Null
 
@@ -380,12 +403,13 @@ function Start-LocalProcesses {
   if (-not $env:DISABLE_MCP_AUTOSTART) {
     $mcpEnv = @{
       'ASPNETCORE_ENVIRONMENT' = 'Development';
-      'STOCK_API_BASE_URL' = 'https://localhost:7032'
+      'STOCK_API_BASE_URL'     = 'https://localhost:7032'
     }
-  $mcpArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command',"dotnet run --no-build --project `"$mcpProj`" -- --http") } else { @('-NoExit','-Command',"dotnet run --no-build --project `"$mcpProj`" -- --http") }
+    $mcpArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command', "dotnet run --no-build --project `"$mcpProj`" -- --http") } else { @('-NoExit', '-Command', "dotnet run --no-build --project `"$mcpProj`" -- --http") }
     Write-Host 'Launching MCP Server in HTTP mode in a new PowerShell window...' -ForegroundColor Cyan
     Start-Process -FilePath 'pwsh' -ArgumentList $mcpArgs -WorkingDirectory $repoRoot -Environment $mcpEnv | Out-Null
-  } else {
+  }
+  else {
     Write-Host 'MCP auto-start disabled by DISABLE_MCP_AUTOSTART.' -ForegroundColor Yellow
   }
 
@@ -402,7 +426,8 @@ function Start-LocalProcesses {
     
     # Open browser windows for Local mode
     Open-BrowserWindows -UiUrl $uiUrl -ApiUrl $apiUrl -McpUrl "http://localhost:5000/mcp" -Mode "Local"
-  } else {
+  }
+  else {
     # Determine URLs based on profile settings for display
     $uiUrl = if ($UiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7043" } else { "http://localhost:5259" }
     $apiUrl = if ($ApiProfile -eq 'https' -and $UseHttpsEffective) { "https://localhost:7032" } else { "http://localhost:5256" }
@@ -418,7 +443,8 @@ function Start-LocalProcesses {
   if (-not $env:DISABLE_MCP_AUTOSTART) {
     if (Test-McpEndpoint -Url 'http://localhost:5000/mcp' -TimeoutSec 60 -PollIntervalSec 2) {
       Write-Host 'MCP server smoke test: PASSED' -ForegroundColor Green
-    } else {
+    }
+    else {
       Write-Warning 'MCP server smoke test: FAILED (endpoint did not respond as expected)'
     }
   }
@@ -439,16 +465,17 @@ function Test-McpEndpoint {
 
   while ((Get-Date) -lt $deadline) {
     try {
-  # Send request and read raw content so we can handle either plain JSON or SSE-style responses
-  $headers = @{ 'Accept' = 'application/json, text/event-stream' }
-  $wr = Invoke-WebRequest -Uri $Url -Method Post -ContentType 'application/json' -Body $payload -Headers $headers -TimeoutSec 10 -ErrorAction Stop
+      # Send request and read raw content so we can handle either plain JSON or SSE-style responses
+      $headers = @{ 'Accept' = 'application/json, text/event-stream' }
+      $wr = Invoke-WebRequest -Uri $Url -Method Post -ContentType 'application/json' -Body $payload -Headers $headers -TimeoutSec 10 -ErrorAction Stop
       $content = $wr.Content
 
       # SSE responses often prefix JSON with 'data: ' lines. Try to extract JSON after the last 'data:' if present.
       $json = $null
       if ($content -match '(?s)data:\s*(\{.*\})') {
         $json = $matches[1]
-      } else {
+      }
+      else {
         # No SSE prefix, assume entire body is JSON
         $json = $content
       }
@@ -458,11 +485,13 @@ function Test-McpEndpoint {
         $respJson = $obj | ConvertTo-Json -Depth 5
         Write-Host "MCP response:\n$respJson" -ForegroundColor Green
         return $true
-      } catch {
+      }
+      catch {
         # Couldn't parse JSON yet; fallthrough to retry
         Write-Host "Received non-JSON response while probing MCP endpoint, will retry..." -ForegroundColor DarkYellow
       }
-    } catch {
+    }
+    catch {
       # Swallow and retry until timeout
       Start-Sleep -Seconds $PollIntervalSec
     }
