@@ -1,5 +1,8 @@
 # AiStockTradeApp.Api - REST API Backend
 
+> Standardized Documentation Header (2025-09-05)
+> Unified solution README conventions applied. New ADO test case description automation: `scripts/Update-AdoTestCaseDescriptions.ps1`.
+
 ## 🚀 Project Overview
 
 The REST API backend for the AI Stock Trade Application built with .NET 9 Minimal API. This service provides comprehensive endpoints for stock data retrieval, historical price management, user watchlist operations, and background processing jobs.
@@ -48,7 +51,7 @@ This is the **API layer** of the clean architecture solution, serving as the cen
 
 ## 📁 Project Structure
 
-```
+```text
 AiStockTradeApp.Api/
 ├── Background/
 │   ├── ImportJobModels.cs          # Job processing data models

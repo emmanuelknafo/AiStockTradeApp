@@ -1,5 +1,8 @@
 # AI-Powered Stock Tracker Application
 
+> Standardized Documentation Header (2025-09-05)
+> This repository now uses a unified README structure across all subprojects. A new Azure DevOps automation script `Update-AdoTestCaseDescriptions.ps1` (in `scripts/`) standardizes one-line Test Case descriptions for a given Test Plan. See `scripts/README.md` for usage and `.github/copilot-instructions.md` for extension guidelines.
+
 A comprehensive multi-project ASP.NET Core solution implementing an AI-powered stock tracking application with clean architecture, real-time data, and Model Context Protocol (MCP) integration for external AI assistant access.
 
 ![AI Stock Tracker Dashboard - Main View](media/stock-tracker-dashboard-1.png)

@@ -1,180 +1,246 @@
-# UI Test Automation Scripts
+# UI Test Automation & Azure DevOps Utilities
 
-This directory contains PowerShell scripts for running automated UI tests with proper database setup and application management.
+This directory contains PowerShell scripts for UI test automation and Azure DevOps test case maintenance.
 
-## Scripts
+---
 
-### 1. `run-ui-tests.ps1` - Full-Featured Test Runner
+## UI Test Runner Scripts
 
-A comprehensive script that provides complete control over the test environment.
+### run-ui-tests.ps1 (Full Featured)
 
-#### Features:
-- Automatic application startup and cleanup
-- Database management (LocalDB or Docker SQL Server)
-- Environment configuration
-- Timeout management
-- Process cleanup
+Comprehensive runner managing application lifecycle, database setup, and Playwright UI tests.
 
-#### Usage:
+#### Features (run-ui-tests)
+
+- Automatic application startup & cleanup
+- LocalDB or Docker SQL Server support
+- Environment & timeout controls
+- Optional database reset
+- Build skip option
+
+#### Usage (run-ui-tests)
 
 ```powershell
-# Basic usage with LocalDB
-.\scripts\run-ui-tests.ps1
+# LocalDB default
+./scripts/run-ui-tests.ps1
 
 # Use Docker SQL Server
-.\scripts\run-ui-tests.ps1 -UseDocker
+./scripts/run-ui-tests.ps1 -UseDocker
 
-# Clean database before tests
-.\scripts\run-ui-tests.ps1 -CleanDatabase
+# Clean database first
+./scripts/run-ui-tests.ps1 -CleanDatabase
 
-# Custom configuration
-.\scripts\run-ui-tests.ps1 -Port 8080 -Environment "Testing" -TimeoutMinutes 20
+# Custom port & environment
+./scripts/run-ui-tests.ps1 -Port 8080 -Environment Testing -TimeoutMinutes 20
 
-# Skip build (if already built)
-.\scripts\run-ui-tests.ps1 -SkipBuild
+# Skip build if already built
+./scripts/run-ui-tests.ps1 -SkipBuild
 ```
 
-#### Parameters:
-- `Environment` - ASP.NET Core environment (default: "Development")
-- `Port` - Application port (default: "5000")
-- `DatabaseName` - Database name (default: "StockTrackerTestUI")
-- `SqlConnectionString` - Custom connection string
-- `UseDocker` - Use Docker SQL Server instead of LocalDB
-- `CleanDatabase` - Drop and recreate database
-- `SkipBuild` - Skip building the application
-- `TimeoutMinutes` - Test execution timeout (default: 15)
+#### Parameters (run-ui-tests)
 
-### 2. `quick-ui-test.ps1` - Simplified Test Runner
+- Environment (default: Development)
+- Port (default: 5000)
+- DatabaseName (default: StockTrackerTestUI)
+- SqlConnectionString
+- UseDocker
+- CleanDatabase
+- SkipBuild
+- TimeoutMinutes (default: 15)
 
-A lightweight script for quick local testing.
+### quick-ui-test.ps1 (Lightweight)
 
-#### Features:
-- Uses LocalDB (no Docker required)
-- Minimal configuration
+Minimal fast iteration runner (LocalDB only).
+
+#### Features (quick-ui-test)
+
+- No Docker requirement
+- Minimal setup
 - Fast startup
-- Automatic cleanup
+- Auto cleanup
 
-#### Usage:
+#### Usage (quick-ui-test)
 
 ```powershell
-# Quick test run
-.\scripts\quick-ui-test.ps1
-
-# Clean database and test
-.\scripts\quick-ui-test.ps1 -CleanDatabase
-
-# Custom timeout
-.\scripts\quick-ui-test.ps1 -TimeoutMinutes 15
+./scripts/quick-ui-test.ps1
+./scripts/quick-ui-test.ps1 -CleanDatabase
+./scripts/quick-ui-test.ps1 -TimeoutMinutes 15
 ```
 
-#### Parameters:
-- `CleanDatabase` - Drop and recreate database
-- `TimeoutMinutes` - Test execution timeout (default: 10)
+#### Parameters (quick-ui-test)
+
+- CleanDatabase
+- TimeoutMinutes (default: 10)
+
+---
+
+## Azure DevOps Test Case Utilities
+
+### Update-AdoTestCaseDescriptions.ps1
+
+Adds or overwrites concise one-line HTML descriptions for every Test Case in a specified Azure DevOps Test Plan.
+
+#### Key Features (update script)
+
+- Enumerates all suites in the plan
+- Collects distinct test case work item IDs
+- Generates one-line description from title (normalized)
+- Dry-run mode
+- Overwrite or fill-only behavior
+- Retry + API version header handling
+- Diagnostic flags (-DumpFirstCase, -DumpOnUnknown, -ShowPatch)
+
+#### Usage (update script)
+
+```powershell
+# Dry run (no changes)
+./Update-AdoTestCaseDescriptions.ps1 -Organization myorg -Project aistocktradeapp -PlanId 1401 -DryRun
+
+# Overwrite all existing descriptions
+./Update-AdoTestCaseDescriptions.ps1 -Organization myorg -Project aistocktradeapp -PlanId 1401 -Overwrite
+
+# Only fill blank descriptions
+./Update-AdoTestCaseDescriptions.ps1 -Organization myorg -Project aistocktradeapp -PlanId 1401
+
+# With diagnostics
+./Update-AdoTestCaseDescriptions.ps1 -Organization myorg -Project aistocktradeapp -PlanId 1401 -Overwrite -DumpFirstCase -ShowPatch
+```
+
+#### Parameters (update script)
+
+- Organization (ADO org name after <https://dev.azure.com/>)
+- Project
+- PlanId
+- PatEnvVar (default: AZDO_PAT)
+- Overwrite
+- DryRun
+- DumpFirstCase
+- DumpOnUnknown
+- ShowPatch
+
+#### Required PAT Scopes
+
+- Work Items (Read & Write)
+- Test Plans (Read)
+
+#### Description Generation Rules
+
+- Trim & normalize title
+- Remove prefixes (e.g., TC123:, [Tag])
+- Replace hyphen separators with an en dash
+- Truncate to 180 chars + ellipsis
+- Ensure trailing period
+- Wrap in paragraph tags (literal string `"<p>...</p>"`)
+
+#### Exit Summary
+
+- Updated = modified test cases
+- Skipped = existing descriptions not overwritten (when -Overwrite not used)
+
+#### Troubleshooting
+
+- 401/403: Check PAT scopes / env var
+- 404 suites: Invalid plan or license lacks Test Plans
+- Patch errors: Use -ShowPatch
+- Missing cases: Root-only plan (create suites)
+
+#### Environment Variable Example
+
+```powershell
+$env:AZDO_PAT = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+```
+
+---
 
 ## Prerequisites
 
-### For LocalDB (quick-ui-test.ps1 and default run-ui-tests.ps1):
-1. SQL Server LocalDB installed
-2. .NET 9.0 SDK
-3. Entity Framework Core tools: `dotnet tool install --global dotnet-ef`
-4. Node.js (for Playwright)
+### LocalDB
 
-### For Docker SQL Server (run-ui-tests.ps1 -UseDocker):
-1. Docker Desktop installed and running
-2. .NET 9.0 SDK
-3. Entity Framework Core tools: `dotnet tool install --global dotnet-ef`
-4. Node.js (for Playwright)
+1. SQL Server LocalDB
+2. .NET 9 SDK
+3. EF Core tools (`dotnet tool install --global dotnet-ef`)
+4. Node.js (Playwright)
 
-## Setup Instructions
+### Docker SQL (run-ui-tests.ps1 -UseDocker)
 
-1. **Install Prerequisites**:
-   ```powershell
-   # Install EF Core tools
-   dotnet tool install --global dotnet-ef
-   
-   # Install Playwright (run once)
-   npx playwright install --with-deps
-   ```
+1. Docker Desktop running
+2. .NET 9 SDK
+3. EF Core tools
+4. Node.js
 
-2. **First-time setup**:
-   ```powershell
-   # Build the application
-   dotnet build --configuration Release
-   
-   # Run tests with clean database
-   .\scripts\quick-ui-test.ps1 -CleanDatabase
-   ```
+---
 
-3. **Regular testing**:
-   ```powershell
-   # Quick test run
-   .\scripts\quick-ui-test.ps1
-   ```
+## Setup
 
-## Troubleshooting
+```powershell
+# Install EF Core tools
+dotnet tool install --global dotnet-ef
 
-### Common Issues:
+# Install Playwright browsers
+npx playwright install --with-deps
+```
 
-1. **"Application failed to start"**:
-   - Check if port 5000 is available
-   - Verify database connection
-   - Check application logs
+## First-Time Run
 
-2. **"SQL Server not available"**:
-   - For LocalDB: Ensure SQL Server LocalDB is installed
-   - For Docker: Ensure Docker Desktop is running
+```powershell
+dotnet build --configuration Release
+./scripts/quick-ui-test.ps1 -CleanDatabase
+```
 
-3. **"Playwright browser not found"**:
-   ```powershell
-   npx playwright install --with-deps
-   ```
+## Regular Run
 
-4. **"Database migration failed"**:
-   ```powershell
-   # Reset database
-   .\scripts\quick-ui-test.ps1 -CleanDatabase
-   ```
+```powershell
+./scripts/quick-ui-test.ps1
+```
 
-5. **"Process cleanup issues"**:
-   - Scripts automatically handle cleanup
-   - Manually kill processes if needed:
-   ```powershell
-   Get-Process -Name "dotnet" | Where-Object { $_.MainModule.FileName -like "*AiStockTradeApp*" } | Stop-Process -Force
-   ```
+---
 
-### Test Configuration:
+## Troubleshooting (UI Tests)
 
-The scripts use the `test.runsettings` file for test configuration:
-- Single-threaded execution (required for Playwright)
-- 2-minute individual test timeout
-- 20-minute session timeout
+1. App won't start: check port, logs
+2. SQL not available: ensure LocalDB or Docker
+3. Browser missing: `npx playwright install --with-deps`
+4. Migration failed: re-run with -CleanDatabase
+5. Cleanup issues: stop orphan dotnet processes
 
-### Environment Variables:
+Process cleanup example:
 
-The scripts set these environment variables:
-- `ASPNETCORE_ENVIRONMENT`: Development/Testing
-- `ASPNETCORE_URLS`: http://localhost:5000 (or custom port)
-- `ConnectionStrings__DefaultConnection`: Database connection
-- `PLAYWRIGHT_BASE_URL`: http://localhost:5000 (or custom port)
+```powershell
+Get-Process -Name dotnet | Where-Object { $_.MainModule.FileName -like '*AiStockTradeApp*' } | Stop-Process -Force
+```
 
-## Integration with CI/CD
+---
 
-These scripts are designed to work locally and complement the GitHub Actions workflow:
+## Test Configuration
 
-- **Local Development**: Use `quick-ui-test.ps1` for fast iteration
-- **Full Testing**: Use `run-ui-tests.ps1` for comprehensive testing
-- **CI/CD**: GitHub Actions workflow handles automated testing in the cloud
+From `test.runsettings`:
 
-## Script Architecture
+- Single-thread (Playwright requirement)
+- 2m per-test timeout
+- 20m session timeout
 
-Both scripts follow this pattern:
-1. **Setup**: Configure environment variables and paths
-2. **Database**: Setup SQL Server (LocalDB or Docker)
-3. **Build**: Compile application (unless skipped)
-4. **Migrate**: Run EF Core migrations
-5. **Start**: Launch application in background
-6. **Wait**: Ensure application is ready
-7. **Test**: Execute Playwright UI tests
-8. **Cleanup**: Stop processes and cleanup resources
+## Environment Variables Set By Scripts
 
-The scripts are designed to be robust with proper error handling and cleanup even if tests fail.
+- ASPNETCORE_ENVIRONMENT
+- ASPNETCORE_URLS
+- ConnectionStrings__DefaultConnection
+- PLAYWRIGHT_BASE_URL
+
+## CI/CD Integration
+
+- Local fast path: quick-ui-test.ps1
+- Full validation: run-ui-tests.ps1
+- CI: GitHub Actions (scripts changes ignored for triggers)
+
+## Script Flow (run-ui-tests)
+
+1. Setup
+2. Database (LocalDB/Docker)
+3. Build (optional skip)
+4. Migrate
+5. Start app
+6. Wait ready
+7. Run tests
+8. Cleanup
+
+All scripts include robust error handling and guaranteed cleanup paths.

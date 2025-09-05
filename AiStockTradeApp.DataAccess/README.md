@@ -1,5 +1,8 @@
 # AiStockTradeApp.DataAccess - Entity Framework Data Layer
 
+> Standardized Documentation Header (2025-09-05)
+> Documentation aligned with unified template. ADO Test Case description automation available via `scripts/Update-AdoTestCaseDescriptions.ps1`.
+
 ## 🚀 Project Overview
 
 A .NET Entity Framework Core data access layer providing **database abstraction**, **repository pattern implementation**, and **data persistence** for the AI Stock Trade application. This project serves as the central data access foundation with comprehensive database management capabilities.
@@ -72,12 +75,14 @@ AiStockTradeApp.DataAccess/
 ## 🔧 Technology Stack
 
 ### Core Framework
+
 - **.NET 9** - Latest LTS framework
 - **Entity Framework Core 9** - ORM with advanced features
 - **Microsoft.AspNetCore.Identity.EntityFrameworkCore** - User management
 - **SQL Server Provider** - Primary database provider
 
 ### Database Features
+
 - **Code-First Migrations** - Schema version control
 - **Fluent API Configuration** - Advanced entity relationships
 - **Query Optimization** - Indexed queries and performance tuning
@@ -87,6 +92,7 @@ AiStockTradeApp.DataAccess/
 ## 🗄️ Database Context
 
 ### StockDataContext
+
 Main Entity Framework DbContext managing all application entities:
 
 ```csharp

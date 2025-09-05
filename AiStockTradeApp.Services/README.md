@@ -1,10 +1,13 @@
 # AiStockTradeApp.Services
 
+> Standardized Documentation Header (2025-09-05)
+> Unified documentation format adopted. Refer to `scripts/Update-AdoTestCaseDescriptions.ps1` for ADO Test Case description automation.
+
 This .NET class library contains service implementations, background services, and interfaces for business logic used by the AI Stock Trade application.
 
 ## Project Structure
 
-```
+```text
 AiStockTradeApp.Services/
 ├── Interfaces/
 │   ├── IAIAnalysisService.cs           # AI analysis service contract

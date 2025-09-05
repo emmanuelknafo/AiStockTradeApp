@@ -1,5 +1,8 @@
 # AiStockTradeApp.Entities - Domain Models & View Models
 
+> Standardized Documentation Header (2025-09-05)
+> Unified structure applied. See root README for architecture overview and `scripts/Update-AdoTestCaseDescriptions.ps1` for ADO Test Case description automation.
+
 ## 🚀 Project Overview
 
 A .NET class library containing **domain models** (entities) and **view models** used throughout the AI Stock Trade application solution. This project serves as the central data contracts library, providing strongly-typed models for stock data, user management, and UI presentation.
@@ -56,11 +59,13 @@ AiStockTradeApp.Entities/
 ## 🔧 Technology Stack
 
 ### Core Framework
+
 - **.NET 9** - Latest LTS framework with modern C# features
 - **System.ComponentModel.DataAnnotations** - Validation attributes
 - **Microsoft.AspNetCore.Identity** - User authentication models
 
 ### Data Validation
+
 - **Built-in Validation Attributes** - Required, Range, StringLength
 - **Custom Validation** - Business rule validation
 - **Regular Expressions** - Format validation for symbols and inputs
@@ -70,7 +75,9 @@ AiStockTradeApp.Entities/
 
 ### Core Business Entities
 
+ 
 #### StockData
+
 Primary entity representing current stock information with real-time market data:
 
 ```csharp
@@ -113,7 +120,9 @@ public class StockData
 }
 ```
 
+ 
 #### HistoricalPrice
+
 Time-series data for historical stock prices with technical analysis support:
 
 ```csharp
@@ -149,7 +158,9 @@ public class HistoricalPrice
 }
 ```
 
+ 
 #### ListedStock
+
 Metadata about listed companies and their stock information:
 
 ```csharp
@@ -182,7 +193,9 @@ public class ListedStock
 }
 ```
 
+ 
 #### ApplicationUser
+
 Extended user entity with application-specific properties:
 
 ```csharp
@@ -213,7 +226,9 @@ public class ApplicationUser : IdentityUser
 }
 ```
 
+ 
 #### UserWatchlistItem
+
 Persistent watchlist entries for authenticated users:
 
 ```csharp
@@ -240,7 +255,9 @@ public class UserWatchlistItem
 }
 ```
 
+ 
 #### UserPortfolioItem
+
 User portfolio holdings and investment positions:
 
 ```csharp
@@ -276,7 +293,9 @@ public class UserPortfolioItem
 }
 ```
 
+ 
 #### PriceAlert
+
 User-defined price alerts for stock monitoring:
 
 ```csharp
@@ -315,7 +334,9 @@ public enum AlertType
 }
 ```
 
+ 
 #### WatchlistItem
+
 Session-based watchlist for anonymous users:
 
 ```csharp
@@ -340,7 +361,9 @@ public class WatchlistItem
 
 ### Dashboard & Main UI
 
+ 
 #### DashboardViewModel
+
 Main dashboard display model with comprehensive market overview:
 
 ```csharp
@@ -367,7 +390,9 @@ public class MarketSummary
 }
 ```
 
+ 
 #### StockViewModel
+
 Individual stock display model with real-time data and UI metadata:
 
 ```csharp
@@ -439,7 +464,9 @@ public class StockViewModel
 }
 ```
 
+ 
 #### HistoricalDataViewModel
+
 Historical data visualization model for charts and analysis:
 
 ```csharp
@@ -471,7 +498,9 @@ public class HistoricalDataViewModel
 
 ### Chart & Visualization Models
 
+ 
 #### ChartDataPoint
+
 Generic chart data point for various visualization needs:
 
 ```csharp
@@ -492,7 +521,9 @@ public class ChartDataPoint
 
 ### Authentication & User Management
 
+ 
 #### LoginViewModel
+
 User authentication form model:
 
 ```csharp
@@ -515,7 +546,9 @@ public class LoginViewModel
 }
 ```
 
+ 
 #### RegisterViewModel
+
 User registration form model with validation:
 
 ```csharp
@@ -553,7 +586,9 @@ public class RegisterViewModel
 }
 ```
 
+ 
 #### UserProfileViewModel
+
 User profile management and preferences:
 
 ```csharp
@@ -596,7 +631,9 @@ public class UserProfileViewModel
 
 ### Portfolio & Watchlist Management
 
+ 
 #### PortfolioViewModel
+
 Portfolio management and performance tracking:
 
 ```csharp
@@ -640,7 +677,9 @@ public class PortfolioSummary
 }
 ```
 
+ 
 #### WatchlistViewModel
+
 Watchlist management for both anonymous and authenticated users:
 
 ```csharp
@@ -663,7 +702,9 @@ public class WatchlistViewModel
 
 ### Search & Analysis
 
+ 
 #### StockSearchViewModel
+
 Stock search functionality with filtering and results:
 
 ```csharp
@@ -701,7 +742,9 @@ public class StockSearchViewModel
 }
 ```
 
+ 
 #### StockAnalysisViewModel
+
 AI analysis display and interaction model:
 
 ```csharp
@@ -756,7 +799,9 @@ public enum AnalysisRating
 
 ### Error Handling
 
+ 
 #### ErrorViewModel
+
 Error page display model with tracking information:
 
 ```csharp
