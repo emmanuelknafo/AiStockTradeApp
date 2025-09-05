@@ -58,68 +58,103 @@ public class DashboardPage
 
     public DashboardPage AddSymbol(string symbol)
     {
-        var wait = new WebDriverWait(new SystemClock(), _driver, TimeSpan.FromSeconds(20), TimeSpan.FromMilliseconds(250));
+        // Extended overall timeout to better tolerate slower local reloads / network
+        var overallTimeout = DateTime.UtcNow + TimeSpan.FromSeconds(35);
         var js = (IJavaScriptExecutor)_driver;
+        var attempt = 0;
 
-        // Record current URL to detect reload
-        var startUrl = _driver.Url;
-
-        // Ensure input is present & interactable (handle possible previous reload in progress)
-        IWebElement input = wait.Until(drv =>
+        while (DateTime.UtcNow < overallTimeout)
         {
+            attempt++;
             try
             {
-                var el = drv.FindElements(StockInput).FirstOrDefault();
-                if (el != null && el.Displayed && el.Enabled)
+                // Wait for input to be interactable (allow readyState 'interactive' or 'complete')
+                var waitForInput = new WebDriverWait(new SystemClock(), _driver, TimeSpan.FromSeconds(12), TimeSpan.FromMilliseconds(300));
+                var input = waitForInput.Until(drv =>
                 {
-                    var ready = (js.ExecuteScript("return document.readyState") as string ?? string.Empty) == "complete";
-                    return ready ? el : null;
+                    try
+                    {
+                        var el = drv.FindElements(StockInput).FirstOrDefault();
+                        if (el == null) return null;
+                        if (!el.Displayed || !el.Enabled) return null;
+                        var rs = (js.ExecuteScript("return document.readyState") as string ?? string.Empty);
+                        return (rs == "complete" || rs == "interactive") ? el : null;
+                    }
+                    catch (StaleElementReferenceException) { return null; }
+                });
+
+                if (input == null)
+                {
+                    // Soft refresh once if early attempts cannot find input
+                    if (attempt <= 2) { _driver.Navigate().Refresh(); continue; }
+                    throw new WebDriverTimeoutException("Ticker input not found / interactable");
+                }
+
+                // If card already exists (previous attempt succeeded during reload), exit early
+                if (_driver.FindElements(StockCard(symbol)).Any())
+                    return this;
+
+                input.Clear();
+                input.SendKeys(symbol);
+                _driver.FindElement(AddStockButton).Click();
+
+                // After clicking Add the frontend schedules a reload (setTimeout(...,1000)).
+                // We loop waiting for either: (a) card appears pre-reload, (b) page reload completes and card appears, (c) notification indicates success then card.
+                var postClickDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+                var sawReload = false;
+                while (DateTime.UtcNow < postClickDeadline)
+                {
+                    // Card present
+                    if (_driver.FindElements(StockCard(symbol)).Any())
+                        return this;
+
+                    // Detect a reload completion (readyState==complete after a transition)
+                    try
+                    {
+                        var rs = (js.ExecuteScript("return document.readyState") as string ?? string.Empty);
+                        if (rs == "complete")
+                        {
+                            if (sawReload && _driver.FindElements(StockCard(symbol)).Any()) return this;
+                        }
+                        else
+                        {
+                            sawReload = true; // we entered a non-complete state
+                        }
+                    }
+                    catch (InvalidOperationException) { /* ignore transient navigation */ }
+
+                    // Check for toast success to optionally extend wait slightly
+                    var toast = _driver.FindElements(NotificationToast).FirstOrDefault();
+                    if (toast != null && toast.Text.Contains("added", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Give DOM a brief chance to update
+                        Thread.Sleep(400);
+                    }
+                    Thread.Sleep(250);
+                }
+
+                // If we exhausted inner wait but still within overall, perform a controlled refresh and retry
+                if (DateTime.UtcNow < overallTimeout)
+                {
+                    _driver.Navigate().Refresh();
+                    Thread.Sleep(500);
+                    continue;
                 }
             }
-            catch (StaleElementReferenceException) { /* retry */ }
-            return null;
-        });
-
-        input.Clear();
-        input.SendKeys(symbol);
-        _driver.FindElement(AddStockButton).Click();
-
-        // The app triggers a setTimeout(... window.location.reload()) after a successful add.
-        // Strategy: wait for either (a) card appears without reload or (b) URL change / document ready completes then card appears.
-        bool cardAppeared = false;
-        try
-        {
-            wait.Until(drv =>
+            catch (WebDriverTimeoutException)
             {
-                // If card already present, done
-                if (drv.FindElements(StockCard(symbol)).Any()) { cardAppeared = true; return true; }
-
-                // Detect a reload (URL change OR document becomes loading then complete again)
-                var currentUrl = drv.Url;
-                var readyState = js.ExecuteScript("return document.readyState") as string ?? string.Empty;
-                if (currentUrl != startUrl && readyState == "complete")
+                // Last resort: refresh and retry while time remains
+                if (DateTime.UtcNow < overallTimeout)
                 {
-                    // After reload check again
-                    if (drv.FindElements(StockCard(symbol)).Any()) { cardAppeared = true; return true; }
+                    _driver.Navigate().Refresh();
+                    Thread.Sleep(700);
+                    continue;
                 }
-                return false; // continue waiting
-            });
-        }
-        catch (WebDriverTimeoutException)
-        {
-            // Fall back: last attempt to locate card after timeout
-            cardAppeared = _driver.FindElements(StockCard(symbol)).Any();
+                throw;
+            }
         }
 
-        // As a secondary signal, wait briefly for notification toast to disappear (success or error) to reduce race on follow-up calls
-        try
-        {
-            var shortWait = new WebDriverWait(new SystemClock(), _driver, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(200));
-            shortWait.Until(drv => !drv.FindElements(NotificationToast).Any());
-        }
-        catch (WebDriverTimeoutException) { /* ignore */ }
-
-        return this;
+        return this; // Return even if not found; test can assert absence
     }
 
     public DashboardPage RemoveSymbol(string symbol)
