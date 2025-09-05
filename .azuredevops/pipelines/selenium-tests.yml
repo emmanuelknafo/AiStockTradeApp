@@ -1,0 +1,170 @@
+###############################################
+# Selenium UI Tests Azure DevOps Pipeline
+# Mirrors .github/workflows/selenium-tests.yml
+# Date: 2025-09-05
+# Notes:
+#  - Provides parameters for selective test filtering similar to GitHub Actions workflow_dispatch inputs
+#  - Installs .NET 9 SDK (preview) and Google Chrome (stable) on Ubuntu agent
+#  - Executes existing PowerShell script: scripts/run-selenium-tests.ps1
+#  - Publishes TRX test results and screenshots as build artifacts
+#  - Environment variables passed to script to align with CI expectations
+###############################################
+
+parameters:
+  - name: filterType
+    displayName: Filter type (None|Category|AdoId)
+    type: string
+    default: 'None'
+    values:
+      - None
+      - Category
+      - AdoId
+  - name: filterValue
+    displayName: Filter value (e.g., Authenticated or 1403|1408)
+    type: string
+    default: ''
+  - name: culture
+    displayName: Culture (en|fr)
+    type: string
+    default: 'en'
+    values:
+      - en
+      - fr
+
+# Trigger on changes to Selenium tests, app code, or supporting script
+trigger:
+  branches:
+    include:
+      - main
+      - feature/*
+      - develop
+  paths:
+    include:
+      - AiStockTradeApp.SeleniumTests/
+      - AiStockTradeApp/
+      - scripts/run-selenium-tests.ps1
+      - .azuredevops/pipelines/selenium-tests.yml
+
+# PR validation
+pr:
+  branches:
+    include:
+      - main
+      - feature/*
+      - develop
+  paths:
+    include:
+      - AiStockTradeApp.SeleniumTests/
+      - AiStockTradeApp/
+      - scripts/run-selenium-tests.ps1
+      - .azuredevops/pipelines/selenium-tests.yml
+
+variables:
+  DOTNET_VERSION: '9.0.x'
+  CONFIGURATION: 'Release'
+  # Force HTTP base URL to skip dev cert trust prompts in CI
+  SELENIUM_BASE_URL: 'http://localhost:5259'
+  DISABLE_SELENIUM_TEST_AUTOSTART: 'true'
+  HEADLESS: 'true'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: SeleniumTests
+    displayName: Selenium UI Tests
+    jobs:
+      - job: run_selenium
+        displayName: Run Selenium Tests
+        timeoutInMinutes: 60
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: UseDotNet@2
+            displayName: 'Install .NET SDK $(DOTNET_VERSION)'
+            inputs:
+              packageType: 'sdk'
+              version: '$(DOTNET_VERSION)'
+              includePreviewVersions: true
+
+          # Install Chrome (stable). Ubuntu image may have Chromium, but we ensure consistency.
+          - script: |
+              set -e
+              echo "Installing Google Chrome stable..."
+              sudo apt-get update
+              sudo apt-get install -y wget gnupg unzip
+              wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-linux-signing-key.gpg
+              echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-signing-key.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+              sudo apt-get update
+              sudo apt-get install -y google-chrome-stable
+              google-chrome --version
+            displayName: 'Install Chrome'
+
+          # (Optional) Display environment info
+          - script: |
+              echo "Dotnet version:" && dotnet --version
+              google-chrome --version || true
+              echo "Parameter filterType: ${{ parameters.filterType }}"
+              echo "Parameter filterValue: ${{ parameters.filterValue }}"
+              echo "Parameter culture: ${{ parameters.culture }}"
+            displayName: 'Environment Info'
+
+          # Restore & build solution (script also builds if needed, but we do explicit build for clarity)
+          - script: |
+              dotnet restore AiStockTradeApp.sln
+              dotnet build AiStockTradeApp.sln -c $(CONFIGURATION) --no-restore
+            displayName: 'Restore & Build'
+
+          # Run Selenium tests via existing script
+          - pwsh: |
+              $filterArgs = ''
+              if ('${{ parameters.filterType }}' -eq 'Category' -and '${{ parameters.filterValue }}') { $filterArgs = "-Category ${{ parameters.filterValue }}" }
+              elseif ('${{ parameters.filterType }}' -eq 'AdoId' -and '${{ parameters.filterValue }}') { $filterArgs = "-AdoId ${{ parameters.filterValue }}" }
+              $cmd = "./scripts/run-selenium-tests.ps1 -CI -Configuration $(CONFIGURATION) -EnableTests -Headless:`$true -Culture ${{ parameters.culture }} $filterArgs"
+              if ($env:SELENIUM_USERNAME) { $cmd += " -Username `"$env:SELENIUM_USERNAME`"" }
+              if ($env:SELENIUM_PASSWORD) { $cmd += " -Password `"$env:SELENIUM_PASSWORD`"" }
+              Write-Host "Executing: $cmd"
+              Invoke-Expression $cmd
+            displayName: 'Run Selenium Tests'
+            env:
+              SELENIUM_USERNAME: $(SELENIUM_USERNAME)
+              SELENIUM_PASSWORD: $(SELENIUM_PASSWORD)
+              DISABLE_SELENIUM_TEST_AUTOSTART: $(DISABLE_SELENIUM_TEST_AUTOSTART)
+              SELENIUM_BASE_URL: $(SELENIUM_BASE_URL)
+
+          # Publish test results (TRX)
+          - task: PublishTestResults@2
+            displayName: 'Publish TRX Results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: 'VSTest'
+              testResultsFiles: '**/TestResults/**/*.trx'
+              searchFolder: '$(System.DefaultWorkingDirectory)'
+              mergeTestResults: true
+              failTaskOnFailedTests: false
+              testRunTitle: 'Selenium UI Tests'
+
+          # Publish screenshots if any
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Screenshots'
+            condition: succeededOrFailed()
+            inputs:
+              PathtoPublish: 'AiStockTradeApp.SeleniumTests'
+              ArtifactName: 'selenium-screenshots'
+              publishLocation: 'Container'
+
+          # (Optional) Capture HTML logs or additional artifacts later
+          # Placeholder for future enhancement: publish logs directory
+
+        # End job
+    # End stage
+
+# Secrets setup instructions:
+#   Define pipeline variables (Library -> Variable Groups or Pipeline Variables):
+#     SELENIUM_USERNAME (secret)
+#     SELENIUM_PASSWORD (secret)
+#
+# Invocation examples (manual run with parameters):
+#   - filterType: Category, filterValue: Authenticated, culture: fr
+#   - filterType: AdoId, filterValue: 1403|1408, culture: en
