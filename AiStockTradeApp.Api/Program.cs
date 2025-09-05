@@ -118,6 +118,7 @@ var isTesting = builder.Environment.EnvironmentName == "Testing" ||
 var useInMemory =
     string.Equals(builder.Configuration["USE_INMEMORY_DB"], "true", StringComparison.OrdinalIgnoreCase) ||
     string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase) ||
+    string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase) ||
     isTesting;
 
 if (useInMemory)

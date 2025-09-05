@@ -85,7 +85,8 @@ namespace AiStockTradeApp
             // Configure Entity Framework and Identity
             // Check if we should use in-memory database (for testing)
             var useInMemory = string.Equals(builder.Configuration["USE_INMEMORY_DB"], "true", StringComparison.OrdinalIgnoreCase) ||
-                              string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase);
+                                          string.Equals(Environment.GetEnvironmentVariable("USE_INMEMORY_DB"), "true", StringComparison.OrdinalIgnoreCase) ||
+                                          string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase);
 
             if (useInMemory)
             {
