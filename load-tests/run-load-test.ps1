@@ -1,6 +1,7 @@
 # AI Stock Trading API Load Test Runner
 # PowerShell script to execute various load testing scenarios
 
+[CmdletBinding()]
 param(
     [string]$TestType = "locust",           # locust, jmeter, or both
     [string]$Environment = "local",         # local, development, or production
@@ -12,10 +13,12 @@ param(
     [switch]$Html,                           # Generate HTML report
     [switch]$NoWeb,                          # Run without web UI
     [switch]$AutoStart,                      # Auto-start API if not reachable (local only)
+    [switch]$ForceKill,                      # Force kill any processes bound to target port (no prompt)
     [string]$OutputDir = "test-results"      # Output directory
 )
 
-# Set error action preference
+# Enforce strict mode & error preference for safer execution
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # Configuration
@@ -41,15 +44,76 @@ $env:PROTOCOL = $Protocol
 $env:VIRTUAL_USERS = $Users
 $env:DURATION = $Duration
 
+
 function Remove-ProcessesOnPort {
-    param([int]$Port,[switch]$Quiet)
+    param(
+        [Parameter(Mandatory)][int]$Port,
+        [switch]$Quiet
+    , [switch]$Force
+    )
     try {
-        $pids = netstat -ano | Select-String ":$Port\s" | ForEach-Object { ($_ -split '\s+')[-1] } | Sort-Object -Unique | Where-Object { $_ -match '^[0-9]+$' }
-        foreach ($pid in $pids) {
-            if (-not $Quiet) { Write-Host "Killing process PID $pid using port $Port" -ForegroundColor DarkGray }
-            try { taskkill /PID $pid /F /T | Out-Null } catch {}
+        $pids = @()
+
+        # Prefer modern cmdlet if available
+        $getNet = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue
+        if ($getNet) {
+            try {
+                $pids = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty OwningProcess -Unique
+            }
+            catch {}
         }
-    } catch { if (-not $Quiet) { Write-Warning "Failed to enumerate processes on port $Port: $($_.Exception.Message)" } }
+
+        # Fallback to netstat parsing if needed
+        if (-not $pids -or $pids.Count -eq 0) {
+            $netstatOutput = netstat -ano | Select-String ":$Port\s" -ErrorAction SilentlyContinue
+            foreach ($line in $netstatOutput) {
+                $parts = ($line -split '\s+') | Where-Object { $_ }
+                if ($parts.Count -gt 0) {
+                    $candidate = $parts[-1]
+                    if ($candidate -match '^[0-9]+$') { $pids += [int]$candidate }
+                }
+            }
+            $pids = $pids | Sort-Object -Unique
+        }
+
+        if (-not $pids -or $pids.Count -eq 0) {
+            if (-not $Quiet) { Write-Host "No processes found listening on port $Port" -ForegroundColor DarkGray }
+            return
+        }
+
+        # Gather process details (best effort)
+        $procDetails = @()
+        foreach ($pp in $pids) {
+            try {
+                $gp = Get-Process -Id $pp -ErrorAction Stop
+                $path = $null
+                try { $path = ($gp.Path) } catch { }
+                if (-not $path) { try { $path = (Get-Process -Id $pp -FileVersionInfo -ErrorAction SilentlyContinue).FileName } catch {} }
+                $procDetails += [pscustomobject]@{ PID = $pp; Name = $gp.ProcessName; Path = $path }
+            } catch {}
+        }
+
+        if (-not $Force -and -not $Quiet) {
+            Write-Host "The following process(es) are using port ${Port}:" -ForegroundColor Yellow
+            $procDetails | Format-Table -AutoSize | Out-String | Write-Host
+            $confirm = Read-Host "Terminate these process(es)? (y/N)"
+            if ($confirm -notin @('y','Y')) {
+                Write-Host "Skipping termination of processes on port $Port" -ForegroundColor Yellow
+                return
+            }
+        }
+
+        foreach ($procPid in ($pids | Where-Object { $_ -and $_ -ne $PID })) {
+            if (-not $Quiet) { Write-Host "Killing process PID $procPid using port $Port" -ForegroundColor DarkGray }
+            try { taskkill /PID $procPid /F /T | Out-Null } catch {
+                if (-not $Quiet) { Write-Warning "Failed to kill PID ${procPid}: $($_.Exception.Message)" }
+            }
+        }
+    }
+    catch {
+        if (-not $Quiet) { Write-Warning "Failed to enumerate or terminate processes on port ${Port}: $($_.Exception.Message)" }
+    }
 }
 
 # Environment-specific configurations
@@ -90,7 +154,7 @@ function Test-Prerequisites {
         return $true
     }
     catch {
-    Write-Warning "Cannot reach API health endpoint: $healthUrl"
+        Write-Warning "Cannot reach API health endpoint: $healthUrl"
         Write-Warning "Error: $($_.Exception.Message)"
         
         # If testing localhost, offer to start the API
@@ -103,18 +167,21 @@ function Test-Prerequisites {
                     if ($started) {
                         # Re-try health
                         Write-Host "Waiting for API after AutoStart..." -ForegroundColor Yellow
-                        for ($i=0; $i -lt 30; $i++) {
+                        for ($i = 0; $i -lt 30; $i++) {
                             Start-Sleep -Seconds 2
                             try {
                                 $null = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 5 -ErrorAction Stop
                                 Write-Host "✓ API is now running!" -ForegroundColor Green
                                 return $true
-                            } catch {}
+                            }
+                            catch {}
                         }
                         Write-Warning "API did not become healthy after AutoStart attempts."
                     }
-                } else {
-                    Write-Warning "Unable to locate API project for AutoStart."}
+                }
+                else {
+                    Write-Warning "Unable to locate API project for AutoStart."
+                }
             }
             Write-Host ""  
             if (-not $AutoStart) {
@@ -170,7 +237,8 @@ function Test-Prerequisites {
                 Write-Host "Load test cancelled. Please ensure the API is running and try again." -ForegroundColor Red
                 exit 1
             }
-        } else {
+        }
+        else {
             Write-Host "Proceeding despite health failure (AutoStart attempted)." -ForegroundColor DarkYellow
         }
         return $false
@@ -220,7 +288,7 @@ function Start-ApiInNewWindow {
         $apiPort = if ($Port -gt 0) { $Port } else { 5000 }
         $apiUrl = "${Protocol}://localhost:${apiPort}"
         if ($KillExisting) {
-            Remove-ProcessesOnPort -Port $apiPort -Quiet
+            Remove-ProcessesOnPort -Port $apiPort -Quiet:(!$ForceKill) -Force:$ForceKill
         }
         
         # Check if we're in VS Code and can use a task instead
@@ -231,7 +299,7 @@ function Start-ApiInNewWindow {
         }
         
         # Create a PowerShell command to run the API
-    $apiCommand = @"
+        $apiCommand = @"
 Write-Host "Starting AI Stock Trading API..." -ForegroundColor Green
 Write-Host "Project Path: $ProjectPath" -ForegroundColor Cyan
 Write-Host "API URL: $apiUrl" -ForegroundColor Cyan
@@ -274,9 +342,9 @@ Read-Host
         Write-Host "Using: $pwshPath" -ForegroundColor Gray
         
         $processArgs = @{
-            FilePath = $pwshPath
+            FilePath     = $pwshPath
             ArgumentList = @("-NoExit", "-Command", $apiCommand)
-            PassThru = $true
+            PassThru     = $true
         }
         
         $apiProcess = Start-Process @processArgs
