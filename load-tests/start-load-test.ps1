@@ -14,12 +14,11 @@ if (-not (Test-Path $Script:RunnerPath)) {
 }
 
 function Invoke-LoadRunner {
-    param([string]$ArgsLine)
-    Write-Host "→ Invoking runner: $Script:RunnerPath $ArgsLine" -ForegroundColor DarkGray
-    # Basic whitespace splitter while respecting quoted substrings
-    $matches = [regex]::Matches($ArgsLine, '"[^"]*"|\S+') | ForEach-Object { $_.Value.Trim('"') }
-    if ($AutoStart) { $matches += '-AutoStart' }
-    & $Script:RunnerPath @matches
+    param([string[]]$ArgList)
+    $display = ($ArgList -join ' ')
+    if ($AutoStart) { $ArgList += '-AutoStart' }
+    Write-Host "→ Invoking runner: $Script:RunnerPath $display" -ForegroundColor DarkGray
+    & $Script:RunnerPath @ArgList
 }
 
 $ErrorActionPreference = "Stop"
@@ -48,22 +47,22 @@ function Show-QuickMenu {
     switch ($choice) {
         "1" { 
             Write-Host "🚀 Starting Quick Test..." -ForegroundColor Green
-            Invoke-LoadRunner "-TestType locust -Users 10 -Duration 60 -Html"
+            Invoke-LoadRunner @('-TestType','locust','-Users','10','-Duration','60','-Html')
         }
         "2" { 
             Write-Host "💨 Starting Smoke Test..." -ForegroundColor Cyan
-            Invoke-LoadRunner "-TestType locust -Users 5 -Duration 30 -Html"
+            Invoke-LoadRunner @('-TestType','locust','-Users','5','-Duration','30','-Html')
         }
         "3" { 
             Write-Host "⚖️ Starting Normal Test..." -ForegroundColor Yellow
-            Invoke-LoadRunner "-TestType both -Users 50 -Duration 300 -Html"
+            Invoke-LoadRunner @('-TestType','both','-Users','50','-Duration','300','-Html')
         }
         "4" { 
             Write-Host "💪 Starting Stress Test..." -ForegroundColor Magenta
             Write-Warning "This will generate high load!"
             $confirm = Read-Host "Continue? (y/N)"
             if ($confirm -eq 'y' -or $confirm -eq 'Y') {
-                Invoke-LoadRunner "-TestType locust -Users 100 -Duration 600 -Html"
+                Invoke-LoadRunner @('-TestType','locust','-Users','100','-Duration','600','-Html')
             }
         }
         "5" { 
@@ -76,7 +75,7 @@ function Show-QuickMenu {
             $duration = if ($duration) { [int]$duration } else { 300 }
             $testType = if ($testType) { $testType } else { "locust" }
             
-            Invoke-LoadRunner "-TestType $testType -Users $users -Duration $duration -Html"
+            Invoke-LoadRunner @('-TestType',"$testType",'-Users',"$users",'-Duration',"$duration",'-Html')
         }
         "0" { 
             Write-Host "Goodbye! 👋" -ForegroundColor Gray
@@ -90,10 +89,10 @@ function Show-QuickMenu {
     }
 }
 
-function Start-QuickTest { Write-Host "🚀 Running Quick Load Test (10 users, 1 minute)..." -ForegroundColor Green; Invoke-LoadRunner "-TestType locust -Users 10 -Duration 60 -Html" }
-function Start-SmokeTest { Write-Host "💨 Running Smoke Test (5 users, 30 seconds)..." -ForegroundColor Cyan; Invoke-LoadRunner "-TestType locust -Users 5 -Duration 30 -Html" }
-function Start-NormalTest { Write-Host "⚖️ Running Normal Load Test (50 users, 5 minutes)..." -ForegroundColor Yellow; Invoke-LoadRunner "-TestType both -Users 50 -Duration 300 -Html" }
-function Start-StressTest { Write-Host "💪 Running Stress Test (100 users, 10 minutes)..." -ForegroundColor Magenta; Write-Warning "This will generate high load on the target system!"; Invoke-LoadRunner "-TestType locust -Users 100 -Duration 600 -Html" }
+function Start-QuickTest { Write-Host "🚀 Running Quick Load Test (10 users, 1 minute)..." -ForegroundColor Green; Invoke-LoadRunner @('-TestType','locust','-Users','10','-Duration','60','-Html') }
+function Start-SmokeTest { Write-Host "💨 Running Smoke Test (5 users, 30 seconds)..." -ForegroundColor Cyan; Invoke-LoadRunner @('-TestType','locust','-Users','5','-Duration','30','-Html') }
+function Start-NormalTest { Write-Host "⚖️ Running Normal Load Test (50 users, 5 minutes)..." -ForegroundColor Yellow; Invoke-LoadRunner @('-TestType','both','-Users','50','-Duration','300','-Html') }
+function Start-StressTest { Write-Host "💪 Running Stress Test (100 users, 10 minutes)..." -ForegroundColor Magenta; Write-Warning "This will generate high load on the target system!"; Invoke-LoadRunner @('-TestType','locust','-Users','100','-Duration','600','-Html') }
 
 # Main execution
 try {
