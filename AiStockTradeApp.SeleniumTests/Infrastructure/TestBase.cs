@@ -9,11 +9,18 @@ public abstract class TestBase : IAsyncLifetime
     protected IWebDriver Driver { get; private set; } = default!;
     protected TestSettings Settings { get; private set; } = default!;
 
-    public virtual Task InitializeAsync()
+    // Static flag to ensure global setup runs only once per test session
+    private static readonly object _globalSetupLock = new();
+    private static bool _globalSetupCompleted = false;
+
+    public virtual async Task InitializeAsync()
     {
         Settings = LoadSettings();
+        
+        // Ensure global setup runs once per test session
+        await EnsureGlobalSetupAsync();
+        
         Driver = WebDriverFactory.Create(Settings);
-        return Task.CompletedTask;
     }
 
     public virtual Task DisposeAsync()
@@ -21,6 +28,47 @@ public abstract class TestBase : IAsyncLifetime
         Driver.Quit();
         Driver.Dispose();
         return Task.CompletedTask;
+    }
+
+    private async Task EnsureGlobalSetupAsync()
+    {
+        if (_globalSetupCompleted)
+            return;
+
+        lock (_globalSetupLock)
+        {
+            if (_globalSetupCompleted)
+                return;
+
+            // This will be set to true after successful setup
+        }
+
+        try
+        {
+            // Auto-start application and API if not already running
+            await TestSetupHelper.WaitForApplicationStartupAsync(Settings.BaseUrl, timeoutSeconds: 30);
+            
+            lock (_globalSetupLock)
+            {
+                _globalSetupCompleted = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to start application for Selenium tests. " +
+                $"Please ensure the application can start on {Settings.BaseUrl}. " +
+                $"Error: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Cleanup method that should be called at the end of test session.
+    /// This is designed to be called by a test runner or through a static finalizer.
+    /// </summary>
+    public static void GlobalTeardown()
+    {
+        TestSetupHelper.StopIfStartedByTests();
     }
 
     private static TestSettings LoadSettings()
@@ -31,7 +79,8 @@ public abstract class TestBase : IAsyncLifetime
             PropertyNameCaseInsensitive = true
         });
         settings ??= new TestSettings();
-        // Environment overlay for CI
+        
+        // Environment overlay for CI/CD and local development
         var baseUrl = Environment.GetEnvironmentVariable("SELENIUM_BASE_URL");
         if (!string.IsNullOrWhiteSpace(baseUrl)) settings.BaseUrl = baseUrl;
 

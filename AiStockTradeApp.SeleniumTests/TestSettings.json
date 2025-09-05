@@ -5,8 +5,8 @@
   "ImplicitWaitMs": 2000,
   "PageLoadTimeoutSec": 60,
   "Credentials": {
-    "Username": "",
-    "Password": ""
+    "Username": "test@example.com",
+    "Password": "Test123!"
   },
   "Culture": "en"
 }
