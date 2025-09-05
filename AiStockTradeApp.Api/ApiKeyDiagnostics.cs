@@ -109,7 +109,34 @@ internal static class ApiKeyDiagnostics
         var alphaRawOriginal = config["AlphaVantage:ApiKey"];
         var twelveRawOriginal = config["TwelveData:ApiKey"];
 
-        var credential = sharedCredential ?? new DefaultAzureCredential();
+        // Honor user-assigned managed identity if provided via config or env var when creating a credential on-demand.
+        TokenCredential credential;
+        if (sharedCredential != null)
+        {
+            credential = sharedCredential;
+        }
+        else
+        {
+            try
+            {
+                var userAssignedClientId = config["ManagedIdentity:ClientId"] ?? Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+                if (!string.IsNullOrWhiteSpace(userAssignedClientId))
+                {
+                    logger.LogDebug("[ApiKeyDiagnostics] Using user-assigned managed identity client id {ClientId} for secret resolution.", userAssignedClientId);
+                    credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions { ManagedIdentityClientId = userAssignedClientId });
+                }
+                else
+                {
+                    credential = new DefaultAzureCredential();
+                }
+            }
+            catch (Exception exCred)
+            {
+                logger.LogWarning(exCred, "[ApiKeyDiagnostics] Failed to create DefaultAzureCredential; falling back to environment credential chain.");
+                credential = new DefaultAzureCredential();
+            }
+        }
+
         var alphaResolved = alphaRawOriginal?.Contains("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase) == true
             ? await ResolveIfKeyVaultReferenceAsync(alphaRawOriginal, logger, credential)
             : alphaRawOriginal;

@@ -301,9 +301,11 @@ resource sqlServerFirewallRuleAzure 'Microsoft.Sql/servers/firewallRules@2024-11
 // (Previous secret resource removed: SqlConnectionString)
 
 // Store API keys in Key Vault
+// Secret naming uses the double-dash convention so the app bootstrap can transform
+// SecretName with "--" into configuration key segment ':' (e.g. AlphaVantage--ApiKey -> AlphaVantage:ApiKey)
 resource alphaVantageSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = if (!empty(alphaVantageApiKey)) {
   parent: keyVault
-  name: 'AlphaVantageApiKey'
+  name: 'AlphaVantage--ApiKey'
   properties: {
     value: alphaVantageApiKey
   }
@@ -311,7 +313,7 @@ resource alphaVantageSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = if 
 
 resource twelveDataSecret 'Microsoft.KeyVault/vaults/secrets@2024-11-01' = if (!empty(twelveDataApiKey)) {
   parent: keyVault
-  name: 'TwelveDataApiKey'
+  name: 'TwelveData--ApiKey'
   properties: {
     value: twelveDataApiKey
   }
@@ -401,15 +403,24 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'ASPNETCORE_ENVIRONMENT'
           value: environment == 'prod' ? 'Production' : 'Development'
         }
+        // Leave API key app settings blank; runtime bootstrap loads real values from Key Vault secrets (double-dash names)
         {
           name: 'AlphaVantage__ApiKey'
-          // Only inject Key Vault reference when a value was provided (secret created). Otherwise leave blank
-          value: empty(alphaVantageApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
+          value: ''
         }
         {
           name: 'TwelveData__ApiKey'
-          // Only inject Key Vault reference when a value was provided (secret created). Otherwise leave blank
-          value: empty(twelveDataApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
+          value: ''
+        }
+        // Provide Key Vault URI + UAMI ClientId so app can proactively bootstrap secrets
+        {
+          name: 'KeyVault__Uri'
+          // Use environment suffix for sovereign cloud compatibility
+          value: 'https://${keyVaultName}.${az.environment().suffixes.keyvaultDns}/'
+        }
+        {
+          name: 'ManagedIdentity__ClientId'
+          value: userAssignedIdentity.properties.clientId
         }
   // ConnectionStrings__DefaultConnection setting removed (Approach A – MI). The
   // platform connectionStrings section below already injects the full MI string.
@@ -517,13 +528,19 @@ resource webApi 'Microsoft.Web/sites@2024-11-01' = {
         }
         {
           name: 'AlphaVantage__ApiKey'
-          // Conditional Key Vault reference to avoid unresolved-keyvault status when param empty
-          value: empty(alphaVantageApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
+          value: ''
         }
         {
           name: 'TwelveData__ApiKey'
-          // Conditional Key Vault reference to avoid unresolved-keyvault status when param empty
-          value: empty(twelveDataApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
+          value: ''
+        }
+        {
+          name: 'KeyVault__Uri'
+          value: 'https://${keyVaultName}.${az.environment().suffixes.keyvaultDns}/'
+        }
+        {
+          name: 'ManagedIdentity__ClientId'
+          value: userAssignedIdentity.properties.clientId
         }
   // (MI) Removed Key Vault reference for DefaultConnection – using direct
   // managed identity connection string via connectionStrings block.
@@ -619,13 +636,15 @@ resource webMcp 'Microsoft.Web/sites@2024-11-01' = {
         }
         {
           name: 'AlphaVantage__ApiKey'
-          // Conditional Key Vault reference to avoid unresolved-keyvault status when param empty
-          value: empty(alphaVantageApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=AlphaVantageApiKey)'
+          value: ''
         }
         {
           name: 'TwelveData__ApiKey'
-          // Conditional Key Vault reference to avoid unresolved-keyvault status when param empty
-          value: empty(twelveDataApiKey) ? '' : '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=TwelveDataApiKey)'
+          value: ''
+        }
+        {
+          name: 'KeyVault__Uri'
+          value: 'https://${keyVaultName}.${az.environment().suffixes.keyvaultDns}/'
         }
   // (MI) Removed Key Vault reference for DefaultConnection – using direct
   // managed identity connection string via connectionStrings block.

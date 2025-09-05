@@ -1792,6 +1792,53 @@ stages:
                       done
                       echo "❌ MCP Health check failed"; exit 1
 
+                - task: AzureCLI@2
+                  displayName: "Migrate Legacy API Key Secrets (Dev)"
+                  condition: succeeded()
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      KV_NAME="kv-aistock-dev-$(instanceNum)"
+                      echo "🔁 Checking for legacy API key secret names in Key Vault: ${KV_NAME}"
+                      # Legacy names
+                      LEGACY_ALPHA="AlphaVantageApiKey"
+                      LEGACY_TWELVE="TwelveDataApiKey"
+                      # New names (double dash -> maps to AlphaVantage:ApiKey in app bootstrap)
+                      NEW_ALPHA="AlphaVantage--ApiKey"
+                      NEW_TWELVE="TwelveData--ApiKey"
+
+                      haveSecret() {
+                        local name="$1"
+                        az keyvault secret show --vault-name "${KV_NAME}" --name "$name" --query 'id' -o tsv >/dev/null 2>&1
+                      }
+
+                      migrateSecret() {
+                        local legacy="$1"; local target="$2"; local label="$3"
+                        if haveSecret "$target"; then
+                          echo "✅ ${label}: new secret '${target}' already exists; skipping migration."
+                          return
+                        fi
+                        if haveSecret "$legacy"; then
+                          echo "➡️  Migrating '${legacy}' -> '${target}'"
+                          VALUE=$(az keyvault secret show --vault-name "${KV_NAME}" --name "$legacy" --query 'value' -o tsv)
+                          if [ -n "$VALUE" ]; then
+                            az keyvault secret set --vault-name "${KV_NAME}" --name "$target" --value "$VALUE" >/dev/null
+                            echo "✅ Created '${target}' from legacy '${legacy}'"
+                          else
+                            echo "⚠️  Legacy secret '${legacy}' had empty value; skipped creating '${target}'"
+                          fi
+                        else
+                          echo "ℹ️  Legacy secret '${legacy}' not found; nothing to migrate for ${label}."
+                        fi
+                      }
+
+                      migrateSecret "$LEGACY_ALPHA" "$NEW_ALPHA" "AlphaVantage"
+                      migrateSecret "$LEGACY_TWELVE" "$NEW_TWELVE" "TwelveData"
+                      echo "🔁 Secret migration complete."
+
                 - task: Bash@3
                   displayName: "Validate External Stock API Keys (Dev)"
                   condition: succeeded()
@@ -1814,6 +1861,33 @@ stages:
                       if grep -q '"status":"missing"' api_keys_dev.json; then
                         echo "⚠️ Warning: At least one API key is missing in Dev (allowed but reduces functionality)."; fi
                       echo "✅ External stock API key validation (Dev) passed."
+
+                - task: AzureCLI@2
+                  displayName: "Cleanup Legacy API Key Secrets (Dev)"
+                  condition: and(succeeded(), exists('api_keys_dev.json'))
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      KV_NAME="kv-aistock-dev-$(instanceNum)"
+                      echo "🧹 Starting legacy secret cleanup (Dev) in $KV_NAME"
+                      cleanup(){
+                        local LEGACY=$1 NEW=$2
+                        LVAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$LEGACY" --query value -o tsv 2>/dev/null || true)
+                        NVAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$NEW" --query value -o tsv 2>/dev/null || true)
+                        if [ -n "$LVAL" ] && [ -n "$NVAL" ] && [ "$LVAL" = "$NVAL" ]; then
+                          echo "Deleting legacy secret $LEGACY (matches $NEW)"
+                          az keyvault secret delete --vault-name "$KV_NAME" --name "$LEGACY" >/dev/null || true
+                          az keyvault secret purge --vault-name "$KV_NAME" --name "$LEGACY" >/dev/null || true
+                        else
+                          echo "Skip $LEGACY (legacyPresent=$([ -n \"$LVAL\" ] && echo yes || echo no) newPresent=$([ -n \"$NVAL\" ] && echo yes || echo no) match=$([ \"$LVAL\" = \"$NVAL\" ] && echo yes || echo no))"
+                        fi
+                      }
+                      cleanup AlphaVantageApiKey AlphaVantage--ApiKey
+                      cleanup TwelveDataApiKey TwelveData--ApiKey
+                      echo "✅ Dev legacy cleanup complete"
 
                 - task: Bash@3
                   displayName: "Publish DeployDev Stage Summary"
@@ -2687,6 +2761,42 @@ stages:
                       done
                       echo "❌ MCP Health check failed"; exit 1
 
+                - task: AzureCLI@2
+                  displayName: "Migrate Legacy API Key Secrets (Prod)"
+                  condition: succeeded()
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      KV_NAME="kv-aistock-prod-$(instanceNum)"
+                      echo "🔁 Checking for legacy API key secret names in Key Vault (Prod): ${KV_NAME}"
+                      LEGACY_ALPHA="AlphaVantageApiKey"
+                      LEGACY_TWELVE="TwelveDataApiKey"
+                      NEW_ALPHA="AlphaVantage--ApiKey"
+                      NEW_TWELVE="TwelveData--ApiKey"
+
+                      haveSecret() { az keyvault secret show --vault-name "${KV_NAME}" --name "$1" --query 'id' -o tsv >/dev/null 2>&1; }
+                      migrateSecret() {
+                        local legacy="$1"; local target="$2"; local label="$3"
+                        if haveSecret "$target"; then echo "✅ ${label}: '${target}' exists; skip."; return; fi
+                        if haveSecret "$legacy"; then
+                          echo "➡️  Migrating '${legacy}' -> '${target}'"
+                          VALUE=$(az keyvault secret show --vault-name "${KV_NAME}" --name "$legacy" --query 'value' -o tsv)
+                          if [ -n "$VALUE" ]; then
+                            az keyvault secret set --vault-name "${KV_NAME}" --name "$target" --value "$VALUE" >/dev/null
+                            echo "✅ Created '${target}' from '${legacy}'"
+                          else
+                            echo "⚠️  '${legacy}' empty; skipping '${target}'"
+                          fi
+                        else
+                          echo "ℹ️  Legacy '${legacy}' not found."; fi
+                      }
+                      migrateSecret "$LEGACY_ALPHA" "$NEW_ALPHA" "AlphaVantage"
+                      migrateSecret "$LEGACY_TWELVE" "$NEW_TWELVE" "TwelveData"
+                      echo "🔁 Prod secret migration complete."
+
                 - task: Bash@3
                   displayName: "Validate External Stock API Keys (Prod)"
                   condition: succeeded()
@@ -2708,6 +2818,33 @@ stages:
                       if grep -q '"status":"missing"' api_keys_prod.json; then
                         echo "⚠️ Warning: At least one API key is missing in Prod. (Pipeline continues but consider configuring it.)"; fi
                       echo "✅ External stock API key validation (Prod) passed."
+
+                - task: AzureCLI@2
+                  displayName: "Cleanup Legacy API Key Secrets (Prod)"
+                  condition: and(succeeded(), exists('api_keys_prod.json'))
+                  inputs:
+                    azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -e
+                      KV_NAME="kv-aistock-prod-$(instanceNum)"
+                      echo "🧹 Starting legacy secret cleanup (Prod) in $KV_NAME"
+                      cleanup(){
+                        local LEGACY=$1 NEW=$2
+                        LVAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$LEGACY" --query value -o tsv 2>/dev/null || true)
+                        NVAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$NEW" --query value -o tsv 2>/dev/null || true)
+                        if [ -n "$LVAL" ] && [ -n "$NVAL" ] && [ "$LVAL" = "$NVAL" ]; then
+                          echo "Deleting legacy secret $LEGACY (matches $NEW)"
+                          az keyvault secret delete --vault-name "$KV_NAME" --name "$LEGACY" >/dev/null || true
+                          az keyvault secret purge --vault-name "$KV_NAME" --name "$LEGACY" >/dev/null || true
+                        else
+                          echo "Skip $LEGACY (legacyPresent=$([ -n \"$LVAL\" ] && echo yes || echo no) newPresent=$([ -n \"$NVAL\" ] && echo yes || echo no) match=$([ \"$LVAL\" = \"$NVAL\" ] && echo yes || echo no))"
+                        fi
+                      }
+                      cleanup AlphaVantageApiKey AlphaVantage--ApiKey
+                      cleanup TwelveDataApiKey TwelveData--ApiKey
+                      echo "✅ Prod legacy cleanup complete"
 
                 - task: Bash@3
                   displayName: "Publish DeployProd Stage Summary"

@@ -1383,6 +1383,29 @@ jobs:
           done
           echo "❌ API Health check failed (Dev)"; exit 1
 
+      - name: Migrate Legacy API Key Secrets (Dev)
+        if: success()
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          KV_NAME="kv-aistock-dev-${INSTANCE_NUM}"
+          echo "🔄 Migrating legacy API key secrets (Dev) in vault ${KV_NAME}"
+          migrate_secret(){
+            local LEGACY=$1 NEW=$2
+            local LEGACY_VAL NEW_VAL
+            LEGACY_VAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$LEGACY" --query value -o tsv 2>/dev/null || true)
+            NEW_VAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$NEW" --query value -o tsv 2>/dev/null || true)
+            if [ -n "$LEGACY_VAL" ] && [ -z "$NEW_VAL" ]; then
+              echo "Copying $LEGACY -> $NEW"
+              az keyvault secret set --vault-name "$KV_NAME" --name "$NEW" --value "$LEGACY_VAL" 1>/dev/null
+            else
+              echo "No migration needed for $LEGACY (legacyPresent=$([ -n "$LEGACY_VAL" ] && echo yes || echo no) newPresent=$([ -n "$NEW_VAL" ] && echo yes || echo no))"
+            fi
+          }
+          migrate_secret AlphaVantageApiKey AlphaVantage--ApiKey
+            migrate_secret TwelveDataApiKey TwelveData--ApiKey
+          echo "✅ Migration step completed (Dev)"
+
       - name: Validate External Stock API Keys (Dev)
         if: success() # Only run if prior health checks passed
         run: |
@@ -1404,6 +1427,30 @@ jobs:
           if grep -q '"status"[[:space:]]*:[[:space:]]*"missing"' api_keys_dev.json; then
             echo "⚠️  One or more keys are missing (allowed but degraded fallback will be used)"; fi
           echo "✅ API key configuration validation completed."
+
+      - name: Cleanup Legacy API Key Secrets (Dev)
+        if: success()
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          KV_NAME="kv-aistock-dev-${INSTANCE_NUM}"
+          echo "🧹 Cleaning up legacy API key secrets (Dev)"
+          cleanup_secret(){
+            local LEGACY=$1 NEW=$2
+            local LVAL NVAL
+            LVAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$LEGACY" --query value -o tsv 2>/dev/null || true)
+            NVAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$NEW" --query value -o tsv 2>/dev/null || true)
+            if [ -n "$LVAL" ] && [ -n "$NVAL" ] && [ "$LVAL" = "$NVAL" ]; then
+              echo "Deleting $LEGACY (value matches $NEW)"
+              az keyvault secret delete --vault-name "$KV_NAME" --name "$LEGACY" >/dev/null || true
+              az keyvault secret purge --vault-name "$KV_NAME" --name "$LEGACY" >/dev/null || true
+            else
+              echo "Skipping $LEGACY (legacyPresent=$([ -n "$LVAL" ] && echo yes || echo no) newPresent=$([ -n "$NVAL" ] && echo yes || echo no) match=$([ "$LVAL" = "$NVAL" ] && echo yes || echo no))"
+            fi
+          }
+          cleanup_secret AlphaVantageApiKey AlphaVantage--ApiKey
+          cleanup_secret TwelveDataApiKey TwelveData--ApiKey
+          echo "✅ Cleanup step completed (Dev)"
 
       - name: Job Summary (Deploy Dev)
         if: always()
@@ -1983,6 +2030,29 @@ jobs:
           done
           echo "❌ API Health check failed"; exit 1
 
+      - name: Migrate Legacy API Key Secrets (Prod)
+        if: success()
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          KV_NAME="kv-aistock-prod-${INSTANCE_NUM}"
+          echo "🔄 Migrating legacy API key secrets (Prod) in vault ${KV_NAME}"
+          migrate_secret(){
+            local LEGACY=$1 NEW=$2
+            local LEGACY_VAL NEW_VAL
+            LEGACY_VAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$LEGACY" --query value -o tsv 2>/dev/null || true)
+            NEW_VAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$NEW" --query value -o tsv 2>/dev/null || true)
+            if [ -n "$LEGACY_VAL" ] && [ -z "$NEW_VAL" ]; then
+              echo "Copying $LEGACY -> $NEW"
+              az keyvault secret set --vault-name "$KV_NAME" --name "$NEW" --value "$LEGACY_VAL" 1>/dev/null
+            else
+              echo "No migration needed for $LEGACY (legacyPresent=$([ -n "$LEGACY_VAL" ] && echo yes || echo no) newPresent=$([ -n "$NEW_VAL" ] && echo yes || echo no))"
+            fi
+          }
+          migrate_secret AlphaVantageApiKey AlphaVantage--ApiKey
+          migrate_secret TwelveDataApiKey TwelveData--ApiKey
+          echo "✅ Migration step completed (Prod)"
+
       - name: Validate External Stock API Keys (Prod)
         if: success()
         run: |
@@ -2004,6 +2074,30 @@ jobs:
           if grep -q '"status"[[:space:]]*:[[:space:]]*"missing"' api_keys_prod.json; then
             echo "⚠️  One or more keys are missing (allowed but degraded fallback will be used)"; fi
           echo "✅ API key configuration validation (Prod) completed."
+
+      - name: Cleanup Legacy API Key Secrets (Prod)
+        if: success()
+        run: |
+          set -e
+          INSTANCE_NUM="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.instanceNumber || '002' }}"
+          KV_NAME="kv-aistock-prod-${INSTANCE_NUM}"
+          echo "🧹 Cleaning up legacy API key secrets (Prod)"
+          cleanup_secret(){
+            local LEGACY=$1 NEW=$2
+            local LVAL NVAL
+            LVAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$LEGACY" --query value -o tsv 2>/dev/null || true)
+            NVAL=$(az keyvault secret show --vault-name "$KV_NAME" --name "$NEW" --query value -o tsv 2>/dev/null || true)
+            if [ -n "$LVAL" ] && [ -n "$NVAL" ] && [ "$LVAL" = "$NVAL" ]; then
+              echo "Deleting $LEGACY (value matches $NEW)"
+              az keyvault secret delete --vault-name "$KV_NAME" --name "$LEGACY" >/dev/null || true
+              az keyvault secret purge --vault-name "$KV_NAME" --name "$LEGACY" >/dev/null || true
+            else
+              echo "Skipping $LEGACY (legacyPresent=$([ -n "$LVAL" ] && echo yes || echo no) newPresent=$([ -n "$NVAL" ] && echo yes || echo no) match=$([ "$LVAL" = "$NVAL" ] && echo yes || echo no))"
+            fi
+          }
+          cleanup_secret AlphaVantageApiKey AlphaVantage--ApiKey
+          cleanup_secret TwelveDataApiKey TwelveData--ApiKey
+          echo "✅ Cleanup step completed (Prod)"
 
       - name: Job Summary (Deploy Prod)
         if: always()
