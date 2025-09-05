@@ -34,7 +34,7 @@ namespace AiStockTradeApp.Tests.Controllers
         }
 
         [Fact]
-        public void Index_ShouldRedirectToStockDashboard()
+        public void Index_ShouldRedirectToUnifiedUserStockDashboard()
         {
             // Act
             var result = _controller.Index();
@@ -43,7 +43,9 @@ namespace AiStockTradeApp.Tests.Controllers
             result.Should().BeOfType<RedirectToActionResult>();
             var redirectResult = result as RedirectToActionResult;
             redirectResult!.ActionName.Should().Be("Dashboard");
-            redirectResult.ControllerName.Should().Be("Stock");
+            // Updated expectation: Home now routes through UserStockController which unifies
+            // anonymous session + authenticated user watchlist logic. Legacy controller was 'Stock'.
+            redirectResult.ControllerName.Should().Be("UserStock");
         }
 
         [Fact]
