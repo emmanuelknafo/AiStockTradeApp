@@ -1,13 +1,60 @@
-# Azure DevOps pipeline to run JMeter load tests on Ubuntu with Docker
+###############################################
+# Azure DevOps Load Tests Pipeline
+# Mirrors features of .github/workflows/load-tests.yml (Locust + JMeter)
+# Added: scenario parameters, scheduled smoke run, API local startup, thresholds, artifacts
+# Date: 2025-09-05
+###############################################
+
+parameters:
+  - name: scenario
+    displayName: Test scenario (smoke|quick|normal|stress)
+    type: string
+    default: smoke
+    values:
+      - smoke
+      - quick
+      - normal
+      - stress
+  - name: users
+    displayName: Override users (blank = scenario default)
+    type: string
+    default: ""
+  - name: duration
+    displayName: Override duration seconds (blank = scenario default)
+    type: string
+    default: ""
+  - name: jmeterHost
+    displayName: JMeter host (external) - leave blank to target internal API
+    type: string
+    default: ""
+  - name: jmeterPath
+    displayName: JMeter path (e.g. /health)
+    type: string
+    default: "/health"
+  - name: jmeterThreads
+    displayName: JMeter threads
+    type: string
+    default: "20"
+  - name: jmeterRamp
+    displayName: JMeter ramp seconds
+    type: string
+    default: "10"
+  - name: jmeterLoop
+    displayName: JMeter loop count
+    type: string
+    default: "1"
 
 trigger:
   batch: true
   branches:
     include:
-      - "*"
+      - main
+      - feature/*
+      - develop
   paths:
     include:
       - "load-tests/**"
+      - "AiStockTradeApp.Api/**"
       - ".azuredevops/pipelines/load-tests.yml"
     exclude:
       - "**/*.mcp.json"
@@ -15,99 +62,273 @@ trigger:
 pr:
   branches:
     include:
-      - "*"
+      - main
+      - feature/*
+      - develop
   paths:
     include:
       - "load-tests/**"
+      - "AiStockTradeApp.Api/**"
       - ".azuredevops/pipelines/load-tests.yml"
     exclude:
       - "**/*.mcp.json"
 
-# Force a Linux agent so bash is available
-pool:
-  vmImage: "$(vmImageName)"
-# Azure DevOps pipeline to run JMeter load tests (manual trigger)
-# Create a pipeline in Azure DevOps and point it to this file (azure-pipelines/load-tests.yml)
+# Nightly scheduled smoke (UTC 02:30)
+schedules:
+  - cron: "30 2 * * *"
+    displayName: Nightly Smoke Locust
+    branches:
+      include:
+        - main
+    always: true
 
 variables:
-  vmImageName: "ubuntu-latest"
-  jmeterImage: "justb4/jmeter:5.5"
-  resultsFile: "results.jtl"
-  host: "app-aistock-dev-003.azurewebsites.net"
-  port: "443"
-  protocol: "https"
-  threads: "20"
-  ramp: "10"
-  loop: "1"
+  - name: DOTNET_VERSION
+    value: "9.0.x"
+  - name: CONFIGURATION
+    value: "Release"
+  - name: API_PROJECT
+    value: "AiStockTradeApp.Api/AiStockTradeApp.Api.csproj"
+  - name: API_URL
+    value: "http://localhost:5256"
+  - name: LOCUST_FILE
+    value: "locustfile.py"
+  - name: RESULTS_DIR
+    value: "load-test-results"
+  # JMeter defaults (overridden by parameters)
+  - name: JMETER_IMAGE
+    value: "justb4/jmeter:5.5"
+  - name: JMETER_RESULTS
+    value: "results.jtl"
+  - name: INTERNAL_JMETER_HOST
+    value: "localhost"
+  - name: INTERNAL_JMETER_PORT
+    value: "5256"
+  - name: INTERNAL_JMETER_PROTOCOL
+    value: "http"
+
+pool:
+  vmImage: "ubuntu-latest"
 
 stages:
-  - stage: LoadTests
-    displayName: "Run JMeter load tests"
+  - stage: LocustAndJMeter
+    displayName: Load Tests
     jobs:
-      - job: RunJMeter
-        displayName: "Run JMeter (Docker)"
-        pool:
-          vmImage: $(vmImageName)
+      - job: locust
+        displayName: Locust (${{ parameters.scenario }})
+        timeoutInMinutes: 35
+        steps:
+          - checkout: self
+
+          - task: UseDotNet@2
+            displayName: "Install .NET $(DOTNET_VERSION)"
+            inputs:
+              packageType: sdk
+              version: "$(DOTNET_VERSION)"
+
+          - script: |
+              dotnet restore AiStockTradeApp.sln
+              dotnet build AiStockTradeApp.sln -c $(CONFIGURATION) --no-restore
+            displayName: "Restore & Build"
+
+          - script: |
+              dotnet publish $(API_PROJECT) -c $(CONFIGURATION) -o published-api --no-build
+            displayName: "Publish API"
+
+          - script: |
+              set -e
+              dotnet published-api/AiStockTradeApp.Api.dll --urls $(API_URL) &
+              echo $! > api.pid
+              echo "Started API PID $(cat api.pid) on $(API_URL)"
+            displayName: "Start API (background)"
+
+          - script: |
+              set +e
+              echo "Waiting for $(API_URL)/health ..."
+              for i in {1..40}; do
+                if curl -fsS $(API_URL)/health >/dev/null 2>&1; then echo "Health OK"; exit 0; fi
+                if curl -fsS $(API_URL)/ >/dev/null 2>&1; then echo "Root responded (no /health)"; exit 0; fi
+                sleep 3
+              done
+              echo "API failed to become healthy" >&2
+              exit 1
+            displayName: "Wait for API health"
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.11"
+            displayName: "Setup Python"
+
+          - script: |
+              python --version
+              if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install locust; fi
+            displayName: "Install Locust deps"
+
+          - script: |
+              set -e
+              scenario='${{ parameters.scenario }}'
+              users_override='${{ parameters.users }}'
+              duration_override='${{ parameters.duration }}'
+              users=5; duration=30
+              case "$scenario" in
+                quick) users=10; duration=60 ;;
+                normal) users=50; duration=300 ;;
+                stress) users=75; duration=420 ;;
+                smoke|""|scheduled-smoke) users=5; duration=30 ;;
+                *) echo "Unknown scenario '$scenario' -> smoke" ;;
+              esac
+              if [ -n "$users_override" ]; then users=$users_override; fi
+              if [ -n "$duration_override" ]; then duration=$duration_override; fi
+              echo "Resolved: scenario=$scenario users=$users duration=$duration"
+              echo "USERS=$users" >> $GITHUB_ENV 2>/dev/null || true
+              echo "DURATION=$duration" >> $GITHUB_ENV 2>/dev/null || true
+              echo "##vso[task.setvariable variable=LOCUST_USERS]$users"
+              echo "##vso[task.setvariable variable=LOCUST_DURATION]$duration"
+            displayName: "Derive scenario parameters"
+
+          - script: |
+              set +e
+              mkdir -p $(RESULTS_DIR)
+              echo "Running Locust: users=$(LOCUST_USERS) duration=$(LOCUST_DURATION)s host=$(API_URL)"
+              locust -f $(LOCUST_FILE) \
+                --host $(API_URL) \
+                --users $(LOCUST_USERS) \
+                --spawn-rate $(( $(LOCUST_USERS) / 2 + 1 )) \
+                --run-time $(LOCUST_DURATION)s \
+                --headless \
+                --stop-timeout 15 \
+                --exit-code-on-error 1 \
+                --csv $(RESULTS_DIR)/locust \
+                --html $(RESULTS_DIR)/locust-report.html || echo "LOCUST_EXIT=$?" >> locust_exit.txt
+            displayName: "Run Locust"
+
+          - script: |
+              set -eo pipefail
+              stats_file="$(RESULTS_DIR)/locust_stats.csv"
+              if [ ! -f "$stats_file" ]; then echo "locust_stats.csv missing" >&2; exit 1; fi
+              agg_line=$(grep -i ',Aggregated,' "$stats_file" | tail -1 || true)
+              if [ -z "$agg_line" ]; then requests=0; failures=0; avg=0; else IFS=',' read -r c1 c2 requests failures median avg _rest <<< "$agg_line"; fi
+              requests=${requests:-0}; failures=${failures:-0}; avg=${avg:-0}
+              if ! [[ $requests =~ ^[0-9]+$ ]]; then requests=0; fi
+              if ! [[ $failures =~ ^[0-9]+$ ]]; then failures=0; fi
+              if ! [[ $avg =~ ^[0-9]+(\.[0-9]+)?$ ]]; then avg=0; fi
+              if [ $requests -gt 0 ]; then failure_ratio=$(python -c "req=int('$requests'); fail=int('$failures'); print(f'{fail/req:.6f}')"); else failure_ratio=0; fi
+              echo "Requests=$requests Failures=$failures FailureRatio=$failure_ratio AvgMs=$avg"
+              echo "##vso[task.setvariable variable=FAILURE_RATIO]$failure_ratio"
+              echo "##vso[task.setvariable variable=AVG_RESPONSE]$avg"
+              max_failure=0.05; max_avg=1500
+              pass=1
+              awk -v fr=$failure_ratio -v mf=$max_failure 'BEGIN{exit !(fr<=mf)}' || pass=0
+              awk -v ar=$avg -v ma=$max_avg 'BEGIN{exit !(ar<=ma)}' || pass=0
+              if [ $pass -eq 0 ]; then echo "Thresholds failed (fr>$max_failure or avg>$max_avg)"; exit 1; fi
+            displayName: "Evaluate thresholds"
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Locust artifacts"
+            inputs:
+              targetPath: "$(RESULTS_DIR)"
+              artifact: "locust-${{ parameters.scenario }}"
+              publishLocation: pipeline
+
+          - script: |
+              echo "Scenario: ${{ parameters.scenario }}" > summary.txt
+              echo "Users: $(LOCUST_USERS)" >> summary.txt
+              echo "Duration: $(LOCUST_DURATION)s" >> summary.txt
+              echo "Failure Ratio: $(FAILURE_RATIO)" >> summary.txt
+              echo "Average Response (ms): $(AVG_RESPONSE)" >> summary.txt
+              echo "---- tail locust_stats.csv ----" >> summary.txt
+              tail -n 15 $(RESULTS_DIR)/locust_stats.csv >> summary.txt || true
+            displayName: "Compose summary"
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish summary"
+            inputs:
+              targetPath: "summary.txt"
+              artifact: "locust-summary"
+              publishLocation: pipeline
+
+          - script: |
+              if [ -f api.pid ]; then kill $(cat api.pid) || true; fi
+              pkill -f AiStockTradeApp.Api || true
+            displayName: "Stop API"
+            condition: always()
+
+      - job: jmeter
+        displayName: JMeter (Docker)
+        dependsOn: locust
+        condition: succeededOrFailed() # run even if Locust failed for comparative data
+        timeoutInMinutes: 25
         steps:
           - checkout: self
 
           - script: |
-              echo "Listing test directory"
-              ls -la $(Build.SourcesDirectory)/load-tests/jmeter || true
+              echo "Listing test directory"; ls -la $(Build.SourcesDirectory)/load-tests/jmeter || true
             displayName: "List test dir"
 
           - script: |
-              echo "Generating JMX from template..."
-              sed -e "s|@@THREADS@@|$(threads)|g" -e "s|@@RAMP@@|$(ramp)|g" -e "s|@@LOOP@@|$(loop)|g" "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx" > "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
-
-              echo "Running JMeter in Docker image: $(jmeterImage)"
-              docker --version || true
-              docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) \
-                -n -t test-plan.generated.jmx -l $(resultsFile) \
-                -Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol) -Jpath=$(path)
-            displayName: "Run JMeter (Docker)"
+              set -e
+              host_input='${{ parameters.jmeterHost }}'
+              if [ -z "$host_input" ]; then host=$(INTERNAL_JMETER_HOST); port=$(INTERNAL_JMETER_PORT); protocol=$(INTERNAL_JMETER_PROTOCOL); else host=$host_input; port=443; protocol=https; fi
+              echo "Using host=$host port=$port protocol=$protocol"
+              sed -e "s|@@THREADS@@|${{ parameters.jmeterThreads }}|g" \
+                  -e "s|@@RAMP@@|${{ parameters.jmeterRamp }}|g" \
+                  -e "s|@@LOOP@@|${{ parameters.jmeterLoop }}|g" \
+                  "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.jmx" > "$(Build.SourcesDirectory)/load-tests/jmeter/test-plan.generated.jmx"
+              echo "##vso[task.setvariable variable=JM_HOST]$host"
+              echo "##vso[task.setvariable variable=JM_PORT]$port"
+              echo "##vso[task.setvariable variable=JM_PROTOCOL]$protocol"
+            displayName: "Generate JMX"
 
           - script: |
-              echo "Generating HTML report from results..."
-              # Ensure previous report directory is removed; JMeter requires a non-existing or empty output dir
+              echo "Running JMeter: $(JM_HOST) $(JM_PROTOCOL) threads=${{ parameters.jmeterThreads }}"
+              docker --version || true
+              rm -f "$(Build.SourcesDirectory)/load-tests/jmeter/$(JMETER_RESULTS)" || true
+              docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(JMETER_IMAGE) \
+                -n -t test-plan.generated.jmx -l $(JMETER_RESULTS) \
+                -Jhost=$(JM_HOST) -Jport=$(JM_PORT) -Jprotocol=$(JM_PROTOCOL) -Jpath='${{ parameters.jmeterPath }}'
+            displayName: "Run JMeter"
+
+          - script: |
+              set -e
               rm -rf "$(Build.SourcesDirectory)/load-tests/jmeter/report" || true
-              # Generate report inside the mounted volume path (/tests maps to $(Build.SourcesDirectory)/load-tests/jmeter)
-              docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(jmeterImage) -g $(resultsFile) -o /tests/report
+              docker run --rm -v "$(Build.SourcesDirectory)/load-tests/jmeter:/tests" -w /tests $(JMETER_IMAGE) -g $(JMETER_RESULTS) -o /tests/report || true
             displayName: "Generate HTML report"
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish JMeter results"
             inputs:
-              targetPath: "$(Build.SourcesDirectory)/load-tests/jmeter/$(resultsFile)"
+              targetPath: "$(Build.SourcesDirectory)/load-tests/jmeter/$(JMETER_RESULTS)"
               artifact: "jmeter-results"
-              publishLocation: "pipeline"
+              publishLocation: pipeline
 
           - task: PublishPipelineArtifact@1
             displayName: "Publish JMeter HTML report"
             inputs:
               targetPath: "$(Build.SourcesDirectory)/load-tests/jmeter/report"
               artifact: "jmeter-report"
-              publishLocation: "pipeline"
+              publishLocation: pipeline
+
           - task: perfanalyzer@1
+            displayName: "PerfAnalyzer (JMeter)"
             inputs:
-              jmxSource: 'sourceCode'
-              # Use the generated JMX with placeholders replaced by sed above
-              jmxsourceRunFilePath: '$(System.DefaultWorkingDirectory)/load-tests/jmeter/test-plan.generated.jmx'
-              jmxPropertySource: 'none'
-              jmxInputFilesSource: 'sourceCode'
-              jmxInputFolderSourcePath: '$(System.DefaultWorkingDirectory)/load-tests/jmeter'
+              jmxSource: "sourceCode"
+              jmxsourceRunFilePath: "$(System.DefaultWorkingDirectory)/load-tests/jmeter/test-plan.generated.jmx"
+              jmxPropertySource: "none"
+              jmxInputFilesSource: "sourceCode"
+              jmxInputFolderSourcePath: "$(System.DefaultWorkingDirectory)/load-tests/jmeter"
               publishResultsToBuildArtifact: true
-              # Use build number in artifact names to guarantee uniqueness
-              artifactNameReport: 'PerfAnalyzerReport_$(Build.BuildNumber)'
-              artifactNameLog: 'PerfAnalyzerLogs_$(Build.BuildNumber)'
+              artifactNameReport: "PerfAnalyzerReport_$(Build.BuildNumber)"
+              artifactNameLog: "PerfAnalyzerLogs_$(Build.BuildNumber)"
               failPipelineIfJMeterFails: false
               addCustomPluginsToJMeterLib: false
-              jmeterURI: 'https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz'
-              extractedfolderNameforJMeterBinary: 'apache-jmeter-5.6.3'
-              jmeterCustomUnzippedFolderName: 'apache-jmeter-5.6.3'
-              # The task's defaults use System.StageName; avoid unsupported Stage.StageDisplayName
-              jmeterLogFolder: 'CurrentLog_$(System.StageName)'
-              jmeterReportFolder: 'CurrentReport_$(System.StageName)'
+              jmeterURI: "https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz"
+              extractedfolderNameforJMeterBinary: "apache-jmeter-5.6.3"
+              jmeterCustomUnzippedFolderName: "apache-jmeter-5.6.3"
+              jmeterLogFolder: "CurrentLog_$(System.StageName)"
+              jmeterReportFolder: "CurrentReport_$(System.StageName)"
               telemetryDataCollection: true
-              # Append standard -J properties so the test targets the expected host/port/protocol
-              additionalCommandLineArguments: '-Jhost=$(host) -Jport=$(port) -Jprotocol=$(protocol)'
+              additionalCommandLineArguments: "-Jhost=$(JM_HOST) -Jport=$(JM_PORT) -Jprotocol=$(JM_PROTOCOL)"
+# Usage examples (manual run):
+#   scenario=quick users=25 duration=90
+#   scenario=stress users="" duration="" (uses defaults for stress)
+#   jmeterHost=api.example.com jmeterThreads=40 jmeterRamp=20
