@@ -333,7 +333,7 @@ function Start-LocalProcesses {
     'ASPNETCORE_ENVIRONMENT' = 'Development'
   }
   # Use --no-build to prevent a second concurrent build
-  $apiArgs = @('-NoExit','-Command',"dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile")
+  $apiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command',"dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") } else { @('-NoExit','-Command',"dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") }
   Write-Host 'Launching API in a new PowerShell window...' -ForegroundColor Cyan
   Start-Process -FilePath 'pwsh' -ArgumentList $apiArgs -WorkingDirectory $repoRoot -Environment $apiEnv | Out-Null
 
@@ -372,7 +372,7 @@ function Start-LocalProcesses {
     'StockApi__HttpBaseUrl' = 'http://localhost:5256'
   }
   # Use --no-build to prevent a second concurrent build
-  $uiArgs = @('-NoExit','-Command',"dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile")
+  $uiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command',"dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") } else { @('-NoExit','-Command',"dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") }
   Write-Host 'Launching UI in a new PowerShell window...' -ForegroundColor Cyan
   Start-Process -FilePath 'pwsh' -ArgumentList $uiArgs -WorkingDirectory $repoRoot -Environment $uiEnv | Out-Null
 
@@ -382,7 +382,7 @@ function Start-LocalProcesses {
       'ASPNETCORE_ENVIRONMENT' = 'Development';
       'STOCK_API_BASE_URL' = 'https://localhost:7032'
     }
-    $mcpArgs = @('-NoExit','-Command',"dotnet run --no-build --project `"$mcpProj`" -- --http")
+  $mcpArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command',"dotnet run --no-build --project `"$mcpProj`" -- --http") } else { @('-NoExit','-Command',"dotnet run --no-build --project `"$mcpProj`" -- --http") }
     Write-Host 'Launching MCP Server in HTTP mode in a new PowerShell window...' -ForegroundColor Cyan
     Start-Process -FilePath 'pwsh' -ArgumentList $mcpArgs -WorkingDirectory $repoRoot -Environment $mcpEnv | Out-Null
   } else {

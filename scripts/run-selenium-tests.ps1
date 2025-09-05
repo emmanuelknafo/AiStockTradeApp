@@ -89,8 +89,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Auto-detect CI environment if switch not explicitly passed (GitHub Actions sets GITHUB_ACTIONS=true)
-if (-not $CI -and ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true')) {
+# Auto-detect CI environment if switch not explicitly passed (GitHub Actions, generic CI, Azure DevOps TF_BUILD)
+if (-not $CI -and ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true' -or $env:TF_BUILD -eq 'True')) {
   $CI = $true
   Write-Host '[INFO ] CI environment detected via env vars (auto-enabling CI mode).' -ForegroundColor Cyan
 }
@@ -183,6 +183,8 @@ try {
     if ($CI) {
       # Force API to pure HTTP profile, but use UI 'https' profile (with UseHttps disabled) so it also exposes HTTP on 5259
       # Launch settings: UI 'https' profile => https://7043;http://5259, API 'http' profile => http://5256
+      # Avoid -NoExit in spawned shells to prevent hanging pipeline shells (consumed by Azure DevOps/CI)
+      $env:NO_PWSH_NOEXIT = '1'
       & $startScript -Mode $Mode -NoBrowser -UseHttps:$false -ApiProfile http -UiProfile https | Out-Null
     } else {
       & $startScript -Mode $Mode -NoBrowser | Out-Null
@@ -196,16 +198,43 @@ try {
   $pollSec = 3
   $deadline = (Get-Date).AddSeconds($timeoutSec)
   $uiReady = $false
-  Write-Info "Waiting for UI to respond at $BaseUrl ..."
+  $attempt = 0
+  $lastError = $null
+  Write-Info "Waiting for UI to respond at $BaseUrl (timeout ${timeoutSec}s)..."
   while ((Get-Date) -lt $deadline) {
+    $attempt++
     try {
       $resp = Invoke-WebRequest -Uri $BaseUrl -Method Get -TimeoutSec 5 -SkipCertificateCheck:$true -ErrorAction Stop
       if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) { $uiReady = $true; break }
-    } catch { }
+      $lastError = "Unexpected status: $($resp.StatusCode)"
+    } catch {
+      $lastError = $_.Exception.Message
+    }
+    if ($attempt % 10 -eq 0) {
+      Write-Warn "Still waiting (attempt $attempt). Last error/status: $lastError"
+      # Fallback: if port is listening, proceed anyway (Azure DevOps sometimes blocks HTTP call inside readiness loop)
+      try {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        $ar = $client.BeginConnect('localhost',[int]([uri]$BaseUrl).Port,$null,$null)
+        $success = $ar.AsyncWaitHandle.WaitOne(500)
+        if ($success -and $client.Connected) {
+          $client.EndConnect($ar)
+          $client.Dispose()
+          Write-Warn 'Port is open; proceeding despite HTTP readiness not confirmed.'
+          $uiReady = $true; break
+        }
+        $client.Dispose()
+      } catch { }
+    }
     Start-Sleep -Seconds $pollSec
   }
-  if (-not $uiReady) { Write-Err "UI not reachable within ${timeoutSec}s at $BaseUrl"; exit 1 }
-  Write-Info 'UI is responsive.'
+  if (-not $uiReady) {
+    Write-Err "UI not reachable within ${timeoutSec}s at $BaseUrl. Last error: $lastError"
+    # Emit process list for diagnostics before exiting
+    try { Get-Process -Name dotnet | Select-Object Id,StartTime,MainWindowTitle | Format-Table | Out-String | Write-Host } catch { }
+    exit 1
+  }
+  Write-Info "UI is responsive after $attempt attempt(s)."
 
   # Export env vars for test process
   $env:SELENIUM_BASE_URL = $BaseUrl
