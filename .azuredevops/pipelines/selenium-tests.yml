@@ -11,11 +11,7 @@
 ###############################################
 
 parameters:
-  # Simplified inputs: only expression-based filtering (deprecated filterType)
-  - name: filterExpression
-    displayName: "(Optional) Filter expression (examples: Category=Authenticated | AdoId=1403|1408)"
-    type: string
-    default: ''
+  # Inputs (filtering temporarily disabled)
   - name: culture
     displayName: Culture (en|fr)
     type: string
@@ -117,8 +113,6 @@ stages:
           - script: |
               echo "Dotnet version:" && dotnet --version
               google-chrome --version || true
-              echo "Parameter filterType: ${{ parameters.filterType }}"
-              echo "Parameter filterValue: ${{ parameters.filterValue }}"
               echo "Parameter culture: ${{ parameters.culture }}"
             displayName: "Environment Info"
 
@@ -128,25 +122,11 @@ stages:
               dotnet build AiStockTradeApp.sln -c $(CONFIGURATION) --no-restore
             displayName: "Restore & Build"
 
-          # Determine filter args (mirrors GitHub Determine Filter step)
-          - pwsh: |
-              $expr = '${{ parameters.filterExpression }}'
-              $filter = ''
-              if ($expr) {
-                if ($expr -match '^Category=(.+)$') { $filter = "-Category $($Matches[1])" }
-                elseif ($expr -match '^AdoId=(.+)$') { $filter = "-AdoId $($Matches[1])" }
-                else { Write-Host "Unrecognized filter expression format: $expr (expected Category=... or AdoId=...)" }
-              }
-              Write-Host "Computed filter args: '$filter'"
-              Write-Host "##vso[task.setvariable variable=filterArgs]$filter"
-            displayName: Determine Filter
-
           # Run Selenium tests via existing script (no -EnableTests if parameter disabled)
           - pwsh: |
               $headless = if (${{ parameters.headless }}) { '$true' } else { '$false' }
               $enableSwitch = if (${{ parameters.enableTests }}) { '-EnableTests' } else { '' }
               $cmd = "./scripts/run-selenium-tests.ps1 -CI -Configuration ${{ parameters.configuration }} $enableSwitch -Headless:$headless -Culture ${{ parameters.culture }}"
-              if ($(filterArgs)) { $cmd += " $(filterArgs)" }
               if ($env:SELENIUM_USERNAME) { $cmd += " -Username `"$env:SELENIUM_USERNAME`"" }
               if ($env:SELENIUM_PASSWORD) { $cmd += " -Password `"$env:SELENIUM_PASSWORD`"" }
               Write-Host "Executing: $cmd"
@@ -189,6 +169,4 @@ stages:
 #     SELENIUM_USERNAME (secret)
 #     SELENIUM_PASSWORD (secret)
 #
-# Invocation examples (manual run with parameters):
-#   - filterType: Category, filterValue: Authenticated, culture: fr
-#   - filterType: AdoId, filterValue: 1403|1408, culture: en
+# Filtering temporarily disabled: reintroduce with a new parameter when needed.
