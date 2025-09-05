@@ -31,7 +31,8 @@ concurrency:
 env:
   DOTNET_VERSION: '9.0.x'
   API_PROJECT: 'AiStockTradeApp.Api/AiStockTradeApp.Api.csproj'
-  API_URL: 'http://localhost:5088'
+  # Updated to correct API HTTP port (was 5088 causing 404s); API listens on 5256 per launch settings.
+  API_URL: 'http://localhost:5256'
   LOCUST_FILE: 'locustfile.py'
   RESULTS_DIR: 'load-test-results'
 

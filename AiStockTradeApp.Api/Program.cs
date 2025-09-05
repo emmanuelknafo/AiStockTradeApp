@@ -304,6 +304,13 @@ app.UseCors("StockUi");
 
 // Health check
 app.MapGet("/health", () => Results.Ok("OK"));
+// Root metadata endpoint (useful for load tests hitting '/')
+app.MapGet("/", () => Results.Ok(new {
+    Service = "AiStockTradeApp.Api",
+    Status = "Running",
+    Utc = DateTime.UtcNow.ToString("O"),
+    Version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "dev"
+}));
 
 // Extended database / configuration health
 app.MapGet("/health/db", async (IServiceProvider sp) =>
