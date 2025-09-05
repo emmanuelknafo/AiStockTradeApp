@@ -326,6 +326,38 @@ VALUES (@Id,@User,@NormUser,@Email,@NormEmail,1,@PwdHash,@Sec,@Conc,0,0,1,0,GETU
 }
 finally {
   Restore-PatchedFiles
+  # CI cleanup: terminate locally started API/UI processes to avoid lingering STDIO handles on runners
+  if ($CI -and -not $SkipStart) {
+    Write-Info 'CI cleanup: attempting to stop spawned API/UI processes.'
+    try {
+      $isLinux = $PSStyle.Platform -match 'Linux' -or ($env:RUNNER_OS -eq 'Linux')
+    } catch { $isLinux = $false }
+
+    if ($isLinux) {
+      try {
+        & bash -c "pkill -f AiStockTradeApp.Api || true; pkill -f AiStockTradeApp.dll || true" | Out-Null
+        Write-Info 'Issued pkill commands for Api/UI (Linux).'
+      } catch { Write-Warn "pkill cleanup failed: $($_.Exception.Message)" }
+    } else {
+      # Windows / others: try narrowing to processes whose command line includes project dll names if possible
+      try {
+        $dotnetProcs = Get-Process -Name dotnet -ErrorAction SilentlyContinue
+        foreach ($p in $dotnetProcs) {
+          try {
+            # Attempt to read MainWindowTitle / Id to heuristically decide termination if started recently
+            if ($p.StartTime -gt (Get-Date).AddHours(-1)) {
+              # Fallback: terminate if command line contains our projects (requires .NET 6+ / Powershell 7 with Get-CimInstance)
+              $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" | Select-Object -ExpandProperty CommandLine 2>$null)
+              if ($cmdLine -and ($cmdLine -match 'AiStockTradeApp.Api' -or $cmdLine -match 'AiStockTradeApp.csproj')) {
+                Write-Info "Stopping process Id=$($p.Id) (API/UI)"
+                Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              }
+            }
+          } catch { }
+        }
+      } catch { Write-Warn "Windows cleanup failed: $($_.Exception.Message)" }
+    }
+  }
 }
 
 Write-Host "\nDone." -ForegroundColor Green
