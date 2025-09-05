@@ -347,16 +347,34 @@ function Start-LocalProcesses {
   Write-Host 'Building solution (Debug)...' -ForegroundColor Cyan
   & dotnet build $slnPath -c Debug | Write-Host
 
+  # Inline CI launch mode support: when CI_INLINE_LAUNCH=1|true we run the dotnet processes directly (no extra pwsh windows)
+  $inline = $false
+  if ($env:CI_INLINE_LAUNCH -and ($env:CI_INLINE_LAUNCH -in @('1','true','TRUE'))) {
+    $inline = $true
+    Write-Host '[CI_INLINE_LAUNCH] Enabled: services will be started inline without spawning extra PowerShell windows.' -ForegroundColor Yellow
+  }
+  $pidFile = Join-Path $repoRoot '.ci-dotnet-pids'
+  if ($inline) {
+    if (Test-Path $pidFile) { try { Remove-Item $pidFile -Force -ErrorAction SilentlyContinue } catch {} }
+  }
+
   # Launch API with environment passed safely via Start-Process -Environment
   $apiEnv = @{
     'ConnectionStrings__DefaultConnection' = $cs;
     'USE_INMEMORY_DB'                      = 'false';
     'ASPNETCORE_ENVIRONMENT'               = 'Development'
   }
-  # Use --no-build to prevent a second concurrent build
-  $apiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command', "dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") } else { @('-NoExit', '-Command', "dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") }
-  Write-Host 'Launching API in a new PowerShell window...' -ForegroundColor Cyan
-  Start-Process -FilePath 'pwsh' -ArgumentList $apiArgs -WorkingDirectory $repoRoot -Environment $apiEnv | Out-Null
+  if ($inline) {
+    Write-Host 'Starting API inline (background dotnet process)...' -ForegroundColor Cyan
+    $apiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $apiProj,'--launch-profile', $ApiProfile) -WorkingDirectory $repoRoot -Environment $apiEnv -PassThru -WindowStyle Hidden
+    if ($apiProc) { "API:$($apiProc.Id)" | Add-Content -LiteralPath $pidFile }
+  }
+  else {
+    # Use --no-build to prevent a second concurrent build
+    $apiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command', "dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") } else { @('-NoExit', '-Command', "dotnet run --no-build --project `"$apiProj`" --launch-profile $ApiProfile") }
+    Write-Host 'Launching API in a new PowerShell window...' -ForegroundColor Cyan
+    Start-Process -FilePath 'pwsh' -ArgumentList $apiArgs -WorkingDirectory $repoRoot -Environment $apiEnv | Out-Null
+  }
 
   # Wait for API to be responsive before starting UI to avoid race conditions
   $apiHealthUrlHttp = 'http://localhost:5256/health'
@@ -394,10 +412,17 @@ function Start-LocalProcesses {
     'StockApi__BaseUrl'                    = 'https://localhost:7032';
     'StockApi__HttpBaseUrl'                = 'http://localhost:5256'
   }
-  # Use --no-build to prevent a second concurrent build
-  $uiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command', "dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") } else { @('-NoExit', '-Command', "dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") }
-  Write-Host 'Launching UI in a new PowerShell window...' -ForegroundColor Cyan
-  Start-Process -FilePath 'pwsh' -ArgumentList $uiArgs -WorkingDirectory $repoRoot -Environment $uiEnv | Out-Null
+  if ($inline) {
+    Write-Host 'Starting UI inline (background dotnet process)...' -ForegroundColor Cyan
+    $uiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $uiProj,'--launch-profile', $UiProfile) -WorkingDirectory $repoRoot -Environment $uiEnv -PassThru -WindowStyle Hidden
+    if ($uiProc) { "UI:$($uiProc.Id)" | Add-Content -LiteralPath $pidFile }
+  }
+  else {
+    # Use --no-build to prevent a second concurrent build
+    $uiArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command', "dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") } else { @('-NoExit', '-Command', "dotnet run --no-build --project `"$uiProj`" --launch-profile $UiProfile") }
+    Write-Host 'Launching UI in a new PowerShell window...' -ForegroundColor Cyan
+    Start-Process -FilePath 'pwsh' -ArgumentList $uiArgs -WorkingDirectory $repoRoot -Environment $uiEnv | Out-Null
+  }
 
   # Launch MCP Server in HTTP mode unless disabled (CI sets DISABLE_MCP_AUTOSTART to avoid port conflicts)
   if (-not $env:DISABLE_MCP_AUTOSTART) {
@@ -405,9 +430,16 @@ function Start-LocalProcesses {
       'ASPNETCORE_ENVIRONMENT' = 'Development';
       'STOCK_API_BASE_URL'     = 'https://localhost:7032'
     }
-    $mcpArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command', "dotnet run --no-build --project `"$mcpProj`" -- --http") } else { @('-NoExit', '-Command', "dotnet run --no-build --project `"$mcpProj`" -- --http") }
-    Write-Host 'Launching MCP Server in HTTP mode in a new PowerShell window...' -ForegroundColor Cyan
-    Start-Process -FilePath 'pwsh' -ArgumentList $mcpArgs -WorkingDirectory $repoRoot -Environment $mcpEnv | Out-Null
+    if ($inline) {
+      Write-Host 'Starting MCP Server inline (background dotnet process)...' -ForegroundColor Cyan
+      $mcpProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $mcpProj,'--','--http') -WorkingDirectory $repoRoot -Environment $mcpEnv -PassThru -WindowStyle Hidden
+      if ($mcpProc) { "MCP:$($mcpProc.Id)" | Add-Content -LiteralPath $pidFile }
+    }
+    else {
+      $mcpArgs = if ($env:NO_PWSH_NOEXIT) { @('-Command', "dotnet run --no-build --project `"$mcpProj`" -- --http") } else { @('-NoExit', '-Command', "dotnet run --no-build --project `"$mcpProj`" -- --http") }
+      Write-Host 'Launching MCP Server in HTTP mode in a new PowerShell window...' -ForegroundColor Cyan
+      Start-Process -FilePath 'pwsh' -ArgumentList $mcpArgs -WorkingDirectory $repoRoot -Environment $mcpEnv | Out-Null
+    }
   }
   else {
     Write-Host 'MCP auto-start disabled by DISABLE_MCP_AUTOSTART.' -ForegroundColor Yellow

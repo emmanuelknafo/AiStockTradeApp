@@ -174,6 +174,9 @@ try {
   # Disable MCP auto-start to avoid port 5000 conflicts
   $env:DISABLE_MCP_AUTOSTART = 'true'
   Write-Info 'CI mode: DISABLE_MCP_AUTOSTART=true (prevent MCP port binding).'
+  # Enable inline launch to avoid lingering STDIO handles from spawned pwsh windows
+  $env:CI_INLINE_LAUNCH = '1'
+  Write-Info 'CI mode: CI_INLINE_LAUNCH=1 (services started inline; PIDs tracked).'
     # In CI we generally do not want interactive prompts; ensure non-blocking behavior.
   }
   if ($EnableTests) { Enable-Tests }
@@ -358,6 +361,22 @@ finally {
   # CI cleanup: terminate locally started API/UI processes to avoid lingering STDIO handles on runners
   if ($CI -and -not $SkipStart) {
     Write-Info 'CI cleanup: attempting to stop spawned API/UI processes.'
+    $pidFile = Join-Path $repoRoot '.ci-dotnet-pids'
+    if (Test-Path $pidFile) {
+      Write-Info 'Found PID file (.ci-dotnet-pids); attempting targeted termination.'
+      $lines = Get-Content -LiteralPath $pidFile | Where-Object { $_ -match '^[A-Z]+:\d+$' }
+      foreach ($l in $lines) {
+        $parts = $l.Split(':',2)
+        $role = $parts[0]; $procPid = [int]$parts[1]
+        try {
+          if (Get-Process -Id $procPid -ErrorAction SilentlyContinue) {
+            Write-Info "Stopping $role process PID=$procPid"
+            Stop-Process -Id $procPid -Force -ErrorAction SilentlyContinue
+          }
+        } catch { Write-Warn "Failed to stop $role PID=$procPid : $($_.Exception.Message)" }
+      }
+      try { Remove-Item $pidFile -Force -ErrorAction SilentlyContinue } catch {}
+    }
     try {
       $cleanupIsLinux = $false
       if (Get-Variable -Name IsLinux -Scope Global -ErrorAction SilentlyContinue) { $cleanupIsLinux = $IsLinux }
