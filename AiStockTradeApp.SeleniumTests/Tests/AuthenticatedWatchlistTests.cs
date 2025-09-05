@@ -23,14 +23,14 @@ public class AuthenticatedWatchlistTests : TestBase
         auth.SignIn(Settings.BaseUrl, Settings.Credentials.Username, Settings.Credentials.Password);
         dashboard.Go(Settings.BaseUrl);
 
-    var count = dashboard.GetWatchlistCount();
-    if (count == 0)
-    {
-        // Self-seed via UI to avoid dependency on external DB state
-        dashboard.AddSymbol("AAPL").AddSymbol("MSFT");
-        count = dashboard.GetWatchlistCount();
-    }
-    Assert.True(count > 0, "Expected at least one watchlist item after optional self-seed.");
+        var count = dashboard.GetWatchlistCount(TimeSpan.FromSeconds(3));
+        if (count == 0)
+        {
+            // Self-seed via UI to avoid dependency on external DB state
+            dashboard.AddSymbol("AAPL").AddSymbol("MSFT").WaitForAtLeast(1, TimeSpan.FromSeconds(25));
+            count = dashboard.GetWatchlistCount(TimeSpan.FromSeconds(2));
+        }
+        Assert.True(count > 0, "Expected at least one watchlist item after optional self-seed.");
     }
 
     [Trait("Category", "Authenticated")]
