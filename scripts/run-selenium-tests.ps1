@@ -161,6 +161,9 @@ try {
   # Use in-memory DB to eliminate external SQL dependency in CI
   $env:USE_INMEMORY_DB = 'true'
   Write-Info 'CI mode: USE_INMEMORY_DB=true set for API/UI.'
+  # Prevent Selenium test harness from attempting its own process start (we already start via start.ps1)
+  $env:DISABLE_SELENIUM_TEST_AUTOSTART = 'true'
+  Write-Info 'CI mode: DISABLE_SELENIUM_TEST_AUTOSTART=true (skip internal auto-start).'
     # In CI we generally do not want interactive prompts; ensure non-blocking behavior.
   }
   if ($EnableTests) { Enable-Tests }

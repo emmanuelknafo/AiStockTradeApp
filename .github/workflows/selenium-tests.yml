@@ -72,6 +72,7 @@ jobs:
         env:
           SELENIUM_USERNAME: ${{ secrets.SELENIUM_USERNAME }}
           SELENIUM_PASSWORD: ${{ secrets.SELENIUM_PASSWORD }}
+          DISABLE_SELENIUM_TEST_AUTOSTART: true
         run: |
           $cmd = "./scripts/run-selenium-tests.ps1 -CI -Configuration Release -EnableTests -Headless:`$true"
           if ('${{ github.event.inputs.culture }}') { $cmd += " -Culture ${{ github.event.inputs.culture }}" }
