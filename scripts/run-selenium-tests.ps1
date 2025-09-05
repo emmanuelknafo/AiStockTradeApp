@@ -89,6 +89,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Auto-detect CI environment if switch not explicitly passed (GitHub Actions sets GITHUB_ACTIONS=true)
+if (-not $CI -and ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true')) {
+  $CI = $true
+  Write-Host '[INFO ] CI environment detected via env vars (auto-enabling CI mode).' -ForegroundColor Cyan
+}
+
 function Write-Info([string]$msg){ Write-Host "[INFO ] $msg" -ForegroundColor Cyan }
 function Write-Warn([string]$msg){ Write-Host "[WARN ] $msg" -ForegroundColor Yellow }
 function Write-Err ([string]$msg){ Write-Host "[ERROR] $msg" -ForegroundColor Red }
