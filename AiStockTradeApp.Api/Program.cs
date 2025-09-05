@@ -294,7 +294,12 @@ else
 
 // (Migration block removed: handled by conditional logic above)
 
-app.UseHttpsRedirection();
+// Skip HTTPS redirection in CI or in-memory DB mode to avoid developer cert trust issues on ephemeral runners
+var ciEnvForApi = string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase);
+if (!ciEnvForApi && !useInMemory)
+{
+    app.UseHttpsRedirection();
+}
 app.UseCors("StockUi");
 
 // Health check

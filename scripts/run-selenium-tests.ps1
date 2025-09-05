@@ -116,6 +116,13 @@ if (-not $BaseUrl) {
   $BaseUrl = if ($Mode -eq 'Local') { 'https://localhost:7043' } else { 'http://localhost:8080' }
 }
 
+# In CI prefer HTTP endpoint to avoid dev cert trust issues (GitHub runners cannot trust cert easily)
+if ($CI -and (-not $PSBoundParameters.ContainsKey('BaseUrl'))) {
+  # UI launchSettings exposes HTTP on 5259 alongside HTTPS 7043
+  $BaseUrl = 'http://localhost:5259'
+  Write-Info "CI mode: overriding BaseUrl to $BaseUrl (HTTP to avoid dev cert trust warnings)."
+}
+
 Write-Info "Using BaseUrl: $BaseUrl"
 
 $patchedFiles = @()
@@ -164,13 +171,21 @@ try {
   # Prevent Selenium test harness from attempting its own process start (we already start via start.ps1)
   $env:DISABLE_SELENIUM_TEST_AUTOSTART = 'true'
   Write-Info 'CI mode: DISABLE_SELENIUM_TEST_AUTOSTART=true (skip internal auto-start).'
+  # Disable MCP auto-start to avoid port 5000 conflicts
+  $env:DISABLE_MCP_AUTOSTART = 'true'
+  Write-Info 'CI mode: DISABLE_MCP_AUTOSTART=true (prevent MCP port binding).'
     # In CI we generally do not want interactive prompts; ensure non-blocking behavior.
   }
   if ($EnableTests) { Enable-Tests }
 
   if (-not $SkipStart) {
-    Write-Info "Starting application via start.ps1 (-Mode $Mode -NoBrowser)..."
-    & $startScript -Mode $Mode -NoBrowser | Out-Null
+    Write-Info "Starting application via start.ps1 (-Mode $Mode -NoBrowser) ..."
+    if ($CI) {
+      # Force HTTP launch profiles to avoid HTTPS redirection + cert trust issues
+      & $startScript -Mode $Mode -NoBrowser -UseHttps:$false -ApiProfile http -UiProfile http | Out-Null
+    } else {
+      & $startScript -Mode $Mode -NoBrowser | Out-Null
+    }
   } else {
     Write-Info "Skipping application startup (reusing existing instance at $BaseUrl)."
   }
@@ -201,72 +216,73 @@ try {
   # -------------------------------------------------------------
   # Automatic Identity User + Watchlist Seeding (zero intervention)
   # -------------------------------------------------------------
-  Write-Info 'Ensuring test user + baseline watchlist (AAPL, MSFT)...'
-  $conn = $env:ConnectionStrings__DefaultConnection
-  if (-not $conn) { $conn = 'Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true' }
-
-  $seedUserEmail = if ($Username) { $Username } else { 'selenium@test.local' }
-  $seedPassword  = if ($Password) { $Password } else { 'P@ssw0rd1!' }
-  if (-not $Username) { $env:SELENIUM_USERNAME = $seedUserEmail }
-  if (-not $Password) { $env:SELENIUM_PASSWORD = $seedPassword }
-
   $userId = $null
-  # Pre-generated ASP.NET Core Identity hash for password 'P@ssw0rd1!' (PBKDF2 v3) - TEST ONLY
-  # If login fails, replace below with a hash from a real created user in your env.
-  $pwdHash = 'AQAAAAEAACcQAAAAEOgCjU3VtWnHn9Q4xg7R97Q6ZC1mZp4TgBBXHytDg4S8z4uZc1QGJvBfQ7y7Q9vNzQ=='
-
-  try {
-    $sqlConn = [System.Data.SqlClient.SqlConnection]::new($conn)
-    $sqlConn.Open()
-    $norm = $seedUserEmail.ToUpperInvariant()
-    $find = $sqlConn.CreateCommand(); $find.CommandText = 'SELECT TOP 1 Id FROM [Users] WHERE NormalizedEmail=@e'
-    $p = $find.Parameters.Add('@e',[System.Data.SqlDbType]::NVarChar,256); $p.Value = $norm
-    $existing = $find.ExecuteScalar()
-    if ($existing) {
-      $userId = [string]$existing
-      Write-Detail 'User already exists.'
-    } else {
-      $userId = [guid]::NewGuid().ToString()
-  Write-Detail "Creating user $seedUserEmail"
-      $ins = $sqlConn.CreateCommand();
-      $ins.CommandText = @'
+  if ($env:USE_INMEMORY_DB -eq 'true') {
+    Write-Info 'In-memory DB mode detected: skipping direct SQL seeding (UI will seed user/watchlist at startup).'
+    # The UI startup code (Program.cs) seeds selenium@test.local when using InMemory.
+    $seedUserEmail = if ($Username) { $Username } else { 'selenium@test.local' }
+    $seedPassword  = if ($Password) { $Password } else { 'P@ssw0rd1!' }
+    if (-not $Username) { $env:SELENIUM_USERNAME = $seedUserEmail }
+    if (-not $Password) { $env:SELENIUM_PASSWORD = $seedPassword }
+  } else {
+    Write-Info 'Ensuring test user + baseline watchlist (AAPL, MSFT)...'
+    $conn = $env:ConnectionStrings__DefaultConnection
+    if (-not $conn) { $conn = 'Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true' }
+    $seedUserEmail = if ($Username) { $Username } else { 'selenium@test.local' }
+    $seedPassword  = if ($Password) { $Password } else { 'P@ssw0rd1!' }
+    if (-not $Username) { $env:SELENIUM_USERNAME = $seedUserEmail }
+    if (-not $Password) { $env:SELENIUM_PASSWORD = $seedPassword }
+    $pwdHash = 'AQAAAAEAACcQAAAAEOgCjU3VtWnHn9Q4xg7R97Q6ZC1mZp4TgBBXHytDg4S8z4uZc1QGJvBfQ7y7Q9vNzQ=='
+    try {
+      $sqlConn = [System.Data.SqlClient.SqlConnection]::new($conn)
+      $sqlConn.Open()
+      $norm = $seedUserEmail.ToUpperInvariant()
+      $find = $sqlConn.CreateCommand(); $find.CommandText = 'SELECT TOP 1 Id FROM [Users] WHERE NormalizedEmail=@e'
+      $p = $find.Parameters.Add('@e',[System.Data.SqlDbType]::NVarChar,256); $p.Value = $norm
+      $existing = $find.ExecuteScalar()
+      if ($existing) {
+        $userId = [string]$existing
+        Write-Detail 'User already exists.'
+      } else {
+        $userId = [guid]::NewGuid().ToString()
+        Write-Detail "Creating user $seedUserEmail"
+        $ins = $sqlConn.CreateCommand();
+        $ins.CommandText = @'
 INSERT INTO [Users]
 (Id,UserName,NormalizedUserName,Email,NormalizedEmail,EmailConfirmed,PasswordHash,SecurityStamp,ConcurrencyStamp,PhoneNumberConfirmed,TwoFactorEnabled,LockoutEnabled,AccessFailedCount,CreatedAt,PreferredCulture,EnablePriceAlerts)
 VALUES (@Id,@User,@NormUser,@Email,@NormEmail,1,@PwdHash,@Sec,@Conc,0,0,1,0,GETUTCDATE(),'en',1)
 '@
-      $sec = [guid]::NewGuid().ToString('N'); $conc = [guid]::NewGuid().ToString('N')
-      $params = @{'@Id'=$userId;'@User'=$seedUserEmail;'@NormUser'=$norm;'@Email'=$seedUserEmail;'@NormEmail'=$norm;'@PwdHash'=$pwdHash;'@Sec'=$sec;'@Conc'=$conc}
-      foreach ($k in $params.Keys) {
-        $p2 = $ins.Parameters.Add($k,[System.Data.SqlDbType]::NVarChar,-1); $p2.Value = $params[$k]
+        $sec = [guid]::NewGuid().ToString('N'); $conc = [guid]::NewGuid().ToString('N')
+        $params = @{'@Id'=$userId;'@User'=$seedUserEmail;'@NormUser'=$norm;'@Email'=$seedUserEmail;'@NormEmail'=$norm;'@PwdHash'=$pwdHash;'@Sec'=$sec;'@Conc'=$conc}
+        foreach ($k in $params.Keys) {
+          $p2 = $ins.Parameters.Add($k,[System.Data.SqlDbType]::NVarChar,-1); $p2.Value = $params[$k]
+        }
+        $ins.ExecuteNonQuery() | Out-Null
+        Write-Detail 'User created.'
       }
-      $ins.ExecuteNonQuery() | Out-Null
-      Write-Detail 'User created.'
-    }
-
-    if ($userId) {
-      $countCmd = $sqlConn.CreateCommand();
-      $countCmd.CommandText = 'SELECT COUNT(1) FROM UserWatchlistItems WHERE UserId=@u';
-      $pu = $countCmd.Parameters.Add('@u',[System.Data.SqlDbType]::NVarChar,450); $pu.Value = $userId
-      $count = [int]$countCmd.ExecuteScalar()
-      if ($count -eq 0) {
-  Write-Detail 'Seeding watchlist symbols (AAPL, MSFT)'
-        foreach ($sym in 'AAPL','MSFT') {
-          $w = $sqlConn.CreateCommand();
+      if ($userId) {
+        $countCmd = $sqlConn.CreateCommand();
+        $countCmd.CommandText = 'SELECT COUNT(1) FROM UserWatchlistItems WHERE UserId=@u';
+        $pu = $countCmd.Parameters.Add('@u',[System.Data.SqlDbType]::NVarChar,450); $pu.Value = $userId
+        $count = [int]$countCmd.ExecuteScalar()
+        if ($count -eq 0) {
+          Write-Detail 'Seeding watchlist symbols (AAPL, MSFT)'
+          foreach ($sym in 'AAPL','MSFT') {
+            $w = $sqlConn.CreateCommand();
             $w.CommandText = 'INSERT INTO UserWatchlistItems (UserId, Symbol, AddedAt, SortOrder, EnableAlerts) VALUES (@u,@s,GETUTCDATE(),0,1)'
             $wu = $w.Parameters.Add('@u',[System.Data.SqlDbType]::NVarChar,450); $wu.Value = $userId
             $ws = $w.Parameters.Add('@s',[System.Data.SqlDbType]::NVarChar,10); $ws.Value = $sym
             $w.ExecuteNonQuery() | Out-Null
+          }
+        } else {
+          Write-Detail "Watchlist already has $count item(s)."
         }
-      } else {
-        Write-Detail "Watchlist already has $count item(s)."
       }
-    }
-  } catch {
-    Write-Warn "Seeding failed: $($_.Exception.Message)"
-  } finally { if ($sqlConn) { $sqlConn.Dispose() } }
-
-  if ($userId) { $env:SELENIUM_SEED_USERID = $userId }
-  else { Write-Warn 'User ID unresolved; authenticated tests may not login successfully.' }
+    } catch {
+      Write-Warn "Seeding failed: $($_.Exception.Message)"
+    } finally { if ($sqlConn) { $sqlConn.Dispose() } }
+    if ($userId) { $env:SELENIUM_SEED_USERID = $userId } else { Write-Warn 'User ID unresolved; authenticated tests may not login successfully.' }
+  }
 
   Write-Info 'Environment variables set:'
   Write-Host "  SELENIUM_BASE_URL=$env:SELENIUM_BASE_URL" -ForegroundColor DarkCyan

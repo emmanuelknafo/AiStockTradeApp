@@ -73,6 +73,8 @@ jobs:
           SELENIUM_USERNAME: ${{ secrets.SELENIUM_USERNAME }}
           SELENIUM_PASSWORD: ${{ secrets.SELENIUM_PASSWORD }}
           DISABLE_SELENIUM_TEST_AUTOSTART: true
+          # Force HTTP base URL to avoid dev certificate trust on GitHub runners
+          SELENIUM_BASE_URL: http://localhost:5259
         run: |
           $cmd = "./scripts/run-selenium-tests.ps1 -CI -Configuration Release -EnableTests -Headless:`$true"
           if ('${{ github.event.inputs.culture }}') { $cmd += " -Culture ${{ github.event.inputs.culture }}" }

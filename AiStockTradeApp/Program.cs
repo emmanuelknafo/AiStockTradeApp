@@ -329,8 +329,12 @@ namespace AiStockTradeApp
             }
 
             app.MapHealthChecks("/health");
-
-            app.UseHttpsRedirection();
+            // In CI/in-memory scenarios we skip HTTPS redirection to avoid dev cert trust warnings on runners
+            var ciEnv = string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase);
+            if (!ciEnv && !useInMemory)
+            {
+                app.UseHttpsRedirection();
+            }
             app.UseRouting();
 
             app.UseAuthentication();
@@ -347,6 +351,53 @@ namespace AiStockTradeApp
                 name: "default",
                 pattern: "{controller=Home}/{action=Index}/{id?}")
                 .WithStaticAssets();
+
+            // Lightweight in-memory seed for Selenium / CI (only when using in-memory + empty)
+            if (useInMemory)
+            {
+                try
+                {
+                    using var scope = app.Services.CreateScope();
+                    var identity = scope.ServiceProvider.GetRequiredService<ApplicationIdentityContext>();
+                    var stockCtx = scope.ServiceProvider.GetRequiredService<StockDataContext>();
+                    if (!await identity.Users.AnyAsync())
+                    {
+                        var user = new ApplicationUser
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            UserName = "selenium@test.local",
+                            NormalizedUserName = "SELENIUM@TEST.LOCAL",
+                            Email = "selenium@test.local",
+                            NormalizedEmail = "SELENIUM@TEST.LOCAL",
+                            EmailConfirmed = true,
+                            PreferredCulture = "en",
+                            EnablePriceAlerts = true,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        // Minimal password hash placeholder (login path in tests may bypass real password validation if cookie issued)
+                        user.SecurityStamp = Guid.NewGuid().ToString("N");
+                        user.ConcurrencyStamp = Guid.NewGuid().ToString("N");
+                        await identity.Users.AddAsync(user);
+                        await identity.SaveChangesAsync();
+
+                        // Seed basic watchlist items
+                        if (!await stockCtx.UserWatchlistItems.AnyAsync())
+                        {
+                            stockCtx.UserWatchlistItems.AddRange(new []
+                            {
+                                new Entities.Models.UserWatchlistItem { UserId = user.Id, Symbol = "AAPL", AddedAt = DateTime.UtcNow, SortOrder = 0 },
+                                new Entities.Models.UserWatchlistItem { UserId = user.Id, Symbol = "MSFT", AddedAt = DateTime.UtcNow, SortOrder = 1 }
+                            });
+                            await stockCtx.SaveChangesAsync();
+                        }
+                        Console.WriteLine("[InMemorySeed] Created selenium@test.local + baseline watchlist (AAPL, MSFT).");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[InMemorySeed][Warn] Failed: {ex.Message}");
+                }
+            }
 
             await app.RunAsync();
         }

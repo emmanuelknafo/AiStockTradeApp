@@ -242,10 +242,26 @@ public static class TestSetupHelper
     /// </summary>
     public static async Task WaitForApplicationStartupAsync(string baseUrl, int timeoutSeconds = 30)
     {
+        var autoStartDisabled = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISABLE_SELENIUM_TEST_AUTOSTART"));
+
+        if (autoStartDisabled)
+        {
+            // Passive wait only – the external harness (run-selenium-tests.ps1) already started & probed the app.
+            // Just perform a secondary confirmation with an extended timeout to avoid races during cold start on CI.
+            var extendedTimeout = Math.Max(timeoutSeconds, 90);
+            var isUp = await IsApplicationRunningAsync(baseUrl, extendedTimeout);
+            if (!isUp)
+            {
+                throw new InvalidOperationException($"Application is not running at {baseUrl} after passive wait (auto-start disabled).");
+            }
+            return;
+        }
+
+        // Normal path (legacy local dev) still performs auto-start attempts.
         await EnsureApiStartedAsync();
         await EnsureApplicationStartedAsync(baseUrl);
-        var isRunning = await IsApplicationRunningAsync(baseUrl, timeoutSeconds);
-        if (!isRunning)
+        var running = await IsApplicationRunningAsync(baseUrl, timeoutSeconds);
+        if (!running)
         {
             throw new InvalidOperationException($"Application is not running at {baseUrl} after auto-start attempt.");
         }

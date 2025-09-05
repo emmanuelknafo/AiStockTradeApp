@@ -376,14 +376,18 @@ function Start-LocalProcesses {
   Write-Host 'Launching UI in a new PowerShell window...' -ForegroundColor Cyan
   Start-Process -FilePath 'pwsh' -ArgumentList $uiArgs -WorkingDirectory $repoRoot -Environment $uiEnv | Out-Null
 
-  # Launch MCP Server in HTTP mode
-  $mcpEnv = @{
-    'ASPNETCORE_ENVIRONMENT' = 'Development';
-    'STOCK_API_BASE_URL' = 'https://localhost:7032'
+  # Launch MCP Server in HTTP mode unless disabled (CI sets DISABLE_MCP_AUTOSTART to avoid port conflicts)
+  if (-not $env:DISABLE_MCP_AUTOSTART) {
+    $mcpEnv = @{
+      'ASPNETCORE_ENVIRONMENT' = 'Development';
+      'STOCK_API_BASE_URL' = 'https://localhost:7032'
+    }
+    $mcpArgs = @('-NoExit','-Command',"dotnet run --no-build --project `"$mcpProj`" -- --http")
+    Write-Host 'Launching MCP Server in HTTP mode in a new PowerShell window...' -ForegroundColor Cyan
+    Start-Process -FilePath 'pwsh' -ArgumentList $mcpArgs -WorkingDirectory $repoRoot -Environment $mcpEnv | Out-Null
+  } else {
+    Write-Host 'MCP auto-start disabled by DISABLE_MCP_AUTOSTART.' -ForegroundColor Yellow
   }
-  $mcpArgs = @('-NoExit','-Command',"dotnet run --no-build --project `"$mcpProj`" -- --http")
-  Write-Host 'Launching MCP Server in HTTP mode in a new PowerShell window...' -ForegroundColor Cyan
-  Start-Process -FilePath 'pwsh' -ArgumentList $mcpArgs -WorkingDirectory $repoRoot -Environment $mcpEnv | Out-Null
 
   Write-Host 'Local processes started. API (7032/5256), UI (7043/5259), MCP Server (5000/mcp) per launchSettings.' -ForegroundColor Green
   
@@ -411,10 +415,12 @@ function Start-LocalProcesses {
   }
 
   # Run a smoke test against the MCP server to validate it's responding to JSON-RPC requests
-  if (Test-McpEndpoint -Url 'http://localhost:5000/mcp' -TimeoutSec 60 -PollIntervalSec 2) {
-    Write-Host 'MCP server smoke test: PASSED' -ForegroundColor Green
-  } else {
-    Write-Warning 'MCP server smoke test: FAILED (endpoint did not respond as expected)'
+  if (-not $env:DISABLE_MCP_AUTOSTART) {
+    if (Test-McpEndpoint -Url 'http://localhost:5000/mcp' -TimeoutSec 60 -PollIntervalSec 2) {
+      Write-Host 'MCP server smoke test: PASSED' -ForegroundColor Green
+    } else {
+      Write-Warning 'MCP server smoke test: FAILED (endpoint did not respond as expected)'
+    }
   }
 }
 
