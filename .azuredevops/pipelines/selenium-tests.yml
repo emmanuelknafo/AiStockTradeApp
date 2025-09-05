@@ -124,8 +124,8 @@ stages:
 
           # Run Selenium tests via existing script (no -EnableTests if parameter disabled)
           - pwsh: |
-              $headless = if (${{ parameters.headless }}) { '$true' } else { '$false' }
-              $enableSwitch = if (${{ parameters.enableTests }}) { '-EnableTests' } else { '' }
+              $headless = if ('${{ parameters.headless }}' -ieq 'true') { '$true' } else { '$false' }
+              $enableSwitch = if ('${{ parameters.enableTests }}' -ieq 'true') { '-EnableTests' } else { '' }
               $cmd = "./scripts/run-selenium-tests.ps1 -CI -Configuration ${{ parameters.configuration }} $enableSwitch -Headless:$headless -Culture ${{ parameters.culture }}"
               if ($env:SELENIUM_USERNAME) { $cmd += " -Username `"$env:SELENIUM_USERNAME`"" }
               if ($env:SELENIUM_PASSWORD) { $cmd += " -Password `"$env:SELENIUM_PASSWORD`"" }
