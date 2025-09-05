@@ -41,6 +41,17 @@ $env:PROTOCOL = $Protocol
 $env:VIRTUAL_USERS = $Users
 $env:DURATION = $Duration
 
+function Remove-ProcessesOnPort {
+    param([int]$Port,[switch]$Quiet)
+    try {
+        $pids = netstat -ano | Select-String ":$Port\s" | ForEach-Object { ($_ -split '\s+')[-1] } | Sort-Object -Unique | Where-Object { $_ -match '^[0-9]+$' }
+        foreach ($pid in $pids) {
+            if (-not $Quiet) { Write-Host "Killing process PID $pid using port $Port" -ForegroundColor DarkGray }
+            try { taskkill /PID $pid /F /T | Out-Null } catch {}
+        }
+    } catch { if (-not $Quiet) { Write-Warning "Failed to enumerate processes on port $Port: $($_.Exception.Message)" } }
+}
+
 # Environment-specific configurations
 switch ($Environment) {
     "local" {
@@ -88,7 +99,7 @@ function Test-Prerequisites {
                 Write-Host "AutoStart enabled: attempting to start API automatically." -ForegroundColor Yellow
                 $apiProjectPath = Find-ApiProject
                 if ($apiProjectPath) {
-                    $started = Start-ApiInNewWindow -ProjectPath $apiProjectPath
+                    $started = Start-ApiInNewWindow -ProjectPath $apiProjectPath -Port $Port -Protocol $Protocol -KillExisting
                     if ($started) {
                         # Re-try health
                         Write-Host "Waiting for API after AutoStart..." -ForegroundColor Yellow
@@ -105,8 +116,10 @@ function Test-Prerequisites {
                 } else {
                     Write-Warning "Unable to locate API project for AutoStart."}
             }
-            Write-Host ""
-            Write-Host "It looks like you're testing against localhost but the API isn't running." -ForegroundColor Yellow
+            Write-Host ""  
+            if (-not $AutoStart) {
+                Write-Host "It looks like you're testing against localhost but the API isn't running." -ForegroundColor Yellow
+            }
             
             # Check if we can find the API project
             $apiProjectPath = Find-ApiProject
@@ -158,7 +171,7 @@ function Test-Prerequisites {
                 exit 1
             }
         } else {
-            Write-Host "Proceeding despite health failure (AutoStart already attempted)." -ForegroundColor DarkYellow
+            Write-Host "Proceeding despite health failure (AutoStart attempted)." -ForegroundColor DarkYellow
         }
         return $false
     }
@@ -193,14 +206,22 @@ function Find-ApiProject {
 }
 
 function Start-ApiInNewWindow {
-    param([string]$ProjectPath)
+    param(
+        [string]$ProjectPath,
+        [int]$Port,
+        [string]$Protocol = 'http',
+        [switch]$KillExisting
+    )
     
     try {
         Write-Host "Starting API in new window..." -ForegroundColor Green
         
-        # Determine the correct port for the API
-        $apiPort = if ($Port -eq 5001) { 5001 } else { 5000 }
+        # Use requested port directly (fallback to 5000 if somehow 0)
+        $apiPort = if ($Port -gt 0) { $Port } else { 5000 }
         $apiUrl = "${Protocol}://localhost:${apiPort}"
+        if ($KillExisting) {
+            Remove-ProcessesOnPort -Port $apiPort -Quiet
+        }
         
         # Check if we're in VS Code and can use a task instead
         if ($env:VSCODE_PID) {
