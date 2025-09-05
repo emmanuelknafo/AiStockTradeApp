@@ -1,5 +1,8 @@
 # AiStockTradeApp - Web UI (MVC)
 
+> Standardized Documentation Header (2025-09-05)
+> Unified README format applied. See `scripts/Update-AdoTestCaseDescriptions.ps1` for Azure DevOps test case description automation; refer to root README for global architecture.
+
 ## 🎨 Project Overview
 
 The main web application providing a modern, responsive user interface for the AI Stock Trade application. Built with ASP.NET Core MVC, this project delivers server-side rendered pages with real-time stock tracking, AI-powered analysis, and comprehensive user management.

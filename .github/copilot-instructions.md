@@ -916,3 +916,70 @@ All project READMEs follow a standardized format ensuring:
 - **Scripts/README.md** - Automation and development scripts
 
 These documentation files serve as the definitive guide for understanding and working with the AI Stock Trade application solution.
+
+## 📚 Documentation Standardization
+
+### Overview
+In September 2025 the repository adopted a unified README header and structure across all projects to improve discoverability, onboarding speed, and automation alignment. Each README now begins with a Standardized Documentation Header block dated with the last standardization pass.
+
+### Header Format
+```
+> Standardized Documentation Header (YYYY-MM-DD)
+> Brief purpose statement + cross-reference to automation scripts (e.g., scripts/Update-AdoTestCaseDescriptions.ps1)
+```
+
+### Required Sections (Ordered)
+1. Title (H1)
+2. Standardized Documentation Header block
+3. Project Overview / Role
+4. Architecture Role / Responsibilities
+5. Technology Stack (if applicable)
+6. Project Structure (tree)
+7. Key Features / Responsibilities
+8. Configuration / Environment
+9. Usage / Commands / Examples
+10. Testing / Quality
+11. Security / Performance (if relevant)
+12. Contributing / Extensibility
+13. References / Related Docs
+
+### Lint & Style Rules
+- Headings must have blank lines above and below (MD022)
+- Lists separated from surrounding paragraphs (MD032)
+- Fenced code blocks have a language tag (MD040)
+- No multiple consecutive blank lines (MD012)
+- External raw URLs wrapped in `< >` if not using markdown link (MD034)
+- Prefer fenced blocks over inline backticks for multi-line content
+
+### Automation Script Cross-Reference
+Every project README that can benefit from Azure DevOps integration links to `scripts/Update-AdoTestCaseDescriptions.ps1` for maintaining test case descriptions.
+
+### Maintenance Process
+- Run markdown linter before PR merge
+- Apply header when creating new project or documentation folder
+- Update date in header only when substantive structural or content changes occur
+
+### Exceptions
+Minimal placeholder READMEs (e.g., data or media folders) may omit some sections but must keep the standardized header and a succinct purpose statement.
+
+### Review Checklist (Docs PR)
+- [ ] Standard header present & date current
+- [ ] Required sections in prescribed order (or justified omission)
+- [ ] No markdown lint errors
+- [ ] Automation script referenced where relevant
+- [ ] Cross-links to root and related projects validated
+
+### Tooling
+Recommended local lint command (example):
+```bash
+markdownlint **/README.md
+```
+Integrate into CI to fail build on violations.
+
+### Future Enhancements
+- Consider automated README TOC generation
+- Include badges (build, tests, coverage) post CI refinement
+- Add localization key usage summary per UI/Services READMEs
+
+---
+End of Documentation Standardization section.

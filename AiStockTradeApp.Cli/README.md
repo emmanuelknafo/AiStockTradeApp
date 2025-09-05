@@ -1,5 +1,8 @@
 # AiStockTradeApp.Cli
 
+> Standardized Documentation Header (2025-09-05)
+> Unified format. ADO test case description automation: `scripts/Update-AdoTestCaseDescriptions.ps1`.
+
 A command-line interface tool for stock data management and automation tasks in the AI Stock Trade application.
 
 ## Overview
@@ -13,16 +16,19 @@ The CLI provides automation tools for downloading and importing historical stock
 Automates web scraping of NASDAQ.com to download historical CSV data for stock symbols.
 
 **Usage:**
+
 ```bash
 dotnet run --project AiStockTradeApp.Cli -- download-historical -s GOOG -d ./goog.csv
 ```
 
 **Parameters:**
+
 - `-s, --symbol` - Stock ticker symbol (e.g., AAPL, GOOG, MSFT)
 - `-d, --destination` - Output file path for downloaded CSV
 - `--headful` - Show browser during automation (for debugging)
 
 **Features:**
+
 - **Web automation** using Playwright
 - **NASDAQ.com integration** for reliable historical data
 - **CSV format output** compatible with import tools
@@ -34,17 +40,20 @@ dotnet run --project AiStockTradeApp.Cli -- download-historical -s GOOG -d ./goo
 Imports historical stock data from CSV files into the AiStockTradeApp.Api database.
 
 **Usage:**
+
 ```bash
 dotnet run --project AiStockTradeApp.Cli -- import-historical -s AAPL --file ./data/HistoricalData_AAPL.csv --api https://localhost:7043 --watch
 ```
 
 **Parameters:**
+
 - `-s, --symbol` - Stock ticker symbol for the import
 - `--file` - Path to CSV file containing historical data
 - `--api` - Base URL of the AiStockTradeApp.Api service
 - `--watch` - Monitor import job progress and display status updates
 
 **Features:**
+
 - **HTTP API integration** with AiStockTradeApp.Api
 - **Job status monitoring** with real-time progress updates
 - **CSV validation** before upload
@@ -56,10 +65,11 @@ dotnet run --project AiStockTradeApp.Cli -- import-historical -s AAPL --file ./d
 ### First-Time Setup
 
 1. **Install Playwright browsers** (required for download-historical command):
+
    ```bash
    # Install Playwright CLI globally
    dotnet tool install --global Microsoft.Playwright.CLI
-   
+
    # Install Chromium browser with dependencies
    playwright install --with-deps chromium
    ```
@@ -79,6 +89,7 @@ Date,Close/Last,Volume,Open,High,Low
 ```
 
 **Column Details:**
+
 - **Date** - Trading date (MM/dd/yyyy format)
 - **Close/Last** - Closing price (may include $ symbol)
 - **Volume** - Trading volume (may include commas)
@@ -141,22 +152,26 @@ The CLI communicates with the API using standard HTTP requests:
 ### Common Issues
 
 #### Browser Installation Problems
+
 ```bash
 # Reinstall Playwright browsers
 playwright install --force --with-deps chromium
 ```
 
 #### API Connection Issues
+
 - Verify API is running: `curl https://localhost:7043/swagger`
 - Check firewall settings for localhost connections
 - Ensure correct API URL in command parameters
 
 #### CSV Format Issues
+
 - Verify file contains expected columns
 - Check for proper date format (MM/dd/yyyy)
 - Ensure numeric values are properly formatted
 
 #### Download Failures
+
 ```bash
 # Use headful mode to see what's happening
 dotnet run --project AiStockTradeApp.Cli -- download-historical -s AAPL -d ./test.csv --headful
@@ -173,11 +188,13 @@ dotnet run --project AiStockTradeApp.Cli -- download-historical -s AAPL -d ./deb
 ## Performance Considerations
 
 ### Download Performance
+
 - Downloads are limited by NASDAQ.com rate limits
 - Allow 5-10 seconds between requests for multiple symbols
 - Use headless mode for better performance
 
 ### Import Performance
+
 - Large CSV files are processed asynchronously
 - Monitor job status with `--watch` flag
 - API handles batching automatically for optimal performance

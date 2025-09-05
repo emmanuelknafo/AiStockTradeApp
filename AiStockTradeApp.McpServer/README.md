@@ -1,5 +1,8 @@
 # AiStockTradeApp.McpServer - Model Context Protocol Server
 
+> Standardized Documentation Header (2025-09-05)
+> Unified format applied. See automation script `scripts/Update-AdoTestCaseDescriptions.ps1` for ADO test case description management.
+
 ## 🚀 Project Overview
 
 A Model Context Protocol (MCP) server that provides external AI assistants (Claude, ChatGPT, or other MCP-compatible clients) with access to comprehensive stock trading functionality through the AI Stock Trade App API.

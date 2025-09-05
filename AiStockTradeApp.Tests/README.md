@@ -1,10 +1,13 @@
 # Test Configuration
 
+> Standardized Documentation Header (2025-09-05)
+> Unified format plus ADO automation reference: `scripts/Update-AdoTestCaseDescriptions.ps1`.
+
 This directory contains comprehensive unit and integration tests for the AI Stock Trade App.
 
 ## Test Structure
 
-```
+```text
 AiStockTradeApp.Tests/
 ├── Controllers/
 │   ├── AccountControllerTests.cs      # Tests for AccountController endpoints
@@ -39,6 +42,7 @@ AiStockTradeApp.Tests/
 ## Running Tests
 
 ### Command Line
+
 ```bash
 # Run all tests
 dotnet test
@@ -55,6 +59,7 @@ dotnet test --parallel
 ```
 
 ### Visual Studio
+
 1. Open Test Explorer (Test → Test Explorer)
 2. Click "Run All Tests" or right-click specific tests
 3. View test results and coverage

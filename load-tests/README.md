@@ -1,10 +1,13 @@
 # AI Stock Trading API - Load Testing Suite
 
+> Standardized Documentation Header (2025-09-05)
+> Unified format. Automation script reference: `../scripts/Update-AdoTestCaseDescriptions.ps1`.
+
 This directory contains comprehensive load testing configurations and scripts for the AI Stock Trading API microservice.
 
 ## 📁 Directory Structure
 
-```
+```text
 load-tests/
 ├── locust/
 │   └── api_load_test.py          # Comprehensive Locust test script
@@ -25,11 +28,13 @@ load-tests/
 The load testing suite covers all major API endpoints:
 
 ### Core Stock Data Endpoints
+
 - **GET /api/stocks/quote** - Get real-time stock quotes
 - **GET /api/stocks/historical** - Get historical price data
 - **GET /api/stocks/suggestions** - Get stock symbol suggestions
 
 ### Listed Stocks Management
+
 - **GET /api/listed-stocks** - Paginated stock listings
 - **GET /api/listed-stocks/search** - Search stocks by criteria
 - **GET /api/listed-stocks/{symbol}** - Get specific stock details
@@ -38,16 +43,19 @@ The load testing suite covers all major API endpoints:
 - **GET /api/listed-stocks/count** - Get total stock count
 
 ### Historical Data (Database)
+
 - **GET /api/historical-prices/{symbol}** - Get historical prices from DB
 - **GET /api/historical-prices/count** - Get total historical records count
 - **GET /api/historical-prices/{symbol}/count** - Get count by symbol
 
 ### Data Import Operations
+
 - **POST /api/listed-stocks/import-csv** - Import stocks via CSV
 - **POST /api/historical-prices/{symbol}/import-csv** - Import historical data
 - **GET /api/listed-stocks/import-jobs/{id}** - Check import job status
 
 ### Utility Endpoints
+
 - **GET /health** - Health check endpoint
 - **GET /api/listed-stocks/facets/sectors** - Get available sectors
 - **GET /api/listed-stocks/facets/industries** - Get available industries
@@ -55,8 +63,9 @@ The load testing suite covers all major API endpoints:
 ## 🛠️ Test Tools
 
 ### 1. Locust (Python-based)
+
 - **File**: `locust/api_load_test.py`
-- **Features**: 
+- **Features**:
   - Multiple user classes with different behavior patterns
   - Weighted task distribution (realistic usage patterns)
   - Comprehensive endpoint coverage
@@ -64,6 +73,7 @@ The load testing suite covers all major API endpoints:
   - Custom think times and realistic data
 
 ### 2. JMeter (Java-based)
+
 - **File**: `jmeter/comprehensive-api-test.jmx`
 - **Features**:
   - Thread groups for different load patterns
@@ -73,6 +83,7 @@ The load testing suite covers all major API endpoints:
   - Parameterized configuration
 
 ### 3. Azure Load Testing
+
 - **File**: `azure-load-test-config.yaml`
 - **Features**:
   - Cloud-scale load testing
@@ -156,6 +167,7 @@ jmeter -n \
 The tests simulate realistic user behavior with different patterns:
 
 #### Regular API Users (80% of load)
+
 - **Stock Quote Requests**: 20% - Most common operation
 - **Historical Data**: 15% - Chart viewing
 - **Stock Search**: 12% - Browse listings
@@ -164,11 +176,13 @@ The tests simulate realistic user behavior with different patterns:
 - **Facet Queries**: 3% - Filter operations
 
 #### Bulk Operations Users (15% of load)
+
 - **Single Stock Creation**: 3% - Admin operations
 - **Bulk Stock Creation**: 1% - Data management
 - **Longer think times** - Administrative workflows
 
 #### Data Import Users (5% of load)
+
 - **CSV Import Operations**: Very rare but high impact
 - **Job Status Monitoring**: Following up on imports
 - **Very long think times** - Batch processing workflows
@@ -182,12 +196,14 @@ The tests simulate realistic user behavior with different patterns:
 ## 🎯 Success Criteria
 
 ### Performance Targets
+
 - **95th percentile response time**: < 2 seconds
 - **Error rate**: < 5%
 - **Throughput**: > 100 requests/second
 - **Availability**: > 99.5%
 
 ### Monitored Metrics
+
 - Response times (avg, median, 95th, 99th percentile)
 - Throughput (requests per second)
 - Error rates by endpoint

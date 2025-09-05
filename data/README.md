@@ -1,5 +1,8 @@
 # data
 
+> Standardized Documentation Header (2025-09-05)
+> Unified format. Related automation: `../scripts/Update-AdoTestCaseDescriptions.ps1`.
+
 This folder contains sample and downloaded datasets used by various utilities in the repository.
 
 Contents

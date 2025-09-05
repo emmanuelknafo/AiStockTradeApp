@@ -1,13 +1,18 @@
 # Playwright Test Configuration
 
+> Standardized Documentation Header (2025-09-05)
+> Unified format. See `../scripts/Update-AdoTestCaseDescriptions.ps1` for ADO test case description automation.
+
 ## Browser Support
+
 - Chromium (default)
 - Firefox
 - WebKit (Safari)
 
 ## Test Categories
+
 - Navigation Tests
-- Stock Management Tests  
+- Stock Management Tests
 - User Interface Tests
 - Performance Tests
 - Accessibility Tests
@@ -15,6 +20,7 @@
 ## Running Tests
 
 ### Prerequisites
+
 ```bash
 # Install Playwright browsers
 dotnet build

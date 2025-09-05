@@ -1,5 +1,8 @@
 # Selenium UI Tests
 
+> Standardized Documentation Header (2025-09-05)
+> Unified format. Automation script reference: `../scripts/Update-AdoTestCaseDescriptions.ps1`.
+
 This project contains Selenium-based UI tests for the AI Stock Trade application. The tests use Selenium WebDriver to automate browser interactions and validate the application's user interface functionality.
 
 ## Features
@@ -13,7 +16,7 @@ This project contains Selenium-based UI tests for the AI Stock Trade application
 
 ## Project Structure
 
-```
+```text
 AiStockTradeApp.SeleniumTests/
 ├── Infrastructure/
 │   ├── TestBase.cs              # Base class for all tests with auto-start capability
@@ -49,6 +52,7 @@ AiStockTradeApp.SeleniumTests/
 The tests can be configured via `TestSettings.json` or environment variables:
 
 #### TestSettings.json
+
 ```json
 {
   "BaseUrl": "https://localhost:7043",
@@ -65,8 +69,9 @@ The tests can be configured via `TestSettings.json` or environment variables:
 ```
 
 #### Environment Variables
-- `SELENIUM_BASE_URL`: Override base URL (e.g., "https://localhost:7043")
-- `SELENIUM_API_BASE_URL`: Override API base URL (e.g., "https://localhost:7032")
+
+- `SELENIUM_BASE_URL`: Override base URL (e.g., <https://localhost:7043>)
+- `SELENIUM_API_BASE_URL`: Override API base URL (e.g., <https://localhost:7032>)
 - `SELENIUM_HEADLESS`: Run in headless mode (true/false)
 - `SELENIUM_CULTURE`: Set test culture ("en" or "fr")
 - `SELENIUM_USERNAME`: Test user username
@@ -216,6 +221,7 @@ The auto-start functionality ensures tests can run independently without manual 
 ### Configuration for Auto-Start
 
 The auto-start feature uses these default configurations:
+
 - **UI Application**: `https://localhost:7043` (configurable via `SELENIUM_BASE_URL`)
 - **API Application**: `https://localhost:7032` (configurable via `SELENIUM_API_BASE_URL`)
 - **Database**: In-memory database to avoid SQL Server dependency
