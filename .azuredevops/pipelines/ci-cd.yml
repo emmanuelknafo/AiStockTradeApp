@@ -1864,13 +1864,18 @@ stages:
 
                 - task: AzureCLI@2
                   displayName: "Cleanup Legacy API Key Secrets (Dev)"
-                  condition: and(succeeded(), exists('api_keys_dev.json'))
+                  # NOTE: Azure DevOps does not support exists('file') in a condition; perform file check inside script
+                  condition: succeeded()
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
                       set -e
+                      if [ ! -f api_keys_dev.json ]; then
+                        echo "ℹ️  Skipping legacy secret cleanup (Dev) because api_keys_dev.json is not present in workspace.";
+                        exit 0;
+                      fi
                       KV_NAME="kv-aistock-dev-$(instanceNum)"
                       echo "🧹 Starting legacy secret cleanup (Dev) in $KV_NAME"
                       cleanup(){
@@ -2821,13 +2826,18 @@ stages:
 
                 - task: AzureCLI@2
                   displayName: "Cleanup Legacy API Key Secrets (Prod)"
-                  condition: and(succeeded(), exists('api_keys_prod.json'))
+                  # NOTE: Removed unsupported exists('file') condition; handle check in script
+                  condition: succeeded()
                   inputs:
                     azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
                       set -e
+                      if [ ! -f api_keys_prod.json ]; then
+                        echo "ℹ️  Skipping legacy secret cleanup (Prod) because api_keys_prod.json is not present in workspace.";
+                        exit 0;
+                      fi
                       KV_NAME="kv-aistock-prod-$(instanceNum)"
                       echo "🧹 Starting legacy secret cleanup (Prod) in $KV_NAME"
                       cleanup(){
