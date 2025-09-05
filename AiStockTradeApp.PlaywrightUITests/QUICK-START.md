@@ -26,7 +26,7 @@ Open your browser and navigate to: `https://localhost:7043`
 ### 3. Run the UI Tests
 ```bash
 # Open a NEW terminal window (keep the first one running the app)
-cd AiStockTradeApp.UITests
+cd AiStockTradeApp.PlaywrightUITests
 
 # Install Playwright browsers (first time only)
 playwright install

@@ -21,7 +21,7 @@ AiStockTradeApp/                    # Root solution folder
 ├── AiStockTradeApp.DataAccess/     # 💾 Data Layer - EF Core, repositories
 ├── AiStockTradeApp.Services/       # 🔧 Business Logic - Core services
 ├── AiStockTradeApp.Tests/          # ✅ Unit Tests - Service testing
-├── AiStockTradeApp.UITests/        # 🤖 UI Tests - Playwright automation
+├── AiStockTradeApp.PlaywrightUITests/        # 🤖 UI Tests - Playwright automation
 ├── AiStockTradeApp.Cli/            # 📟 CLI Tool - Command line utilities
 ├── AiStockTradeApp.McpServer/      # 🔌 MCP Server - Model Context Protocol integration
 ├── infrastructure/                 # ☁️ Azure Infrastructure (Bicep)
@@ -39,7 +39,7 @@ AiStockTradeApp/                    # Root solution folder
 | **AiStockTradeApp.DataAccess** | Database access, EF Core | DbContext, repositories, migrations, Identity tables | Entities |
 | **AiStockTradeApp.Services** | Business logic, external APIs, API client | Stock services, AI analysis, API client, historical data services, user services | DataAccess, Entities |
 | **AiStockTradeApp.Tests** | Unit testing | Service tests, controller tests, authentication tests | All projects |
-| **AiStockTradeApp.UITests** | End-to-end testing | Playwright page objects, authentication flows | Web UI |
+| **AiStockTradeApp.PlaywrightUITests** | End-to-end testing | Playwright page objects, authentication flows | Web UI |
 | **AiStockTradeApp.Cli** | Command line tools | Data migration, historical data download/import | Services |
 | **AiStockTradeApp.McpServer** | Model Context Protocol server | Stock trading tools, MCP integration, external AI assistant access | HTTP client to API |
 
@@ -535,7 +535,7 @@ public class StockDashboardPage
 dotnet test AiStockTradeApp.Tests
 
 # Run UI tests (with auto-start capability)
-dotnet test AiStockTradeApp.UITests
+dotnet test AiStockTradeApp.PlaywrightUITests
 
 # Run specific test categories
 dotnet test --filter "Category=Unit"
@@ -553,11 +553,11 @@ dotnet test --parallel
 
 # UI tests with in-memory database (faster execution)
 $env:USE_INMEMORY_DB = "true"
-dotnet test AiStockTradeApp.UITests
+dotnet test AiStockTradeApp.PlaywrightUITests
 
 # UI tests without auto-start (manual app startup)
 $env:DISABLE_UI_TEST_AUTOSTART = "true"
-dotnet test AiStockTradeApp.UITests
+dotnet test AiStockTradeApp.PlaywrightUITests
 ```
 
 ## 🚀 Deployment & Infrastructure
@@ -909,7 +909,7 @@ All project READMEs follow a standardized format ensuring:
 - **AiStockTradeApp.DataAccess/README.md** - Entity Framework data layer
 - **AiStockTradeApp.Services/README.md** - Business logic services
 - **AiStockTradeApp.Tests/README.md** - Unit testing strategies
-- **AiStockTradeApp.UITests/README.md** - End-to-end testing with Playwright
+- **AiStockTradeApp.PlaywrightUITests/README.md** - End-to-end testing with Playwright
 - **AiStockTradeApp.Cli/README.md** - Command line tools
 - **AiStockTradeApp.McpServer/README.md** - Model Context Protocol integration
 - **Infrastructure/README.md** - Azure infrastructure documentation

@@ -25,7 +25,7 @@ This solution implements a **clean architecture pattern** with clear separation 
 ### Specialized Projects
 
 - **`AiStockTradeApp.Tests`** - ✅ Comprehensive unit and integration tests
-- **`AiStockTradeApp.UITests`** - 🤖 Playwright end-to-end browser testing
+- **`AiStockTradeApp.PlaywrightUITests`** - 🤖 Playwright end-to-end browser testing
 - **`AiStockTradeApp.Cli`** - 📟 Command-line tools for data management
 - **`AiStockTradeApp.McpServer`** - 🔌 Model Context Protocol server for AI assistant integration
 
@@ -240,19 +240,19 @@ dotnet test --filter "FullyQualifiedName~StockControllerTests"
 
 ```bash
 # Install Playwright browsers (first time only)
-dotnet build AiStockTradeApp.UITests
+dotnet build AiStockTradeApp.PlaywrightUITests
 playwright install
 
 # Run UI tests (auto-starts application)
-dotnet test AiStockTradeApp.UITests
+dotnet test AiStockTradeApp.PlaywrightUITests
 
 # Run with in-memory database (faster)
 $env:USE_INMEMORY_DB = "true"
-dotnet test AiStockTradeApp.UITests
+dotnet test AiStockTradeApp.PlaywrightUITests
 
 # Disable auto-start (manual app startup required)
 $env:DISABLE_UI_TEST_AUTOSTART = "true"
-dotnet test AiStockTradeApp.UITests
+dotnet test AiStockTradeApp.PlaywrightUITests
 ```
 
 ## 📦 Docker Support

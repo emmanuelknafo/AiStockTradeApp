@@ -14,7 +14,7 @@ Before running the tests for the first time, you need to install the Playwright 
 
 ```powershell
 # Navigate to the UI tests project directory
-cd AiStockTradeApp.UITests
+cd AiStockTradeApp.PlaywrightUITests
 
 # Build the project first
 dotnet build
@@ -46,7 +46,7 @@ cd AiStockTradeApp
 dotnet run
 
 # Then run UI tests (in another terminal)
-cd AiStockTradeApp.UITests
+cd AiStockTradeApp.PlaywrightUITests
 dotnet test
 
 # Run specific test class
@@ -164,7 +164,7 @@ HEADED=1 dotnet test
   run: playwright install --with-deps
 
 - name: Run UI Tests
-  run: dotnet test AiStockTradeApp.UITests --logger trx --results-directory TestResults
+  run: dotnet test AiStockTradeApp.PlaywrightUITests --logger trx --results-directory TestResults
 
 - name: Upload Test Results
   uses: actions/upload-artifact@v3
@@ -197,7 +197,7 @@ HEADED=1 dotnet test
   displayName: 'Run UI Tests'
   inputs:
     command: 'test'
-    projects: 'AiStockTradeApp.UITests'
+    projects: 'AiStockTradeApp.PlaywrightUITests'
     arguments: '--logger trx --results-directory $(Agent.TempDirectory)'
 ```
 
@@ -225,7 +225,7 @@ HEADED=1 dotnet test
 1. ? Install Playwright browsers: `playwright install`
 2. ? Start your application: `cd AiStockTradeApp && dotnet run`
 3. ? Wait for application to fully load (check https://localhost:7043 in browser)
-4. ? Run tests: `cd AiStockTradeApp.UITests && dotnet test`
+4. ? Run tests: `cd AiStockTradeApp.PlaywrightUITests && dotnet test`
 
 ### Support
 

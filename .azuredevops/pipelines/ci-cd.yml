@@ -541,16 +541,16 @@ stages:
           - script: |
               set -e
               echo "Building UITests to generate Playwright install scripts..."
-              dotnet build AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj --configuration Release --no-restore
+              dotnet build AiStockTradeApp.PlaywrightUITests/AiStockTradeApp.PlaywrightUITests.csproj --configuration Release --no-restore
 
               echo "Installing Playwright browsers (with OS deps) using .NET script..."
-              PLAYWRIGHT_DIR="AiStockTradeApp.UITests/bin/Release/net9.0"
+              PLAYWRIGHT_DIR="AiStockTradeApp.PlaywrightUITests/bin/Release/net9.0"
               SH_SCRIPT="$PLAYWRIGHT_DIR/playwright.sh"
               PS_SCRIPT="$PLAYWRIGHT_DIR/playwright.ps1"
               echo "Node version: $(node --version 2>/dev/null || echo 'not found')"
               echo "npm version:  $(npm --version 2>/dev/null || echo 'not found')"
               echo "Determining Microsoft.Playwright package version from csproj..."
-              PW_VER=$(grep -oP '(?<=<PackageReference Include="Microsoft.Playwright" Version=")[^"]+' AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj || true)
+              PW_VER=$(grep -oP '(?<=<PackageReference Include="Microsoft.Playwright" Version=")[^"]+' AiStockTradeApp.PlaywrightUITests/AiStockTradeApp.PlaywrightUITests.csproj || true)
               echo "Microsoft.Playwright package version: ${PW_VER:-unknown}"
               echo "Playwright CLI version BEFORE install (generic):"; npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
               if [ -n "$PW_VER" ]; then echo "Playwright CLI version BEFORE install (pinned ${PW_VER}):"; npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
@@ -568,7 +568,7 @@ stages:
               else
                 echo "No playwright install script found in $PLAYWRIGHT_DIR" >&2
                 echo "Directory listing of $PLAYWRIGHT_DIR:"; ls -la "$PLAYWRIGHT_DIR" || true
-                echo "Directory listing of parent:"; ls -la AiStockTradeApp.UITests/bin/Release/ || true
+                echo "Directory listing of parent:"; ls -la AiStockTradeApp.PlaywrightUITests/bin/Release/ || true
                 exit 1
               fi
               echo "Installed browsers in:"
@@ -685,11 +685,11 @@ stages:
           - script: |
               echo "=== Pre-test debugging ==="
               echo "Checking if UITests project built correctly..."
-              ls -la AiStockTradeApp.UITests/bin/Release/net9.0/ || echo "Build output directory not found"
+              ls -la AiStockTradeApp.PlaywrightUITests/bin/Release/net9.0/ || echo "Build output directory not found"
 
               echo "Checking for required assemblies..."
-              ls -la AiStockTradeApp.UITests/bin/Release/net9.0/*Playwright* || echo "Playwright assemblies not found"
-              ls -la AiStockTradeApp.UITests/bin/Release/net9.0/*NUnit* || echo "NUnit assemblies not found"
+              ls -la AiStockTradeApp.PlaywrightUITests/bin/Release/net9.0/*Playwright* || echo "Playwright assemblies not found"
+              ls -la AiStockTradeApp.PlaywrightUITests/bin/Release/net9.0/*NUnit* || echo "NUnit assemblies not found"
 
               echo "Checking test.runsettings file..."
               cat test.runsettings || echo "test.runsettings not found"
@@ -709,7 +709,7 @@ stages:
               echo "Checking Playwright CLI versions (generic and pinned)..."
               echo "Node version: $(node --version 2>/dev/null || echo 'not found')"
               echo "npm version:  $(npm --version 2>/dev/null || echo 'not found')"
-              PW_VER=$(grep -oP '(?<=<PackageReference Include="Microsoft.Playwright" Version=")[^"]+' AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj || true)
+              PW_VER=$(grep -oP '(?<=<PackageReference Include="Microsoft.Playwright" Version=")[^"]+' AiStockTradeApp.PlaywrightUITests/AiStockTradeApp.PlaywrightUITests.csproj || true)
               echo "Microsoft.Playwright package version: ${PW_VER:-unknown}"
               npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
               if [ -n "$PW_VER" ]; then npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
@@ -749,7 +749,7 @@ stages:
 
           - script: |
               echo "Listing all tests in UITests project..."
-              dotnet test AiStockTradeApp.UITests --list-tests --verbosity normal
+              dotnet test AiStockTradeApp.PlaywrightUITests --list-tests --verbosity normal
             displayName: "List UI Tests to be executed"
 
           - task: Bash@3
@@ -758,7 +758,7 @@ stages:
               targetType: inline
               script: |
                 set -e
-                dotnet test AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj \
+                dotnet test AiStockTradeApp.PlaywrightUITests/AiStockTradeApp.PlaywrightUITests.csproj \
                   --no-build --configuration Release --verbosity diagnostic \
                   --logger "trx;LogFileName=ui-test-results.trx" \
                   --settings ./test.runsettings \
@@ -778,7 +778,7 @@ stages:
               CI: "true"
               AZURE_PIPELINES: "true"
               PLAYWRIGHT_BROWSERS_PATH: "$(PLAYWRIGHT_BROWSERS_PATH)"
-              NODE_PATH: "$(System.DefaultWorkingDirectory)/AiStockTradeApp.UITests/node_modules"
+              NODE_PATH: "$(System.DefaultWorkingDirectory)/AiStockTradeApp.PlaywrightUITests/node_modules"
               USE_INMEMORY_DB: "true" # In-memory DB accelerates UI tests
               VSTEST_RESULTS_DIRECTORY: "$(Agent.TempDirectory)"
               DISABLE_UI_TEST_AUTOSTART: "1"
@@ -866,7 +866,7 @@ stages:
                 # Collect specifically named inconclusive screenshots
                 find $(System.DefaultWorkingDirectory) -type f -iname '*inconclusive*.png' -print -exec cp {} "$DEST/" \; 2>/dev/null || true
                 # Collect all screenshots from UITests project (may include failing tests w/ different pattern)
-                find AiStockTradeApp.UITests -type f -name '*.png' -print -exec cp {} "$DEST/" \; 2>/dev/null || true
+                find AiStockTradeApp.PlaywrightUITests -type f -name '*.png' -print -exec cp {} "$DEST/" \; 2>/dev/null || true
                 # Collect Playwright trace archives if produced
                 find $(System.DefaultWorkingDirectory) -type f \( -iname 'trace.zip' -o -iname '*trace*.zip' -o -iname '*playwright*.zip' \) -print -exec cp {} "$DEST/" \; 2>/dev/null || true
                 # Zip any raw trace folders to include them (limit to first 20 to avoid size explosion)
@@ -875,10 +875,10 @@ stages:
                   base=$(basename "$d")
                   zip -r "$DEST/${base}.zip" "$d" >/dev/null 2>&1 || true
                   i=$((i+1)); [ $i -ge 20 ] && break
-                done < <(find AiStockTradeApp.UITests -type d -iname '*trace*' 2>/dev/null | head -20)
+                done < <(find AiStockTradeApp.PlaywrightUITests -type d -iname '*trace*' 2>/dev/null | head -20)
                 # Directory listings for forensic debugging
-                find AiStockTradeApp.UITests -maxdepth 4 -type d -iname '*trace*' -print > "$DEST/trace-directories.txt" 2>/dev/null || true
-                find AiStockTradeApp.UITests -type f -name '*.png' -print > "$DEST/screenshots-list.txt" 2>/dev/null || true
+                find AiStockTradeApp.PlaywrightUITests -maxdepth 4 -type d -iname '*trace*' -print > "$DEST/trace-directories.txt" 2>/dev/null || true
+                find AiStockTradeApp.PlaywrightUITests -type f -name '*.png' -print > "$DEST/screenshots-list.txt" 2>/dev/null || true
                 echo "Contents collected:"; ls -la "$DEST" || true
                 COUNT=$(find "$DEST" -type f | wc -l || echo 0)
                 if [ "$COUNT" -eq 0 ]; then

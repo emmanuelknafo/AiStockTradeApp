@@ -23,7 +23,7 @@
 			"args": [
 				"test",
 				"--filter",
-				"FullyQualifiedName~AiStockTradeApp.UITests.Tests.StockDashboardPageObjectTests.PortfolioStats_UsingPageObject_ShouldDisplay",
+				"FullyQualifiedName~AiStockTradeApp.PlaywrightUITests.Tests.StockDashboardPageObjectTests.PortfolioStats_UsingPageObject_ShouldDisplay",
 				"-v",
 				"m"
 			],
@@ -39,9 +39,9 @@
 			"command": "dotnet",
 			"args": [
 				"test",
-				"AiStockTradeApp.UITests\\AiStockTradeApp.UITests.csproj",
+				"AiStockTradeApp.PlaywrightUITests\\AiStockTradeApp.PlaywrightUITests.csproj",
 				"--filter",
-				"FullyQualifiedName~AiStockTradeApp.UITests.Tests.StockDashboardPageObjectTests.PortfolioStats_UsingPageObject_ShouldDisplay",
+				"FullyQualifiedName~AiStockTradeApp.PlaywrightUITests.Tests.StockDashboardPageObjectTests.PortfolioStats_UsingPageObject_ShouldDisplay",
 				"-v",
 				"m"
 			],

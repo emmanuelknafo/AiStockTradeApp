@@ -422,16 +422,16 @@ jobs:
         run: |
           set -e
           echo "Building UITests to generate Playwright install scripts..."
-          dotnet build AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj --configuration Release --no-restore
+          dotnet build AiStockTradeApp.PlaywrightUITests/AiStockTradeApp.PlaywrightUITests.csproj --configuration Release --no-restore
 
           echo "Installing Playwright browsers with OS deps using .NET script..."
-          PLAYWRIGHT_DIR="AiStockTradeApp.UITests/bin/Release/net9.0"
+          PLAYWRIGHT_DIR="AiStockTradeApp.PlaywrightUITests/bin/Release/net9.0"
           SH_SCRIPT="$PLAYWRIGHT_DIR/playwright.sh"
           PS_SCRIPT="$PLAYWRIGHT_DIR/playwright.ps1"
           echo "Node version: $(node --version 2>/dev/null || echo 'not found')"
           echo "npm version:  $(npm --version 2>/dev/null || echo 'not found')"
           echo "Determining Microsoft.Playwright package version from csproj..."
-          PW_VER=$(grep -oP '(?<=<PackageReference Include="Microsoft.Playwright" Version=")[^"]+' AiStockTradeApp.UITests/AiStockTradeApp.UITests.csproj || true)
+          PW_VER=$(grep -oP '(?<=<PackageReference Include="Microsoft.Playwright" Version=")[^"]+' AiStockTradeApp.PlaywrightUITests/AiStockTradeApp.PlaywrightUITests.csproj || true)
           echo "Microsoft.Playwright package version: ${PW_VER:-unknown}"
           echo "Playwright CLI version BEFORE install (generic):"; npx -y playwright --version 2>/dev/null || echo "npx playwright not available"
           if [ -n "$PW_VER" ]; then echo "Playwright CLI version BEFORE install (pinned ${PW_VER}):"; npx -y "playwright@${PW_VER}" --version 2>/dev/null || echo "npx playwright@${PW_VER} not available"; fi
@@ -496,12 +496,12 @@ jobs:
           fi
 
       - name: List UI Tests to be executed
-        run: dotnet test AiStockTradeApp.UITests --list-tests --verbosity normal --filter "FullyQualifiedName~UITests"
+        run: dotnet test AiStockTradeApp.PlaywrightUITests --list-tests --verbosity normal --filter "FullyQualifiedName~UITests"
 
       - name: Run Playwright UI Tests
         run: |
           echo "Starting UI test execution..."
-          dotnet test AiStockTradeApp.UITests --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings
+          dotnet test AiStockTradeApp.PlaywrightUITests --no-build --configuration Release --verbosity normal --filter "FullyQualifiedName~UITests" --logger "trx;LogFileName=ui-test-results.trx" --settings ./test.runsettings
           echo "UI test execution completed with exit code: $?"
         timeout-minutes: 25
         env:
@@ -540,7 +540,7 @@ jobs:
             done < <(find . -type f -name 'trace.zip' -o -name '*_trace.zip' 2>/dev/null || true)
 
           echo "Capturing minimal directory listings for diagnostics..."
-          (find AiStockTradeApp.UITests/bin -maxdepth 4 -type d -name 'net9.0' -print 2>/dev/null | head -10 | while read d; do
+          (find AiStockTradeApp.PlaywrightUITests/bin -maxdepth 4 -type d -name 'net9.0' -print 2>/dev/null | head -10 | while read d; do
              echo "Listing for $d"; ls -la "$d" | head -50; echo "----"; done) > "${ARTIFACT_ROOT}/raw-workdirs/directory-listings.txt" 2>/dev/null || true
 
           echo "Artifact root contents:"; ls -R "${ARTIFACT_ROOT}" || true

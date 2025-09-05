@@ -808,7 +808,7 @@ This project is referenced by:
 - **AiStockTradeApp.DataAccess** (Data Layer) - Entity Framework models
 - **AiStockTradeApp.Services** (Business Logic) - Domain models and DTOs
 - **AiStockTradeApp.Tests** (Unit Tests) - Test data models
-- **AiStockTradeApp.UITests** (UI Tests) - Page object models
+- **AiStockTradeApp.PlaywrightUITests** (UI Tests) - Page object models
 
 ## 🎯 Design Patterns & Best Practices
 
