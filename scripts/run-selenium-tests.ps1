@@ -121,7 +121,7 @@ Write-Info "Using BaseUrl: $BaseUrl"
 $patchedFiles = @()
 $backupSuffix = '.bak_selenium'
 
-function Unskip-Tests {
+function Enable-Tests {
   Write-Info 'Patching test files to remove [Fact(Skip=...)] attributes...'
   Get-ChildItem -Path $testsDir -Filter *.cs -Recurse | ForEach-Object {
     $content = Get-Content -Raw -LiteralPath $_.FullName
@@ -158,9 +158,12 @@ try {
     Write-Info 'CI mode enabled: forcing headless, setting CI env var, preserving defaults.'
     $env:CI = 'true'
     if (-not $Headless) { $Headless = $true }
+  # Use in-memory DB to eliminate external SQL dependency in CI
+  $env:USE_INMEMORY_DB = 'true'
+  Write-Info 'CI mode: USE_INMEMORY_DB=true set for API/UI.'
     # In CI we generally do not want interactive prompts; ensure non-blocking behavior.
   }
-  if ($EnableTests) { Unskip-Tests }
+  if ($EnableTests) { Enable-Tests }
 
   if (-not $SkipStart) {
     Write-Info "Starting application via start.ps1 (-Mode $Mode -NoBrowser)..."
