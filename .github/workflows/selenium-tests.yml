@@ -4,139 +4,37 @@ on:
   push:
     paths:
       - 'AiStockTradeApp.SeleniumTests/**'
+      - 'AiStockTradeApp/**'
+      - 'scripts/run-selenium-tests.ps1'
       - '.github/workflows/selenium-tests.yml'
   pull_request:
     paths:
       - 'AiStockTradeApp.SeleniumTests/**'
+      - 'AiStockTradeApp/**'
+      - 'scripts/run-selenium-tests.ps1'
       - '.github/workflows/selenium-tests.yml'
   workflow_dispatch:
     inputs:
       filterType:
-        description: 'Filter type (Category or AdoId)'
+        description: 'Filter type (None|Category|AdoId)'
         required: false
         default: 'None'
         type: choice
-        options:
-          - None
-          - Category
-          - AdoId
+        options: [None, Category, AdoId]
       filterValue:
         description: 'Filter value (e.g., Authenticated or 1403|1408)'
         required: false
         default: ''
         type: string
-      baseUrl:
-        description: 'Base URL of the running UI (overrides config)'
-        required: false
-        default: ''
-        type: string
-      username:
-        description: 'Username for authenticated tests (optional)'
-        required: false
-        default: ''
-        type: string
-      password:
-        description: 'Password for authenticated tests (optional)'
-        required: false
-        default: ''
-        type: string
       culture:
-        description: 'Culture to test (en|fr)'
+        description: 'Culture (en|fr)'
         required: false
-        default: ''
+        default: 'en'
         type: string
 
 jobs:
-  test:
-    name: Selenium - Matrix (${{ matrix.category }})
-    # Run matrix for push/PR, or manual dispatch when no explicit filter provided
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.filterType == '' || github.event.inputs.filterType == 'None' }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        category: [Authenticated, Anonymous, CrossCutting]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '9.0.x'
-          include-prerelease: true
-
-      - name: Setup Chrome
-        id: chrome
-        uses: browser-actions/setup-chrome@v1
-
-      - name: Print Chrome info
-        run: |
-          echo "Chrome version: ${{ steps.chrome.outputs.chrome-version }}"
-          echo "Chrome path:    ${{ steps.chrome.outputs.chrome-path }}"
-
-      - name: Restore
-        run: dotnet restore AiStockTradeApp.sln
-
-      - name: Build
-        run: dotnet build AiStockTradeApp.sln -c Release --no-restore
-
-      - name: Compute test filter
-        id: filter
-        shell: bash
-        run: |
-          FILTER=""
-          if [ "${{ github.event.inputs.filterType }}" = "AdoId" ] && [ -n "${{ github.event.inputs.filterValue }}" ]; then
-            FILTER="AdoId=${{ github.event.inputs.filterValue }}"
-          elif [ "${{ github.event.inputs.filterType }}" = "Category" ] && [ -n "${{ github.event.inputs.filterValue }}" ]; then
-            FILTER="Category=${{ github.event.inputs.filterValue }}"
-          else
-            # Default to matrix category when no manual filter is provided
-            FILTER="Category=${{ matrix.category }}"
-          fi
-          echo "filter=$FILTER" >> $GITHUB_OUTPUT
-
-      - name: Resolve Selenium settings
-        shell: bash
-        run: |
-          set -e
-          IN_BASE='${{ github.event.inputs.baseUrl }}'
-          IN_USER='${{ github.event.inputs.username }}'
-          IN_PASS='${{ github.event.inputs.password }}'
-          IN_CULT='${{ github.event.inputs.culture }}'
-          SEC_BASE='${{ secrets.SELENIUM_BASE_URL }}'
-          SEC_USER='${{ secrets.SELENIUM_USERNAME }}'
-          SEC_PASS='${{ secrets.SELENIUM_PASSWORD }}'
-
-          BASE="${IN_BASE:-${SEC_BASE}}"
-          USER="${IN_USER:-${SEC_USER}}"
-          PASS="${IN_PASS:-${SEC_PASS}}"
-          CULT="${IN_CULT:-en}"
-          echo "SELENIUM_BASE_URL=$BASE" >> $GITHUB_ENV
-          echo "SELENIUM_USERNAME=$USER" >> $GITHUB_ENV
-          echo "SELENIUM_PASSWORD=$PASS" >> $GITHUB_ENV
-          echo "SELENIUM_CULTURE=$CULT" >> $GITHUB_ENV
-          echo "SELENIUM_HEADLESS=true" >> $GITHUB_ENV
-
-      - name: Test (Selenium)
-        shell: bash
-        run: |
-          echo "Running with filter: ${{ steps.filter.outputs.filter }}"
-          dotnet test AiStockTradeApp.SeleniumTests/AiStockTradeApp.SeleniumTests.csproj -c Release --no-build --logger "trx;LogFileName=selenium.trx" --filter "${{ steps.filter.outputs.filter }}"
-
-      - name: Upload test results (TRX)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: selenium-trx-${{ matrix.category }}
-          path: |
-            **/TestResults/**/*.trx
-            AiStockTradeApp.SeleniumTests/TestResults/**/*.trx
-
-  test-single:
-    name: Selenium - Single
-    # Run single job only when manual filter is provided with value
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.filterType != '' && github.event.inputs.filterType != 'None' && github.event.inputs.filterValue != '' }}
+  selenium-tests:
+    name: Selenium Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -149,65 +47,46 @@ jobs:
           include-prerelease: true
 
       - name: Setup Chrome
-        id: chrome
         uses: browser-actions/setup-chrome@v1
+        id: chrome
 
-      - name: Print Chrome info
+      - name: Display Chrome Info
         run: |
           echo "Chrome version: ${{ steps.chrome.outputs.chrome-version }}"
-          echo "Chrome path:    ${{ steps.chrome.outputs.chrome-path }}"
+          echo "Chrome path: ${{ steps.chrome.outputs.chrome-path }}"
 
-      - name: Restore
-        run: dotnet restore AiStockTradeApp.sln
-
-      - name: Build
-        run: dotnet build AiStockTradeApp.sln -c Release --no-restore
-
-      - name: Compute test filter (manual)
+      - name: Determine Filter
         id: filter
-        shell: bash
+        shell: pwsh
         run: |
-          FILTER=""
-          if [ "${{ github.event.inputs.filterType }}" = "AdoId" ] && [ -n "${{ github.event.inputs.filterValue }}" ]; then
-            FILTER="AdoId=${{ github.event.inputs.filterValue }}"
-          elif [ "${{ github.event.inputs.filterType }}" = "Category" ] && [ -n "${{ github.event.inputs.filterValue }}" ]; then
-            FILTER="Category=${{ github.event.inputs.filterValue }}"
-          fi
-          echo "filter=$FILTER" >> $GITHUB_OUTPUT
+          $type = '${{ github.event.inputs.filterType }}'
+          $value = '${{ github.event.inputs.filterValue }}'
+          $filter = ''
+          if ($type -eq 'Category' -and $value) { $filter = "-Category $value" }
+          elseif ($type -eq 'AdoId' -and $value) { $filter = "-AdoId $value" }
+          else { $filter = '' }
+          echo "filterArgs=$filter" >> $env:GITHUB_OUTPUT
 
-      - name: Resolve Selenium settings
-        shell: bash
+      - name: Run Selenium Tests (single job)
+        shell: pwsh
+        env:
+          SELENIUM_USERNAME: ${{ secrets.SELENIUM_USERNAME }}
+          SELENIUM_PASSWORD: ${{ secrets.SELENIUM_PASSWORD }}
         run: |
-          set -e
-          IN_BASE='${{ github.event.inputs.baseUrl }}'
-          IN_USER='${{ github.event.inputs.username }}'
-          IN_PASS='${{ github.event.inputs.password }}'
-          IN_CULT='${{ github.event.inputs.culture }}'
-          SEC_BASE='${{ secrets.SELENIUM_BASE_URL }}'
-          SEC_USER='${{ secrets.SELENIUM_USERNAME }}'
-          SEC_PASS='${{ secrets.SELENIUM_PASSWORD }}'
+          $args = @('-CI','-Configuration','Release','-EnableTests','-Headless:$true')
+          if ('${{ github.event.inputs.culture }}') { $args += @('-Culture','${{ github.event.inputs.culture }}') }
+          $filter = '${{ steps.filter.outputs.filterArgs }}'
+          if ($filter) { $args += $filter.Split(' ') }
+          if ($env:SELENIUM_USERNAME) { $args += @('-Username',$env:SELENIUM_USERNAME) }
+          if ($env:SELENIUM_PASSWORD) { $args += @('-Password',$env:SELENIUM_PASSWORD) }
+          Write-Host "Invoking run-selenium-tests.ps1 with args: $($args -join ' ')"
+          & ./scripts/run-selenium-tests.ps1 @args
 
-          BASE="${IN_BASE:-${SEC_BASE}}"
-          USER="${IN_USER:-${SEC_USER}}"
-          PASS="${IN_PASS:-${SEC_PASS}}"
-          CULT="${IN_CULT:-en}"
-          echo "SELENIUM_BASE_URL=$BASE" >> $GITHUB_ENV
-          echo "SELENIUM_USERNAME=$USER" >> $GITHUB_ENV
-          echo "SELENIUM_PASSWORD=$PASS" >> $GITHUB_ENV
-          echo "SELENIUM_CULTURE=$CULT" >> $GITHUB_ENV
-          echo "SELENIUM_HEADLESS=true" >> $GITHUB_ENV
-
-      - name: Test (Selenium)
-        shell: bash
-        run: |
-          echo "Running with filter: ${{ steps.filter.outputs.filter }}"
-          dotnet test AiStockTradeApp.SeleniumTests/AiStockTradeApp.SeleniumTests.csproj -c Release --no-build --logger "trx;LogFileName=selenium.trx" --filter "${{ steps.filter.outputs.filter }}"
-
-      - name: Upload test results (TRX)
+      - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: selenium-trx-single
+          name: selenium-trx
           path: |
             **/TestResults/**/*.trx
             AiStockTradeApp.SeleniumTests/TestResults/**/*.trx

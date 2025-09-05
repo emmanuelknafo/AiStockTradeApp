@@ -82,7 +82,8 @@ param(
   [switch]$SkipStart,
   [ValidateSet('Debug','Release')]
   [string]$Configuration = 'Release',
-  [switch]$NoBuild
+  [switch]$NoBuild,
+  [switch]$CI
 )
 
 Set-StrictMode -Version Latest
@@ -147,6 +148,12 @@ function Restore-PatchedFiles {
 }
 
 try {
+  if ($CI) {
+    Write-Info 'CI mode enabled: forcing headless, setting CI env var, preserving defaults.'
+    $env:CI = 'true'
+    if (-not $Headless) { $Headless = $true }
+    # In CI we generally do not want interactive prompts; ensure non-blocking behavior.
+  }
   if ($EnableTests) { Unskip-Tests }
 
   if (-not $SkipStart) {
@@ -277,7 +284,8 @@ VALUES (@Id,@User,@NormUser,@Email,@NormEmail,1,@PwdHash,@Sec,@Conc,0,0,1,0,GETU
     Write-Info 'Skipping build (NoBuild specified and assembly exists).'
   }
 
-  $testArgs = @('test', $testsProj, '-c', $Configuration, '--logger', '"trx;LogFileName=local-selenium.trx"')
+  $logName = if ($CI) { 'ci-selenium.trx' } else { 'local-selenium.trx' }
+  $testArgs = @('test', $testsProj, '-c', $Configuration, '--logger', "trx;LogFileName=$logName")
   if ($NoBuild -and -not $needBuild) { $testArgs += '--no-build' }
   if ($filter) { $testArgs += @('--filter', $filter) }
 
