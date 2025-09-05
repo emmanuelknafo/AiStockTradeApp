@@ -2,7 +2,8 @@
 # Quick shortcuts for common load testing scenarios
 
 param(
-    [string]$Scenario = "menu"    # menu, quick, smoke, normal, stress
+    [string]$Scenario = "menu",    # menu, quick, smoke, normal, stress
+    [switch]$AutoStart              # auto-start API if not running
 )
 
 # Resolve script & runner paths so the launcher can be executed from ANY directory
@@ -15,12 +16,10 @@ if (-not (Test-Path $Script:RunnerPath)) {
 function Invoke-LoadRunner {
     param([string]$ArgsLine)
     Write-Host "→ Invoking runner: $Script:RunnerPath $ArgsLine" -ForegroundColor DarkGray
-    # Tokenize respecting quoted arguments
-    $nullRef = $null
-    $tokens = [System.Management.Automation.PSParser]::Tokenize($ArgsLine, [ref]$nullRef) |
-        Where-Object { $_.Type -eq 'CommandArgument' } |
-        ForEach-Object { $_.Content }
-    & $Script:RunnerPath @tokens
+    # Basic whitespace splitter while respecting quoted substrings
+    $matches = [regex]::Matches($ArgsLine, '"[^"]*"|\S+') | ForEach-Object { $_.Value.Trim('"') }
+    if ($AutoStart) { $matches += '-AutoStart' }
+    & $Script:RunnerPath @matches
 }
 
 $ErrorActionPreference = "Stop"

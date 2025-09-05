@@ -4,14 +4,15 @@
 param(
     [string]$TestType = "locust",           # locust, jmeter, or both
     [string]$Environment = "local",         # local, development, or production
-    [int]$Users = 50,                      # Number of virtual users
-    [int]$Duration = 300,                  # Test duration in seconds
-    [string]$TargetHost = "localhost",     # Target host
-    [int]$Port = 5001,                     # Target port
-    [string]$Protocol = "https",           # http or https
-    [switch]$Html,                         # Generate HTML report
-    [switch]$NoWeb,                        # Run without web UI
-    [string]$OutputDir = "test-results"    # Output directory
+    [int]$Users = 50,                        # Number of virtual users
+    [int]$Duration = 300,                    # Test duration in seconds
+    [string]$TargetHost = "localhost",       # Target host
+    [int]$Port = 5256,                       # Default local HTTP port (align with API_URL in CI)
+    [string]$Protocol = "http",             # default to http for local ease
+    [switch]$Html,                           # Generate HTML report
+    [switch]$NoWeb,                          # Run without web UI
+    [switch]$AutoStart,                      # Auto-start API if not reachable (local only)
+    [string]$OutputDir = "test-results"      # Output directory
 )
 
 # Set error action preference
@@ -78,11 +79,32 @@ function Test-Prerequisites {
         return $true
     }
     catch {
-        Write-Warning "Cannot reach API health endpoint: $healthUrl"
+    Write-Warning "Cannot reach API health endpoint: $healthUrl"
         Write-Warning "Error: $($_.Exception.Message)"
         
         # If testing localhost, offer to start the API
         if ($Environment -eq "local" -and ($TargetHost -eq "localhost" -or $TargetHost -eq "127.0.0.1")) {
+            if ($AutoStart) {
+                Write-Host "AutoStart enabled: attempting to start API automatically." -ForegroundColor Yellow
+                $apiProjectPath = Find-ApiProject
+                if ($apiProjectPath) {
+                    $started = Start-ApiInNewWindow -ProjectPath $apiProjectPath
+                    if ($started) {
+                        # Re-try health
+                        Write-Host "Waiting for API after AutoStart..." -ForegroundColor Yellow
+                        for ($i=0; $i -lt 30; $i++) {
+                            Start-Sleep -Seconds 2
+                            try {
+                                $null = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 5 -ErrorAction Stop
+                                Write-Host "✓ API is now running!" -ForegroundColor Green
+                                return $true
+                            } catch {}
+                        }
+                        Write-Warning "API did not become healthy after AutoStart attempts."
+                    }
+                } else {
+                    Write-Warning "Unable to locate API project for AutoStart."}
+            }
             Write-Host ""
             Write-Host "It looks like you're testing against localhost but the API isn't running." -ForegroundColor Yellow
             
@@ -129,10 +151,14 @@ function Test-Prerequisites {
         }
         
         Write-Host ""
-        $continue = Read-Host "Continue with load test anyway? (y/N)"
-        if ($continue -ne 'y' -and $continue -ne 'Y') {
-            Write-Host "Load test cancelled. Please ensure the API is running and try again." -ForegroundColor Red
-            exit 1
+        if (-not $AutoStart) {
+            $continue = Read-Host "Continue with load test anyway? (y/N)"
+            if ($continue -ne 'y' -and $continue -ne 'Y') {
+                Write-Host "Load test cancelled. Please ensure the API is running and try again." -ForegroundColor Red
+                exit 1
+            }
+        } else {
+            Write-Host "Proceeding despite health failure (AutoStart already attempted)." -ForegroundColor DarkYellow
         }
         return $false
     }
