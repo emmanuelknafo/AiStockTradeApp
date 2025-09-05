@@ -19,6 +19,7 @@ public class DashboardPage
     private By WatchlistCards => By.CssSelector("[data-testid^='stock-card-']");
     private By EmptyState => By.CssSelector("[data-testid='empty-watchlist']");
     private By RemoveButton(string symbol) => By.CssSelector($"[data-testid='remove-stock-{symbol}']");
+    private By StockCard(string symbol) => By.CssSelector($"[data-testid='stock-card-{symbol.ToUpper()}']");
 
     public DashboardPage Go(string baseUrl)
     {
@@ -32,10 +33,28 @@ public class DashboardPage
 
     public DashboardPage AddSymbol(string symbol)
     {
-        var input = _driver.FindElement(StockInput);
+        var wait = new WebDriverWait(new SystemClock(), _driver, TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200));
+
+        // Ensure input is present & interactable
+        var input = wait.Until(drv =>
+        {
+            var el = drv.FindElements(StockInput).FirstOrDefault();
+            return (el != null && el.Displayed && el.Enabled) ? el : null;
+        });
+
         input.Clear();
         input.SendKeys(symbol);
         _driver.FindElement(AddStockButton).Click();
+
+        // Wait for symbol card to appear (handles async AJAX add)
+        try
+        {
+            wait.Until(drv => drv.FindElements(StockCard(symbol)).Any());
+        }
+        catch (WebDriverTimeoutException)
+        {
+            // Swallow to allow test to assert; capture diagnostic attribute if needed later
+        }
         return this;
     }
 
