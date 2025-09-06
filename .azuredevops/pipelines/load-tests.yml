@@ -15,18 +15,6 @@ parameters:
       - quick
       - normal
       - stress
-  - name: users
-    displayName: Override users (blank = scenario default)
-    type: string
-    default: ""
-  - name: duration
-    displayName: Override duration seconds (blank = scenario default)
-    type: string
-    default: ""
-  - name: jmeterHost
-    displayName: JMeter host (external) - leave blank to target internal API
-    type: string
-    default: ""
   - name: jmeterPath
     displayName: JMeter path (e.g. /health)
     type: string
@@ -106,6 +94,13 @@ variables:
     value: "5256"
   - name: INTERNAL_JMETER_PROTOCOL
     value: "http"
+  # Optional override variables (empty by default). Set in pipeline variables UI if needed.
+  - name: USERS_OVERRIDE
+    value: ""
+  - name: DURATION_OVERRIDE
+    value: ""
+  - name: JMETER_HOST_OVERRIDE
+    value: ""
 
 pool:
   vmImage: "ubuntu-latest"
@@ -167,8 +162,8 @@ stages:
           - script: |
               set -e
               scenario='${{ parameters.scenario }}'
-              users_override='${{ parameters.users }}'
-              duration_override='${{ parameters.duration }}'
+              users_override='$(USERS_OVERRIDE)'
+              duration_override='$(DURATION_OVERRIDE)'
               users=5; duration=30
               case "$scenario" in
                 quick) users=10; duration=60 ;;
@@ -267,7 +262,7 @@ stages:
 
           - script: |
               set -e
-              host_input='${{ parameters.jmeterHost }}'
+              host_input='$(JMETER_HOST_OVERRIDE)'
               if [ -z "$host_input" ]; then host=$(INTERNAL_JMETER_HOST); port=$(INTERNAL_JMETER_PORT); protocol=$(INTERNAL_JMETER_PROTOCOL); else host=$host_input; port=443; protocol=https; fi
               echo "Using host=$host port=$port protocol=$protocol"
               sed -e "s|@@THREADS@@|${{ parameters.jmeterThreads }}|g" \
