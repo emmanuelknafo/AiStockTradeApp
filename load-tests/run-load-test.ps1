@@ -31,6 +31,30 @@ Write-Host "Environment: $Environment" -ForegroundColor Yellow
 Write-Host "Target: ${Protocol}://${TargetHost}:${Port}" -ForegroundColor Yellow
 Write-Host "Users: $Users, Duration: ${Duration}s" -ForegroundColor Yellow
 
+# Proactive clean slate: kill any existing AiStockTradeApp.Api dotnet processes when targeting local environment
+if ($Environment -eq 'local' -and ($TargetHost -eq 'localhost' -or $TargetHost -eq '127.0.0.1')) {
+    Write-Host "Ensuring no stale API processes are running (clean slate)..." -ForegroundColor DarkCyan
+    try {
+        $dotnet = Get-Process -Name dotnet -ErrorAction SilentlyContinue
+        if ($dotnet) {
+            $killed = @()
+            foreach ($p in $dotnet) {
+                try {
+                    $cl = (Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" | Select-Object -ExpandProperty CommandLine 2>$null)
+                    if ($cl -and ($cl -match 'AiStockTradeApp.Api' -or $cl -match 'AiStockTradeApp.Api.dll')) {
+                        Write-Host "Stopping stale API process PID=$($p.Id)" -ForegroundColor DarkYellow
+                        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                        try { Wait-Process -Id $p.Id -Timeout 5 -ErrorAction SilentlyContinue } catch {}
+                        $killed += $p.Id
+                    }
+                } catch {}
+            }
+            if ($killed.Count -gt 0) { Write-Host "Terminated stale API processes: $($killed -join ', ')" -ForegroundColor Green }
+            else { Write-Host "No stale API processes found." -ForegroundColor DarkGray }
+        } else { Write-Host "No dotnet processes detected." -ForegroundColor DarkGray }
+    } catch { Write-Warning "Process cleanup error: $($_.Exception.Message)" }
+}
+
 # Create output directory
 $ResultsPath = Join-Path $LoadTestDir $OutputDir
 if (-not (Test-Path $ResultsPath)) {
@@ -149,7 +173,7 @@ function Test-Prerequisites {
     try {
         $healthUrl = "$BaseUrl/health"
         Write-Host "Testing API health endpoint: $healthUrl" -ForegroundColor Gray
-        $response = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 10
+    $null = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 10
         Write-Host "✓ API is reachable" -ForegroundColor Green
         return $true
     }
@@ -208,7 +232,7 @@ function Test-Prerequisites {
                         Write-Host "." -NoNewline -ForegroundColor Gray
                         
                         try {
-                            $response = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 5 -ErrorAction Stop
+                            $null = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 5 -ErrorAction Stop
                             Write-Host ""
                             Write-Host "✓ API is now running!" -ForegroundColor Green
                             return $true
