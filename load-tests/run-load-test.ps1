@@ -31,28 +31,35 @@ Write-Host "Environment: $Environment" -ForegroundColor Yellow
 Write-Host "Target: ${Protocol}://${TargetHost}:${Port}" -ForegroundColor Yellow
 Write-Host "Users: $Users, Duration: ${Duration}s" -ForegroundColor Yellow
 
-# Proactive clean slate: kill any existing AiStockTradeApp.Api dotnet processes when targeting local environment
+# Proactive clean slate: kill ALL existing dotnet processes when targeting local environment
 if ($Environment -eq 'local' -and ($TargetHost -eq 'localhost' -or $TargetHost -eq '127.0.0.1')) {
-    Write-Host "Ensuring no stale API processes are running (clean slate)..." -ForegroundColor DarkCyan
+    Write-Host "Ensuring no stale dotnet processes are running (global clean slate)..." -ForegroundColor DarkCyan
     try {
         $dotnet = Get-Process -Name dotnet -ErrorAction SilentlyContinue
         if ($dotnet) {
-            $killed = @()
+            $pids = @()
             foreach ($p in $dotnet) {
                 try {
-                    $cl = (Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" | Select-Object -ExpandProperty CommandLine 2>$null)
-                    if ($cl -and ($cl -match 'AiStockTradeApp.Api' -or $cl -match 'AiStockTradeApp.Api.dll')) {
-                        Write-Host "Stopping stale API process PID=$($p.Id)" -ForegroundColor DarkYellow
-                        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-                        try { Wait-Process -Id $p.Id -Timeout 5 -ErrorAction SilentlyContinue } catch {}
-                        $killed += $p.Id
-                    }
+                    Write-Host "Stopping dotnet PID=$($p.Id)" -ForegroundColor DarkYellow
+                    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                    try { Wait-Process -Id $p.Id -Timeout 5 -ErrorAction SilentlyContinue } catch {}
+                    $pids += $p.Id
                 } catch {}
             }
-            if ($killed.Count -gt 0) { Write-Host "Terminated stale API processes: $($killed -join ', ')" -ForegroundColor Green }
-            else { Write-Host "No stale API processes found." -ForegroundColor DarkGray }
-        } else { Write-Host "No dotnet processes detected." -ForegroundColor DarkGray }
-    } catch { Write-Warning "Process cleanup error: $($_.Exception.Message)" }
+            # Secondary sweep (just in case)
+            Start-Sleep -Milliseconds 500
+            $residual = Get-Process -Name dotnet -ErrorAction SilentlyContinue
+            if ($residual) {
+                Write-Warning "Residual dotnet processes still detected: $($residual.Id -join ', '). Forcing another termination pass."
+                foreach ($r in $residual) { try { Stop-Process -Id $r.Id -Force -ErrorAction SilentlyContinue } catch {} }
+                Start-Sleep -Milliseconds 300
+            }
+            $final = Get-Process -Name dotnet -ErrorAction SilentlyContinue
+            if ($final) { Write-Warning "Some dotnet processes remain (may be protected/system). Proceeding anyway." } else { Write-Host "Terminated dotnet processes: $($pids -join ', ')" -ForegroundColor Green }
+        } else {
+            Write-Host "No dotnet processes detected." -ForegroundColor DarkGray
+        }
+    } catch { Write-Warning "Global dotnet cleanup error: $($_.Exception.Message)" }
 }
 
 # Create output directory
