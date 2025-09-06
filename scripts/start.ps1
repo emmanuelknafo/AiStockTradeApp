@@ -387,8 +387,16 @@ function Start-LocalProcesses {
   }
   if ($inline) {
     Write-Host 'Starting API inline (background dotnet process)...' -ForegroundColor Cyan
-  # -WindowStyle is Windows-only; omit for cross-platform runners
-  $apiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $apiProj,'--launch-profile', $ApiProfile) -WorkingDirectory $repoRoot -Environment $apiEnv -PassThru
+    $apiStdOut = Join-Path $repoRoot '.ci-api.stdout.log'
+    $apiStdErr = Join-Path $repoRoot '.ci-api.stderr.log'
+    try {
+      # Redirect standard output/error so child does not inherit the invoking pwsh STDIO handles (prevents ADO hang)
+      $apiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $apiProj,'--launch-profile', $ApiProfile) -WorkingDirectory $repoRoot -Environment $apiEnv -RedirectStandardOutput $apiStdOut -RedirectStandardError $apiStdErr -PassThru
+    }
+    catch {
+      Write-Warning "API inline start with redirection failed: $($_.Exception.Message); retrying without redirection (may risk CI hang)."
+      $apiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $apiProj,'--launch-profile', $ApiProfile) -WorkingDirectory $repoRoot -Environment $apiEnv -PassThru
+    }
     if ($apiProc) { "API:$($apiProc.Id)" | Add-Content -LiteralPath $pidFile }
   }
   else {
@@ -436,7 +444,15 @@ function Start-LocalProcesses {
   }
   if ($inline) {
     Write-Host 'Starting UI inline (background dotnet process)...' -ForegroundColor Cyan
-  $uiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $uiProj,'--launch-profile', $UiProfile) -WorkingDirectory $repoRoot -Environment $uiEnv -PassThru
+    $uiStdOut = Join-Path $repoRoot '.ci-ui.stdout.log'
+    $uiStdErr = Join-Path $repoRoot '.ci-ui.stderr.log'
+    try {
+      $uiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $uiProj,'--launch-profile', $UiProfile) -WorkingDirectory $repoRoot -Environment $uiEnv -RedirectStandardOutput $uiStdOut -RedirectStandardError $uiStdErr -PassThru
+    }
+    catch {
+      Write-Warning "UI inline start with redirection failed: $($_.Exception.Message); retrying without redirection."
+      $uiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $uiProj,'--launch-profile', $UiProfile) -WorkingDirectory $repoRoot -Environment $uiEnv -PassThru
+    }
     if ($uiProc) { "UI:$($uiProc.Id)" | Add-Content -LiteralPath $pidFile }
   }
   else {
@@ -454,7 +470,15 @@ function Start-LocalProcesses {
     }
     if ($inline) {
       Write-Host 'Starting MCP Server inline (background dotnet process)...' -ForegroundColor Cyan
-  $mcpProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $mcpProj,'--','--http') -WorkingDirectory $repoRoot -Environment $mcpEnv -PassThru
+      $mcpStdOut = Join-Path $repoRoot '.ci-mcp.stdout.log'
+      $mcpStdErr = Join-Path $repoRoot '.ci-mcp.stderr.log'
+      try {
+        $mcpProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $mcpProj,'--','--http') -WorkingDirectory $repoRoot -Environment $mcpEnv -RedirectStandardOutput $mcpStdOut -RedirectStandardError $mcpStdErr -PassThru
+      }
+      catch {
+        Write-Warning "MCP inline start with redirection failed: $($_.Exception.Message); retrying without redirection."
+        $mcpProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $mcpProj,'--','--http') -WorkingDirectory $repoRoot -Environment $mcpEnv -PassThru
+      }
       if ($mcpProc) { "MCP:$($mcpProc.Id)" | Add-Content -LiteralPath $pidFile }
     }
     else {
