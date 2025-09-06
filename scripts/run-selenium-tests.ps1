@@ -207,6 +207,8 @@ try {
   if ($EnableTests) { Enable-Tests }
 
   if (-not $SkipStart) {
+    # Always enforce a clean slate before any start attempt (even outside CI)
+    Stop-DotnetAppProcesses -Reason 'Pre-start enforcement'
     Write-Info "Starting application via start.ps1 (-Mode $Mode -NoBrowser) ..."
     if ($CI) {
       # Force API to pure HTTP profile, but use UI 'https' profile (with UseHttps disabled) so it also exposes HTTP on 5259

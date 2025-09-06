@@ -185,7 +185,28 @@ function Invoke-DotnetProcessShutdown {
       }
     }
     Start-Sleep -Seconds 2
-    Write-Host 'Existing dotnet processes terminated.' -ForegroundColor Green
+    # Verification loop: ensure all processes tied to AiStockTradeApp assemblies are gone
+    $verifyDeadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $verifyDeadline) {
+      $remaining = Get-Process -Name 'dotnet' -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+          $cl = (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" | Select-Object -ExpandProperty CommandLine 2>$null)
+          if ($cl -and ($cl -match 'AiStockTradeApp.Api' -or $cl -match 'AiStockTradeApp.McpServer' -or $cl -match 'AiStockTradeApp.csproj' -or $cl -match 'AiStockTradeApp.dll')) { $_ }
+        } catch { }
+      } | Where-Object { $_ }
+      if (-not $remaining -or $remaining.Count -eq 0) { break }
+      Write-Host "Waiting for $($remaining.Count) AiStockTradeApp dotnet process(es) to exit: $($remaining.Id -join ', ')" -ForegroundColor DarkYellow
+      foreach ($p in $remaining) { try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {} }
+      Start-Sleep -Milliseconds 400
+    }
+    $finalRemaining = Get-Process -Name 'dotnet' -ErrorAction SilentlyContinue | ForEach-Object {
+      try { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" | Select-Object -ExpandProperty CommandLine 2>$null) } catch { $null }
+    } | Where-Object { $_ -match 'AiStockTradeApp' }
+    if ($finalRemaining) {
+      Write-Warning 'Some AiStockTradeApp related dotnet processes may still be present after shutdown attempts.'
+    } else {
+      Write-Host 'Existing dotnet processes terminated (verified).' -ForegroundColor Green
+    }
   }
   catch {
     Write-Warning "Could not clean up existing dotnet processes: $($_.Exception.Message)"
