@@ -18,3 +18,4 @@ steps:
     testPlan: '1427'
     testSuite: '1429'
     testConfiguration: '72'
+    testLanguageInput: 'Python'
