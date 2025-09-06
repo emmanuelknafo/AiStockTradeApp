@@ -58,10 +58,18 @@ public class DashboardPage
 
     public DashboardPage AddSymbol(string symbol)
     {
-        // Extended overall timeout to better tolerate slower local reloads / network
-        var overallTimeout = DateTime.UtcNow + TimeSpan.FromSeconds(35);
+    // Extended overall timeout to better tolerate slower local reloads / network
+    var overallTimeout = DateTime.UtcNow + TimeSpan.FromSeconds(40);
         var js = (IJavaScriptExecutor)_driver;
         var attempt = 0;
+    // Allow longer initial element wait in CI where cold start can be slower
+    var isCi = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CI"));
+        var initialInputWaitSeconds = isCi ? 20 : 12;
+        var overrideWait = Environment.GetEnvironmentVariable("SELENIUM_INPUT_WAIT_SECONDS");
+        if (int.TryParse(overrideWait, out var parsed) && parsed > initialInputWaitSeconds && parsed <= 120)
+        {
+            initialInputWaitSeconds = parsed;
+        }
 
         while (DateTime.UtcNow < overallTimeout)
         {
@@ -69,7 +77,7 @@ public class DashboardPage
             try
             {
                 // Wait for input to be interactable (allow readyState 'interactive' or 'complete')
-                var waitForInput = new WebDriverWait(new SystemClock(), _driver, TimeSpan.FromSeconds(12), TimeSpan.FromMilliseconds(300));
+                var waitForInput = new WebDriverWait(new SystemClock(), _driver, TimeSpan.FromSeconds(initialInputWaitSeconds), TimeSpan.FromMilliseconds(300));
                 var input = waitForInput.Until(drv =>
                 {
                     try
@@ -155,6 +163,29 @@ public class DashboardPage
         }
 
         return this; // Return even if not found; test can assert absence
+    }
+
+    /// <summary>
+    /// Wait until dashboard considered "loaded": document ready & either stock input or empty state present.
+    /// Returns immediately if condition already satisfied. No exception on timeout—test can still proceed.
+    /// </summary>
+    public DashboardPage WaitUntilLoaded(TimeSpan? timeout = null)
+    {
+        var js = (IJavaScriptExecutor)_driver;
+        var end = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(30));
+        while (DateTime.UtcNow < end)
+        {
+            try
+            {
+                var rs = (js.ExecuteScript("return document.readyState") as string ?? string.Empty);
+                var hasInput = _driver.FindElements(StockInput).Any();
+                var hasEmpty = _driver.FindElements(EmptyState).Any();
+                if ((rs == "complete" || rs == "interactive") && (hasInput || hasEmpty)) return this;
+            }
+            catch { /* ignore transient */ }
+            Thread.Sleep(250);
+        }
+        return this;
     }
 
     public DashboardPage RemoveSymbol(string symbol)

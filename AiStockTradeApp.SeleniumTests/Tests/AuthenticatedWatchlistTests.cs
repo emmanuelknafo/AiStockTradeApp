@@ -94,6 +94,7 @@ public class AuthenticatedWatchlistTests : TestBase
         }
         auth.SignIn(Settings.BaseUrl, Settings.Credentials.Username, Settings.Credentials.Password);
         dashboard.Go(Settings.BaseUrl)
+                 .WaitUntilLoaded(TimeSpan.FromSeconds(35))
                  // Ensure symbol exists before attempting removal
                  .AddSymbol("AAPL")
                  .RemoveSymbol("AAPL");
