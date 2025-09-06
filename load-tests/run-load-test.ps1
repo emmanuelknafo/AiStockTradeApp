@@ -178,26 +178,68 @@ switch ($Environment) {
 
 function Test-Prerequisites {
     Write-Host "Checking prerequisites..." -ForegroundColor Cyan
-    
-    # Check if target API is reachable
+
+    $healthUrl = "$BaseUrl/health"
+    # Probe current API health
     try {
-        $healthUrl = "$BaseUrl/health"
         Write-Host "Testing API health endpoint: $healthUrl" -ForegroundColor Gray
-    $null = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 10
+        $null = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 10
         Write-Host "✓ API is reachable" -ForegroundColor Green
         return $true
     }
     catch {
         Write-Warning "Cannot reach API health endpoint: $healthUrl"
         Write-Warning "Error: $($_.Exception.Message)"
-        
-        # If testing localhost, offer to start the API
-        if ($Environment -eq "local" -and ($TargetHost -eq "localhost" -or $TargetHost -eq "127.0.0.1") -and -not $AutoStart) {
-            Write-Host "Local API not reachable and AutoStart disabled. Please start API manually or rerun with -AutoStart." -ForegroundColor Yellow
+
+        $isLocalLoopback = ($Environment -eq "local" -and ($TargetHost -in @('localhost','127.0.0.1')))
+        if ($isLocalLoopback -and $AutoStart) {
+            Write-Host "AutoStart active: launching API automatically on port $Port..." -ForegroundColor Yellow
+            $apiProjectPath = Find-ApiProject
+            if (-not $apiProjectPath) { Write-Warning "AutoStart failed: API project not found."; return $false }
+
+            $started = Start-ApiInNewWindow -ProjectPath $apiProjectPath -Port $Port -Protocol $Protocol -KillExisting
+            if (-not $started) { Write-Warning "AutoStart could not start API."; return $false }
+
+            # Wait for requested port health
+            $maxAttempts = 40
+            for ($i=0; $i -lt $maxAttempts; $i++) {
+                Start-Sleep -Seconds 2
+                try { $null = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 5 -ErrorAction Stop; Write-Host "✓ API is now running (requested port)." -ForegroundColor Green; return $true } catch {}
+            }
+            Write-Warning "Requested port $Port not healthy yet; attempting dynamic port detection."            
+            try {
+                $apiProc = Get-Process -Name dotnet -ErrorAction SilentlyContinue | Sort-Object StartTime -Descending | Where-Object {
+                    try { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" | Select-Object -ExpandProperty CommandLine 2>$null) -match 'AiStockTradeApp.Api' } catch { $false }
+                } | Select-Object -First 1
+                if ($apiProc) {
+                    $candidatePorts = @()
+                    if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+                        $candidatePorts = Get-NetTCPConnection -OwningProcess $apiProc.Id -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Listen' } | Select-Object -ExpandProperty LocalPort -Unique
+                    }
+                    if (-not $candidatePorts -or $candidatePorts.Count -eq 0) {
+                        $netstat = netstat -ano | Select-String $apiProc.Id 2>$null
+                        foreach ($l in $netstat) { if ($l -match ':(\d+)') { $candidatePorts += [int]$matches[1] } }
+                        $candidatePorts = $candidatePorts | Sort-Object -Unique
+                    }
+                    $altPort = ($candidatePorts | Where-Object { $_ -ne $Port } | Select-Object -First 1)
+                    if ($altPort) {
+                        Write-Host "Detected API listening on alternate port $altPort; updating target." -ForegroundColor Yellow
+                        $script:Port = $altPort; $script:BaseUrl = "${Protocol}://localhost:${altPort}"; $env:PORT = $altPort
+                        $altHealth = "$($script:BaseUrl)/health"
+                        for ($j=0; $j -lt 15; $j++) {
+                            Start-Sleep -Seconds 2
+                            try { $null = Invoke-RestMethod -Uri $altHealth -Method Get -TimeoutSec 5 -ErrorAction Stop; Write-Host "✓ API healthy on detected port $altPort" -ForegroundColor Green; return $true } catch {}
+                        }
+                        Write-Warning "Detected port $altPort didn't pass health in allotted time."; return $false
+                    } else { Write-Warning "Dynamic detection found no alternative listening port." }
+                } else { Write-Warning "Could not find API process for dynamic port detection." }
+            } catch { Write-Warning "Dynamic port detection error: $($_.Exception.Message)" }
+            return $false
         }
-        
-    # Interactive prompt path removed; prior AutoStart attempt handles startup.
-    return $false
+        elseif ($isLocalLoopback -and -not $AutoStart) {
+            Write-Host "Local API not reachable and AutoStart disabled. Start API manually or enable -AutoStart." -ForegroundColor Yellow
+        }
+        return $false
     }
 }
 
