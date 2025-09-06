@@ -43,8 +43,24 @@ public class AuthenticatedWatchlistTests : TestBase
         CultureSwitcher.SetCulture(Driver, Settings.BaseUrl, Settings.Culture);
         auth.SignIn(Settings.BaseUrl, Settings.Credentials.Username, Settings.Credentials.Password);
         dashboard.Go(Settings.BaseUrl);
+        // Deterministically clear persisted state when possible
+        var seedUserId = Environment.GetEnvironmentVariable("SELENIUM_SEED_USERID");
+        if (!string.IsNullOrWhiteSpace(seedUserId))
+        {
+            // Clear directly via seeder to avoid timing issues
+            TestDataSeeder.ClearWatchlist(seedUserId);
+            // Hard refresh to reflect DB changes
+            Driver.Navigate().Refresh();
+            dashboard.Go(Settings.BaseUrl);
+        }
+        else
+        {
+            // Fallback: clear via UI interactions (session/user merged state)
+            dashboard.RemoveAllSymbols();
+        }
 
-    Assert.True(dashboard.IsEmptyStateVisible());
+        dashboard.WaitForEmptyState(TimeSpan.FromSeconds(6));
+        Assert.True(dashboard.IsEmptyStateVisible(), "Expected empty state after clearing watchlist.");
     }
 
     [Trait("Category", "Authenticated")]

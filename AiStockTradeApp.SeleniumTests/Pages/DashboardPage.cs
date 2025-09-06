@@ -235,4 +235,38 @@ public class DashboardPage
         }
         return symbols;
     }
+
+    /// <summary>
+    /// Removes all symbols from the watchlist via UI interactions. Retries a few times
+    /// to account for async reloads between removals. Safe to call when already empty.
+    /// </summary>
+    public DashboardPage RemoveAllSymbols(int maxLoops = 4)
+    {
+        for (var i = 0; i < maxLoops; i++)
+        {
+            var symbols = GetSymbols().ToList();
+            if (symbols.Count == 0) return this;
+            foreach (var s in symbols)
+            {
+                try { RemoveSymbol(s); } catch { /* swallow; retry next loop */ }
+            }
+            // Small pause to allow DOM to settle after removals / potential reloads
+            Thread.Sleep(300);
+        }
+        return this;
+    }
+
+    /// <summary>
+    /// Waits for the empty state to become visible (or timeout). No exception thrown on timeout.
+    /// </summary>
+    public DashboardPage WaitForEmptyState(TimeSpan? timeout = null)
+    {
+        var end = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(5));
+        while (DateTime.UtcNow < end)
+        {
+            if (IsEmptyStateVisible()) break;
+            Thread.Sleep(150);
+        }
+        return this;
+    }
 }
