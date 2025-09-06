@@ -6,6 +6,9 @@ param(
     # Note: AutoStart and ForceKill switches removed; run-load-test.ps1 now handles lifecycle automatically
 )
 
+# Remember the directory the user launched from so we can always return on failure
+$Script:OriginalDirectory = Get-Location
+
 # Resolve script & runner paths so the launcher can be executed from ANY directory
 $Script:LauncherDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Script:RunnerPath  = Join-Path $LauncherDir 'run-load-test.ps1'
@@ -24,7 +27,14 @@ function Invoke-LoadRunner {
     if ($Html) { $params.Html = $true }
     $display = "-TestType $TestType -Users $Users -Duration $Duration" + ($(if ($Html) { ' -Html' } else { '' }))
     Write-Host "→ Invoking runner: $Script:RunnerPath $display" -ForegroundColor DarkGray
-    & $Script:RunnerPath @params
+    # Ensure we execute from the launcher directory but always return caller's directory
+    Push-Location $Script:LauncherDir
+    try {
+        & $Script:RunnerPath @params
+    }
+    finally {
+        Pop-Location -ErrorAction SilentlyContinue
+    }
 }
 
 $ErrorActionPreference = "Stop"
@@ -122,5 +132,13 @@ catch {
     Write-Host "• Make sure you're in the load-tests directory" -ForegroundColor Gray
     Write-Host "• Ensure the API is running (use -StartApi if needed)" -ForegroundColor Gray
     Write-Host "• Check that Python and Locust are installed" -ForegroundColor Gray
+    # On failure always restore the original working directory
+    try { Set-Location -Path $Script:OriginalDirectory -ErrorAction SilentlyContinue } catch { }
     exit 1
+}
+finally {
+    # If no hard exit occurred (e.g. normal path), ensure directory is still restored when errors did not trigger catch
+    if ((Get-Location).Path -ne $Script:OriginalDirectory.Path) {
+        try { Set-Location -Path $Script:OriginalDirectory -ErrorAction SilentlyContinue } catch { }
+    }
 }
