@@ -421,9 +421,35 @@ finally {
     } catch { $cleanupIsLinux = $false }
 
     if ($cleanupIsLinux) {
+
+  if ($CI) {
+    Write-Info 'Final CI hard cleanup: terminating ANY remaining dotnet processes (safety net).'
+    try {
+      for ($i=0; $i -lt 3; $i++) {
+        $procs = Get-Process -Name dotnet -ErrorAction SilentlyContinue
+        if (-not $procs) { break }
+        $pids = @()
+        foreach ($p in $procs) {
+          try {
+            Write-Detail "Hard stopping dotnet PID=$($p.Id) (pass $i)"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            $pids += $p.Id
+          } catch {}
+        }
+        if ($pids.Count -gt 0) { Start-Sleep -Milliseconds 400 }
+      }
+      $left = Get-Process -Name dotnet -ErrorAction SilentlyContinue
+      if ($left) { Write-Warn "Dotnet processes still present after hard cleanup: $($left.Id -join ', ')." } else { Write-Info 'All dotnet processes terminated.' }
+    } catch { Write-Warn "Hard cleanup exception: $($_.Exception.Message)" }
+  }
       try {
         & bash -c "pkill -f AiStockTradeApp.Api || true; pkill -f AiStockTradeApp.dll || true" | Out-Null
         Write-Info 'Issued pkill commands for Api/UI (Linux).'
+
+if ($CI) {
+  # Force immediate process termination to avoid Azure/GitHub agent waiting on inherited STDIO handles
+  Write-Info 'CI: Forcing immediate PowerShell exit to prevent lingering STDIO wait.'
+  [System.Environment]::Exit(0)
+}
       } catch { Write-Warn "pkill cleanup failed: $($_.Exception.Message)" }
     } else {
       # Windows / others: try narrowing to processes whose command line includes project dll names if possible
