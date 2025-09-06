@@ -6,6 +6,8 @@
 # dotenv files
 .env
 
+.ci-dotnet-pids
+
 coverage-report/
 
 # Data Protection Keys (sensitive, do not commit)
