@@ -366,7 +366,8 @@ function Start-LocalProcesses {
   }
   if ($inline) {
     Write-Host 'Starting API inline (background dotnet process)...' -ForegroundColor Cyan
-    $apiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $apiProj,'--launch-profile', $ApiProfile) -WorkingDirectory $repoRoot -Environment $apiEnv -PassThru -WindowStyle Hidden
+  # -WindowStyle is Windows-only; omit for cross-platform runners
+  $apiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $apiProj,'--launch-profile', $ApiProfile) -WorkingDirectory $repoRoot -Environment $apiEnv -PassThru
     if ($apiProc) { "API:$($apiProc.Id)" | Add-Content -LiteralPath $pidFile }
   }
   else {
@@ -414,7 +415,7 @@ function Start-LocalProcesses {
   }
   if ($inline) {
     Write-Host 'Starting UI inline (background dotnet process)...' -ForegroundColor Cyan
-    $uiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $uiProj,'--launch-profile', $UiProfile) -WorkingDirectory $repoRoot -Environment $uiEnv -PassThru -WindowStyle Hidden
+  $uiProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $uiProj,'--launch-profile', $UiProfile) -WorkingDirectory $repoRoot -Environment $uiEnv -PassThru
     if ($uiProc) { "UI:$($uiProc.Id)" | Add-Content -LiteralPath $pidFile }
   }
   else {
@@ -432,7 +433,7 @@ function Start-LocalProcesses {
     }
     if ($inline) {
       Write-Host 'Starting MCP Server inline (background dotnet process)...' -ForegroundColor Cyan
-      $mcpProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $mcpProj,'--','--http') -WorkingDirectory $repoRoot -Environment $mcpEnv -PassThru -WindowStyle Hidden
+  $mcpProc = Start-Process -FilePath 'dotnet' -ArgumentList @('run','--no-build','--project', $mcpProj,'--','--http') -WorkingDirectory $repoRoot -Environment $mcpEnv -PassThru
       if ($mcpProc) { "MCP:$($mcpProc.Id)" | Add-Content -LiteralPath $pidFile }
     }
     else {
