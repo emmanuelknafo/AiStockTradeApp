@@ -58,7 +58,7 @@
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
-  [ValidateSet('Authenticated','Anonymous','CrossCutting')]
+  [ValidateSet('Authenticated', 'Anonymous', 'CrossCutting')]
   [string]$Category,
 
   [string]$AdoId,
@@ -68,7 +68,7 @@ param(
   [string]$Username,
   [string]$Password,
 
-  [ValidateSet('en','fr')]
+  [ValidateSet('en', 'fr')]
   [string]$Culture = 'en',
 
   [bool]$Headless = $true,
@@ -76,11 +76,11 @@ param(
   [switch]$EnableTests,
   [switch]$KeepPatched,
 
-  [ValidateSet('Local','Docker')]
+  [ValidateSet('Local', 'Docker')]
   [string]$Mode = 'Local'
   ,
   [switch]$SkipStart,
-  [ValidateSet('Debug','Release')]
+  [ValidateSet('Debug', 'Release')]
   [string]$Configuration = 'Release',
   [switch]$NoBuild,
   [switch]$CI
@@ -95,15 +95,45 @@ if (-not $CI -and ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true' -or $en
   Write-Host '[INFO ] CI environment detected via env vars (auto-enabling CI mode).' -ForegroundColor Cyan
 }
 
-function Write-Info([string]$msg){ Write-Host "[INFO ] $msg" -ForegroundColor Cyan }
-function Write-Warn([string]$msg){ Write-Host "[WARN ] $msg" -ForegroundColor Yellow }
-function Write-Err ([string]$msg){ Write-Host "[ERROR] $msg" -ForegroundColor Red }
-function Write-Detail([string]$msg){ Write-Host "         $msg" -ForegroundColor DarkGray }
+function Write-Info([string]$msg) { Write-Host "[INFO ] $msg" -ForegroundColor Cyan }
+function Write-Warn([string]$msg) { Write-Host "[WARN ] $msg" -ForegroundColor Yellow }
+function Write-Err ([string]$msg) { Write-Host "[ERROR] $msg" -ForegroundColor Red }
+function Write-Detail([string]$msg) { Write-Host "         $msg" -ForegroundColor DarkGray }
+
+# Cross-platform termination of existing dotnet processes for a clean slate
+function Kill-DotnetAppProcesses {
+  param([string]$Reason = 'Pre-run cleanup')
+  Write-Info "Killing existing dotnet processes ($Reason) ..."
+  # Use a custom variable name to avoid conflict with automatic $IsLinux in newer PowerShell versions
+  $platformIsLinux = $false
+  try {
+    if ($env:RUNNER_OS -eq 'Linux' -or [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Linux)) { $platformIsLinux = $true }
+  }
+  catch { $platformIsLinux = $false }
+  if ($platformIsLinux) {
+    try { & bash -c "pkill -f AiStockTradeApp || true" | Out-Null; Write-Detail 'pkill issued (Linux).' } catch { Write-Warn "pkill failed: $($_.Exception.Message)" }
+  }
+  else {
+    try {
+      $procs = Get-Process -Name dotnet -ErrorAction SilentlyContinue
+      foreach ($p in $procs) {
+        try {
+          $cl = (Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" | Select-Object -ExpandProperty CommandLine 2>$null)
+          if ($cl -and ($cl -match 'AiStockTradeApp')) {
+            Write-Detail "Stopping dotnet PID=$($p.Id)"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
+        }
+        catch { }
+      }
+    }
+    catch { Write-Warn "Windows process enumeration failed: $($_.Exception.Message)" }
+  }
+}
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repoRoot   = Resolve-Path (Join-Path $scriptRoot '..') | ForEach-Object { $_.Path }
-$testsProj  = Join-Path $repoRoot 'AiStockTradeApp.SeleniumTests/AiStockTradeApp.SeleniumTests.csproj'
-$testsDir   = Join-Path $repoRoot 'AiStockTradeApp.SeleniumTests/Tests'
+$repoRoot = Resolve-Path (Join-Path $scriptRoot '..') | ForEach-Object { $_.Path }
+$testsProj = Join-Path $repoRoot 'AiStockTradeApp.SeleniumTests/AiStockTradeApp.SeleniumTests.csproj'
+$testsDir = Join-Path $repoRoot 'AiStockTradeApp.SeleniumTests/Tests'
 $startScript = Join-Path $scriptRoot 'start.ps1'
 
 if (-not (Test-Path $testsProj)) { Write-Err "Selenium test project not found: $testsProj"; exit 1 }
@@ -143,7 +173,7 @@ function Enable-Tests {
       }
     }
   }
-  if (-not $patchedFiles) { Write-Warn 'No files required patching (maybe already unskipped).'}
+  if (-not $patchedFiles) { Write-Warn 'No files required patching (maybe already unskipped).' }
 }
 
 function Restore-PatchedFiles {
@@ -162,22 +192,16 @@ function Restore-PatchedFiles {
 
 try {
   if ($CI) {
-    Write-Info 'CI mode enabled: forcing headless, setting CI env var, preserving defaults.'
+    Write-Info 'CI mode enabled: forcing headless, simulating autostart behavior.'
     $env:CI = 'true'
     if (-not $Headless) { $Headless = $true }
-  # Use in-memory DB to eliminate external SQL dependency in CI
-  $env:USE_INMEMORY_DB = 'true'
-  Write-Info 'CI mode: USE_INMEMORY_DB=true set for API/UI.'
-  # Prevent Selenium test harness from attempting its own process start (we already start via start.ps1)
-  $env:DISABLE_SELENIUM_TEST_AUTOSTART = 'true'
-  Write-Info 'CI mode: DISABLE_SELENIUM_TEST_AUTOSTART=true (skip internal auto-start).'
-  # Disable MCP auto-start to avoid port 5000 conflicts
-  $env:DISABLE_MCP_AUTOSTART = 'true'
-  Write-Info 'CI mode: DISABLE_MCP_AUTOSTART=true (prevent MCP port binding).'
-  # Enable inline launch to avoid lingering STDIO handles from spawned pwsh windows
-  $env:CI_INLINE_LAUNCH = '1'
-  Write-Info 'CI mode: CI_INLINE_LAUNCH=1 (services started inline; PIDs tracked).'
-    # In CI we generally do not want interactive prompts; ensure non-blocking behavior.
+    $env:USE_INMEMORY_DB = 'true'
+    Write-Info 'CI mode: USE_INMEMORY_DB=true set for API/UI.'
+    # Simulate autostart: ensure orphaned processes are killed but do NOT disable MCP/selenium autostart flags (leave features logically enabled)
+    Kill-DotnetAppProcesses -Reason 'CI autostart simulation pre-start'
+    $env:CI_INLINE_LAUNCH = '1'
+    Write-Info 'CI mode: CI_INLINE_LAUNCH=1 (inline processes; PIDs tracked).'
+    $env:SELENIUM_AUTOSTART_MODE = 'enabled'
   }
   if ($EnableTests) { Enable-Tests }
 
@@ -189,10 +213,12 @@ try {
       # Avoid -NoExit in spawned shells to prevent hanging pipeline shells (consumed by Azure DevOps/CI)
       $env:NO_PWSH_NOEXIT = '1'
       & $startScript -Mode $Mode -NoBrowser -UseHttps:$false -ApiProfile http -UiProfile https | Out-Null
-    } else {
+    }
+    else {
       & $startScript -Mode $Mode -NoBrowser | Out-Null
     }
-  } else {
+  }
+  else {
     Write-Info "Skipping application startup (reusing existing instance at $BaseUrl)."
   }
 
@@ -210,7 +236,8 @@ try {
       $resp = Invoke-WebRequest -Uri $BaseUrl -Method Get -TimeoutSec 5 -SkipCertificateCheck:$true -ErrorAction Stop
       if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) { $uiReady = $true; break }
       $lastError = "Unexpected status: $($resp.StatusCode)"
-    } catch {
+    }
+    catch {
       $lastError = $_.Exception.Message
     }
     if ($attempt % 10 -eq 0) {
@@ -218,7 +245,7 @@ try {
       # Fallback: if port is listening, proceed anyway (Azure DevOps sometimes blocks HTTP call inside readiness loop)
       try {
         $client = [System.Net.Sockets.TcpClient]::new()
-        $ar = $client.BeginConnect('localhost',[int]([uri]$BaseUrl).Port,$null,$null)
+        $ar = $client.BeginConnect('localhost', [int]([uri]$BaseUrl).Port, $null, $null)
         $success = $ar.AsyncWaitHandle.WaitOne(500)
         if ($success -and $client.Connected) {
           $client.EndConnect($ar)
@@ -227,14 +254,15 @@ try {
           $uiReady = $true; break
         }
         $client.Dispose()
-      } catch { }
+      }
+      catch { }
     }
     Start-Sleep -Seconds $pollSec
   }
   if (-not $uiReady) {
     Write-Err "UI not reachable within ${timeoutSec}s at $BaseUrl. Last error: $lastError"
     # Emit process list for diagnostics before exiting
-    try { Get-Process -Name dotnet | Select-Object Id,StartTime,MainWindowTitle | Format-Table | Out-String | Write-Host } catch { }
+    try { Get-Process -Name dotnet | Select-Object Id, StartTime, MainWindowTitle | Format-Table | Out-String | Write-Host } catch { }
     exit 1
   }
   Write-Info "UI is responsive after $attempt attempt(s)."
@@ -243,8 +271,8 @@ try {
   $env:SELENIUM_BASE_URL = $BaseUrl
   if ($Username) { $env:SELENIUM_USERNAME = $Username }
   if ($Password) { $env:SELENIUM_PASSWORD = $Password }
-  $env:SELENIUM_CULTURE   = $Culture
-  $env:SELENIUM_HEADLESS  = if ($Headless) { 'true' } else { 'false' }
+  $env:SELENIUM_CULTURE = $Culture
+  $env:SELENIUM_HEADLESS = if ($Headless) { 'true' } else { 'false' }
 
   # -------------------------------------------------------------
   # Automatic Identity User + Watchlist Seeding (zero intervention)
@@ -254,29 +282,31 @@ try {
     Write-Info 'In-memory DB mode detected: skipping direct SQL seeding (UI will seed user/watchlist at startup).'
     # The UI startup code (Program.cs) seeds selenium@test.local when using InMemory.
     $seedUserEmail = if ($Username) { $Username } else { 'selenium@test.local' }
-    $seedPassword  = if ($Password) { $Password } else { 'P@ssw0rd1!' }
+    $seedPassword = if ($Password) { $Password } else { 'P@ssw0rd1!' }
     if (-not $Username) { $env:SELENIUM_USERNAME = $seedUserEmail }
     if (-not $Password) { $env:SELENIUM_PASSWORD = $seedPassword }
-  } else {
+  }
+  else {
     Write-Info 'Ensuring test user + baseline watchlist (AAPL, MSFT)...'
     $conn = $env:ConnectionStrings__DefaultConnection
     if (-not $conn) { $conn = 'Server=.;Database=StockTraderDb;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true' }
     $seedUserEmail = if ($Username) { $Username } else { 'selenium@test.local' }
-    $seedPassword  = if ($Password) { $Password } else { 'P@ssw0rd1!' }
+    $seedPassword = if ($Password) { $Password } else { 'P@ssw0rd1!' }
     if (-not $Username) { $env:SELENIUM_USERNAME = $seedUserEmail }
     if (-not $Password) { $env:SELENIUM_PASSWORD = $seedPassword }
     $pwdHash = 'AQAAAAEAACcQAAAAEOgCjU3VtWnHn9Q4xg7R97Q6ZC1mZp4TgBBXHytDg4S8z4uZc1QGJvBfQ7y7Q9vNzQ=='
-    try {
+  try {
       $sqlConn = [System.Data.SqlClient.SqlConnection]::new($conn)
       $sqlConn.Open()
       $norm = $seedUserEmail.ToUpperInvariant()
       $find = $sqlConn.CreateCommand(); $find.CommandText = 'SELECT TOP 1 Id FROM [Users] WHERE NormalizedEmail=@e'
-      $p = $find.Parameters.Add('@e',[System.Data.SqlDbType]::NVarChar,256); $p.Value = $norm
+      $p = $find.Parameters.Add('@e', [System.Data.SqlDbType]::NVarChar, 256); $p.Value = $norm
       $existing = $find.ExecuteScalar()
       if ($existing) {
         $userId = [string]$existing
         Write-Detail 'User already exists.'
-      } else {
+      }
+      else {
         $userId = [guid]::NewGuid().ToString()
         Write-Detail "Creating user $seedUserEmail"
         $ins = $sqlConn.CreateCommand();
@@ -286,9 +316,9 @@ INSERT INTO [Users]
 VALUES (@Id,@User,@NormUser,@Email,@NormEmail,1,@PwdHash,@Sec,@Conc,0,0,1,0,GETUTCDATE(),'en',1)
 '@
         $sec = [guid]::NewGuid().ToString('N'); $conc = [guid]::NewGuid().ToString('N')
-        $params = @{'@Id'=$userId;'@User'=$seedUserEmail;'@NormUser'=$norm;'@Email'=$seedUserEmail;'@NormEmail'=$norm;'@PwdHash'=$pwdHash;'@Sec'=$sec;'@Conc'=$conc}
+        $params = @{'@Id' = $userId; '@User' = $seedUserEmail; '@NormUser' = $norm; '@Email' = $seedUserEmail; '@NormEmail' = $norm; '@PwdHash' = $pwdHash; '@Sec' = $sec; '@Conc' = $conc }
         foreach ($k in $params.Keys) {
-          $p2 = $ins.Parameters.Add($k,[System.Data.SqlDbType]::NVarChar,-1); $p2.Value = $params[$k]
+          $p2 = $ins.Parameters.Add($k, [System.Data.SqlDbType]::NVarChar, -1); $p2.Value = $params[$k]
         }
         $ins.ExecuteNonQuery() | Out-Null
         Write-Detail 'User created.'
@@ -296,65 +326,67 @@ VALUES (@Id,@User,@NormUser,@Email,@NormEmail,1,@PwdHash,@Sec,@Conc,0,0,1,0,GETU
       if ($userId) {
         $countCmd = $sqlConn.CreateCommand();
         $countCmd.CommandText = 'SELECT COUNT(1) FROM UserWatchlistItems WHERE UserId=@u';
-        $pu = $countCmd.Parameters.Add('@u',[System.Data.SqlDbType]::NVarChar,450); $pu.Value = $userId
+        $pu = $countCmd.Parameters.Add('@u', [System.Data.SqlDbType]::NVarChar, 450); $pu.Value = $userId
         $count = [int]$countCmd.ExecuteScalar()
         if ($count -eq 0) {
           Write-Detail 'Seeding watchlist symbols (AAPL, MSFT)'
           foreach ($sym in 'AAPL','MSFT') {
             $w = $sqlConn.CreateCommand();
             $w.CommandText = 'INSERT INTO UserWatchlistItems (UserId, Symbol, AddedAt, SortOrder, EnableAlerts) VALUES (@u,@s,GETUTCDATE(),0,1)'
-            $wu = $w.Parameters.Add('@u',[System.Data.SqlDbType]::NVarChar,450); $wu.Value = $userId
-            $ws = $w.Parameters.Add('@s',[System.Data.SqlDbType]::NVarChar,10); $ws.Value = $sym
+            $wu = $w.Parameters.Add('@u', [System.Data.SqlDbType]::NVarChar, 450); $wu.Value = $userId
+            $ws = $w.Parameters.Add('@s', [System.Data.SqlDbType]::NVarChar, 10); $ws.Value = $sym
             $w.ExecuteNonQuery() | Out-Null
           }
         } else {
           Write-Detail "Watchlist already has $count item(s)."
         }
       }
-    } catch {
+    }
+    catch {
       Write-Warn "Seeding failed: $($_.Exception.Message)"
-    } finally { if ($sqlConn) { $sqlConn.Dispose() } }
+    }
+    finally { if ($sqlConn) { $sqlConn.Dispose() } }
     if ($userId) { $env:SELENIUM_SEED_USERID = $userId } else { Write-Warn 'User ID unresolved; authenticated tests may not login successfully.' }
   }
 
-  Write-Info 'Environment variables set:'
-  Write-Host "  SELENIUM_BASE_URL=$env:SELENIUM_BASE_URL" -ForegroundColor DarkCyan
-  if ($env:SELENIUM_USERNAME) { Write-Host '  SELENIUM_USERNAME=(set)' -ForegroundColor DarkCyan }
-  if ($env:SELENIUM_PASSWORD) { Write-Host '  SELENIUM_PASSWORD=(set)' -ForegroundColor DarkCyan }
-  if ($env:SELENIUM_SEED_USERID) { Write-Host "  SELENIUM_SEED_USERID=$env:SELENIUM_SEED_USERID" -ForegroundColor DarkCyan }
-  Write-Host "  SELENIUM_CULTURE=$env:SELENIUM_CULTURE" -ForegroundColor DarkCyan
-  Write-Host "  SELENIUM_HEADLESS=$env:SELENIUM_HEADLESS" -ForegroundColor DarkCyan
+Write-Info 'Environment variables set:'
+Write-Host "  SELENIUM_BASE_URL=$env:SELENIUM_BASE_URL" -ForegroundColor DarkCyan
+if ($env:SELENIUM_USERNAME) { Write-Host '  SELENIUM_USERNAME=(set)' -ForegroundColor DarkCyan }
+if ($env:SELENIUM_PASSWORD) { Write-Host '  SELENIUM_PASSWORD=(set)' -ForegroundColor DarkCyan }
+if ($env:SELENIUM_SEED_USERID) { Write-Host "  SELENIUM_SEED_USERID=$env:SELENIUM_SEED_USERID" -ForegroundColor DarkCyan }
+Write-Host "  SELENIUM_CULTURE=$env:SELENIUM_CULTURE" -ForegroundColor DarkCyan
+Write-Host "  SELENIUM_HEADLESS=$env:SELENIUM_HEADLESS" -ForegroundColor DarkCyan
 
-  # Build filter
-  $filter = $null
-  if ($Category) { $filter = "Category=$Category" }
-  elseif ($AdoId) {
-    $ids = ($AdoId -split '[,|;\s]+' | Where-Object { $_ }) -join '|'
-    $filter = "AdoId=$ids"
-  }
-  # Decide whether build is required
-  $assemblyPath = Join-Path (Split-Path $testsProj) "bin/$Configuration/net9.0/AiStockTradeApp.SeleniumTests.dll"
-  $needBuild = $true
-  if ($NoBuild -and (Test-Path $assemblyPath)) { $needBuild = $false }
-  elseif (-not $NoBuild) { $needBuild = $true }
+# Build filter
+$filter = $null
+if ($Category) { $filter = "Category=$Category" }
+elseif ($AdoId) {
+  $ids = ($AdoId -split '[,|;\s]+' | Where-Object { $_ }) -join '|'
+  $filter = "AdoId=$ids"
+}
+# Decide whether build is required
+$assemblyPath = Join-Path (Split-Path $testsProj) "bin/$Configuration/net9.0/AiStockTradeApp.SeleniumTests.dll"
+$needBuild = $true
+if ($NoBuild -and (Test-Path $assemblyPath)) { $needBuild = $false }
+elseif (-not $NoBuild) { $needBuild = $true }
 
-  if ($needBuild) {
-    Write-Info "Building test project ($Configuration)..."
-    dotnet build $testsProj -c $Configuration | Out-Host
-  } else {
-    Write-Info 'Skipping build (NoBuild specified and assembly exists).'
-  }
+if ($needBuild) {
+  Write-Info "Building test project ($Configuration)..."
+  dotnet build $testsProj -c $Configuration | Out-Host
+} else {
+  Write-Info 'Skipping build (NoBuild specified and assembly exists).'
+}
 
-  $logName = if ($CI) { 'ci-selenium.trx' } else { 'local-selenium.trx' }
-  $testArgs = @('test', $testsProj, '-c', $Configuration, '--logger', "trx;LogFileName=$logName")
-  if ($NoBuild -and -not $needBuild) { $testArgs += '--no-build' }
-  if ($filter) { $testArgs += @('--filter', $filter) }
+$logName = if ($CI) { 'ci-selenium.trx' } else { 'local-selenium.trx' }
+$testArgs = @('test', $testsProj, '-c', $Configuration, '--logger', "trx;LogFileName=$logName")
+if ($NoBuild -and -not $needBuild) { $testArgs += '--no-build' }
+if ($filter) { $testArgs += @('--filter', $filter) }
 
-  Write-Info ("Running tests: dotnet " + ($testArgs -join ' '))
-  & dotnet @testArgs
-  $exit = $LASTEXITCODE
-  if ($exit -ne 0) { Write-Err "Test run failed with exit code $exit"; exit $exit }
-  Write-Info 'Test run completed.'
+Write-Info ("Running tests: dotnet " + ($testArgs -join ' '))
+& dotnet @testArgs
+$exit = $LASTEXITCODE
+if ($exit -ne 0) { Write-Err "Test run failed with exit code $exit"; exit $exit }
+Write-Info 'Test run completed.'
 }
 finally {
   Restore-PatchedFiles
@@ -366,7 +398,7 @@ finally {
       Write-Info 'Found PID file (.ci-dotnet-pids); attempting targeted termination.'
       $lines = Get-Content -LiteralPath $pidFile | Where-Object { $_ -match '^[A-Z]+:\d+$' }
       foreach ($l in $lines) {
-        $parts = $l.Split(':',2)
+        $parts = $l.Split(':', 2)
         $role = $parts[0]; $procPid = [int]$parts[1]
         try {
           if (Get-Process -Id $procPid -ErrorAction SilentlyContinue) {
@@ -389,7 +421,7 @@ finally {
         & bash -c "pkill -f AiStockTradeApp.Api || true; pkill -f AiStockTradeApp.dll || true" | Out-Null
         Write-Info 'Issued pkill commands for Api/UI (Linux).'
       } catch { Write-Warn "pkill cleanup failed: $($_.Exception.Message)" }
-  } else {
+    } else {
       # Windows / others: try narrowing to processes whose command line includes project dll names if possible
       try {
         $dotnetProcs = Get-Process -Name dotnet -ErrorAction SilentlyContinue
@@ -406,7 +438,7 @@ finally {
             }
           } catch { }
         }
-  } catch { Write-Warn "Windows cleanup failed: $($_.Exception.Message)" }
+      } catch { Write-Warn "Windows cleanup failed: $($_.Exception.Message)" }
     }
   }
 }

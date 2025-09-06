@@ -2,9 +2,8 @@
 # Quick shortcuts for common load testing scenarios
 
 param(
-    [string]$Scenario = "menu",    # menu, quick, smoke, normal, stress
-    [switch]$AutoStart,             # auto-start API if not running
-    [switch]$ForceKill              # force kill processes on target port without confirmation
+    [string]$Scenario = "menu"    # menu, quick, smoke, normal, stress
+    # Note: AutoStart and ForceKill switches removed; run-load-test.ps1 now handles lifecycle automatically
 )
 
 # Resolve script & runner paths so the launcher can be executed from ANY directory
@@ -23,9 +22,7 @@ function Invoke-LoadRunner {
     )
     $params = @{ TestType = $TestType; Users = $Users; Duration = $Duration }
     if ($Html) { $params.Html = $true }
-    if ($AutoStart) { $params.AutoStart = $true }
-    if ($ForceKill) { $params.ForceKill = $true }
-    $display = "-TestType $TestType -Users $Users -Duration $Duration" + ($(if ($Html) { ' -Html' } else { '' })) + ($(if ($AutoStart) { ' -AutoStart' } else { '' })) + ($(if ($ForceKill) { ' -ForceKill' } else { '' }))
+    $display = "-TestType $TestType -Users $Users -Duration $Duration" + ($(if ($Html) { ' -Html' } else { '' }))
     Write-Host "→ Invoking runner: $Script:RunnerPath $display" -ForegroundColor DarkGray
     & $Script:RunnerPath @params
 }
