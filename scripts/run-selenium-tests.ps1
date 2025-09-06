@@ -66,6 +66,7 @@ param(
   [string]$BaseUrl,
 
   [string]$Username,
+  # Plain string password acceptable for ephemeral test user in CI; suppressing analyzer.
   [string]$Password,
 
   [ValidateSet('en', 'fr')]
@@ -101,7 +102,7 @@ function Write-Err ([string]$msg) { Write-Host "[ERROR] $msg" -ForegroundColor R
 function Write-Detail([string]$msg) { Write-Host "         $msg" -ForegroundColor DarkGray }
 
 # Cross-platform termination of existing dotnet processes for a clean slate
-function Kill-DotnetAppProcesses {
+function Stop-DotnetAppProcesses {
   param([string]$Reason = 'Pre-run cleanup')
   Write-Info "Killing existing dotnet processes ($Reason) ..."
   # Use a custom variable name to avoid conflict with automatic $IsLinux in newer PowerShell versions
@@ -198,7 +199,7 @@ try {
     $env:USE_INMEMORY_DB = 'true'
     Write-Info 'CI mode: USE_INMEMORY_DB=true set for API/UI.'
     # Simulate autostart: ensure orphaned processes are killed but do NOT disable MCP/selenium autostart flags (leave features logically enabled)
-    Kill-DotnetAppProcesses -Reason 'CI autostart simulation pre-start'
+  Stop-DotnetAppProcesses -Reason 'CI autostart simulation pre-start'
     $env:CI_INLINE_LAUNCH = '1'
     Write-Info 'CI mode: CI_INLINE_LAUNCH=1 (inline processes; PIDs tracked).'
     $env:SELENIUM_AUTOSTART_MODE = 'enabled'
@@ -404,6 +405,7 @@ finally {
           if (Get-Process -Id $procPid -ErrorAction SilentlyContinue) {
             Write-Info "Stopping $role process PID=$procPid"
             Stop-Process -Id $procPid -Force -ErrorAction SilentlyContinue
+            try { Wait-Process -Id $procPid -Timeout 5 -ErrorAction SilentlyContinue } catch {}
           }
         } catch { Write-Warn "Failed to stop $role PID=$procPid : $($_.Exception.Message)" }
       }
@@ -434,12 +436,34 @@ finally {
               if ($cmdLine -and ($cmdLine -match 'AiStockTradeApp.Api' -or $cmdLine -match 'AiStockTradeApp.csproj')) {
                 Write-Info "Stopping process Id=$($p.Id) (API/UI)"
                 Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                try { Wait-Process -Id $p.Id -Timeout 5 -ErrorAction SilentlyContinue } catch {}
               }
             }
           } catch { }
         }
       } catch { Write-Warn "Windows cleanup failed: $($_.Exception.Message)" }
     }
+
+    # Final defensive sweep: ensure no lingering dotnet processes with our assemblies remain (prevents STDIO hang warnings in CI agents)
+    try {
+      $sweep = Get-Process -Name dotnet -ErrorAction SilentlyContinue | ForEach-Object {
+        $cl = (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" | Select-Object -ExpandProperty CommandLine 2>$null)
+        if ($cl -and ($cl -match 'AiStockTradeApp.Api' -or $cl -match 'AiStockTradeApp.McpServer' -or $cl -match 'AiStockTradeApp.csproj' -or $cl -match 'AiStockTradeApp.dll')) { $_ } }
+      if ($sweep) {
+        Write-Warn "Final sweep found lingering processes: $($sweep.Id -join ','). Forcing termination."
+        foreach ($p in $sweep) {
+          try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; Wait-Process -Id $p.Id -Timeout 5 -ErrorAction SilentlyContinue } catch {}
+        }
+      }
+    } catch { Write-Warn "Final sweep failed: $($_.Exception.Message)" }
+
+    # Attempt to close chromedriver / chrome if still attached (can also hold STDIO handles in some runners)
+    try {
+      $chromeProcs = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'chrome|chromedriver' }
+      foreach ($cp in $chromeProcs) {
+        try { Stop-Process -Id $cp.Id -Force -ErrorAction SilentlyContinue } catch {}
+      }
+    } catch {}
   }
 }
 
